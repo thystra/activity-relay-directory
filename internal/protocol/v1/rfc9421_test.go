@@ -112,11 +112,28 @@ func signedRFC9421TestRequest(
 	mutate func(*sigparams.Params),
 ) (*http.Request, *rsa.PrivateKey) {
 	t.Helper()
+	return signedRFC9421TestRequestForTarget(
+		t,
+		body,
+		RegisterEndpointPath,
+		components,
+		mutate,
+	)
+}
+
+func signedRFC9421TestRequestForTarget(
+	t *testing.T,
+	body []byte,
+	target string,
+	components []string,
+	mutate func(*sigparams.Params),
+) (*http.Request, *rsa.PrivateKey) {
+	t.Helper()
 
 	key := testRFC9421PrivateKey(t)
 	request, err := http.NewRequest(
 		http.MethodPost,
-		"https://directory.example/v1/relays/register",
+		"https://directory.example"+target,
 		bytes.NewReader(body),
 	)
 	if err != nil {

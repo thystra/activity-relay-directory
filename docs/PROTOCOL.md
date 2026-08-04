@@ -144,6 +144,27 @@ Future register handlers must use this complete composition with a safely
 resolved actor key and a shared durable replay store. This contract does not
 make registration available and is not connected to the HTTP server.
 
+## Heartbeat request contract
+
+`DecodeHeartbeatRequest` applies the same strict single-object and configurable
+1 MiB maximum body rules as registration. It accepts only protocol version 1,
+the `heartbeat` operation, and an already canonical `relay_actor`. Registration
+metadata such as `public_base_url` is an unknown field and is rejected, so a
+heartbeat cannot create or silently alter a registration.
+
+The authenticated composition accepts only `POST /v1/relays/heartbeat` with no
+query or fragment. Body, version, operation, target, and canonical actor checks
+finish before key resolution or nonce reservation. The signing key must bind to
+the exact actor, and the resulting nonce is reserved atomically.
+
+Success establishes only an authenticated heartbeat intent. It does not prove
+that the actor is registered or administratively active, record liveness, or
+produce the `recorded` outcome. Those checks and the state transition require
+the later persistence and moderation contracts. Liveness recency must use the
+server-side acceptance time, not a client-supplied signature timestamp.
+
+No heartbeat handler is connected to the HTTP server.
+
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
 returns the current state without duplicating it.

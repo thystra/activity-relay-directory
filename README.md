@@ -19,6 +19,7 @@ This repository currently provides a conservative service scaffold only:
 - stateless RFC 9421 directory-request verification contracts and fixture
 - atomic opaque-key replay-store contract and concurrency-tested reference
 - strict authenticated registration-request contract without a public handler
+- strict authenticated heartbeat-request contract without liveness storage
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live

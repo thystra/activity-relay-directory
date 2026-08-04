@@ -93,3 +93,18 @@ the signing actor, and atomically reserves the nonce. It returns an intent and
 does not write registration state. Safe network actor resolution, durable replay
 storage, persistence, moderation, rate limiting, and explicit handler review
 remain required before registration can be enabled.
+
+## Heartbeat request boundary
+
+Heartbeat reuses the strict bounded-object parser and exact-target checks but
+accepts only its own operation plus one canonical actor identity. Registration
+metadata and every unknown field are rejected. Invalid bodies and targets do
+not trigger key resolution or nonce reservation, and errors do not disclose
+supplied JSON or target material.
+
+After those gates, the complete composition verifies the exact body and signing
+actor and reserves the nonce atomically. This result is an intent, not a
+liveness write. A future state layer must require an existing nonsuspended
+registration, enforce rate policy, and record server-side acceptance time in
+one reviewed transition. It must not trust the client's `Date`, `created`, or
+`expires` values as the heartbeat-recency timestamp.

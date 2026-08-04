@@ -1,10 +1,7 @@
 package v1
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 )
 
@@ -23,8 +20,6 @@ var (
 	ErrRegisterBodyTooLarge    = errors.New("register request body is too large")
 	ErrRegisterProtocolVersion = errors.New("register protocol version is unsupported")
 	ErrRegisterTarget          = errors.New("register request target is invalid")
-
-	errStrictJSONObject = errors.New("strict JSON object is invalid")
 )
 
 // VerifiedRegisterRequest contains a strictly validated register body and the
@@ -83,7 +78,7 @@ func (verifier *RFC9421Verifier) VerifyRegisterAndReserve(
 	if err != nil {
 		return nil, err
 	}
-	if !validRegisterTarget(request) {
+	if !validOperationTarget(request, RegisterEndpointPath) {
 		return nil, ErrRegisterTarget
 	}
 
@@ -101,70 +96,4 @@ func (verifier *RFC9421Verifier) VerifyRegisterAndReserve(
 		Request:        registerRequest,
 		Authentication: authentication,
 	}, nil
-}
-
-func validRegisterTarget(request *http.Request) bool {
-	return request != nil && request.URL != nil &&
-		request.Method == http.MethodPost &&
-		request.URL.EscapedPath() == RegisterEndpointPath &&
-		request.URL.RawQuery == "" && !request.URL.ForceQuery &&
-		request.URL.Fragment == "" && request.URL.RawFragment == "" &&
-		(request.RequestURI == "" || request.RequestURI == RegisterEndpointPath)
-}
-
-func decodeStrictJSONObject(body []byte, destination any) error {
-	if err := rejectDuplicateTopLevelJSONNames(body); err != nil {
-		return err
-	}
-
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errStrictJSONObject
-	}
-	return nil
-}
-
-func rejectDuplicateTopLevelJSONNames(body []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	opening, err := decoder.Token()
-	if err != nil || opening != json.Delim('{') {
-		return errStrictJSONObject
-	}
-
-	seen := make(map[string]struct{}, 4)
-	for decoder.More() {
-		token, err := decoder.Token()
-		if err != nil {
-			return errStrictJSONObject
-		}
-		name, ok := token.(string)
-		if !ok {
-			return errStrictJSONObject
-		}
-		if _, duplicate := seen[name]; duplicate {
-			return errStrictJSONObject
-		}
-		seen[name] = struct{}{}
-
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
-			return errStrictJSONObject
-		}
-	}
-
-	closing, err := decoder.Token()
-	if err != nil || closing != json.Delim('}') {
-		return errStrictJSONObject
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return errStrictJSONObject
-	}
-	return nil
 }

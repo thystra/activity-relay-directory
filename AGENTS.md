@@ -69,6 +69,13 @@ target, and canonical identity, and complete all those gates before nonce
 reservation or registration-state mutation. The contract is not authorization
 to expose a handler or report registration as available.
 
+Heartbeat request code must use `DecodeHeartbeatRequest` and
+`VerifyHeartbeatAndReserve`. It must accept only canonical actor identity,
+never registration metadata, and must bind the exact heartbeat
+operation and target before replay reservation. Authentication success is only
+a heartbeat intent: existence, suspension, rate limits, persistence, and
+server-side acceptance time remain separate gates before recording liveness.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

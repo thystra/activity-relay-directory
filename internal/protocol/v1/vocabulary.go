@@ -132,8 +132,8 @@ type RegisterRequest struct {
 	PublicBaseURL   string    `json:"public_base_url"`
 }
 
-// IdentityRequest is the JSON body shared by heartbeat and unregister. The
-// signed request target keeps the two operations distinct.
+// IdentityRequest is the JSON body shared by heartbeat and unregister. Use the
+// operation-specific decoder so the signed target and operation stay distinct.
 type IdentityRequest struct {
 	ProtocolVersion int       `json:"protocol_version"`
 	Operation       Operation `json:"operation"`

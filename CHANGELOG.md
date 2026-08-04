@@ -16,6 +16,7 @@
 - Stateless RFC 9421 directory-request verification and RSA fixture.
 - Atomic opaque-key nonce reservation and replay-rejection contracts.
 - Strict bounded registration parsing, target binding, and authenticated composition.
+- Strict bounded heartbeat parsing, target binding, and authenticated composition.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 
