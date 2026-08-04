@@ -1,0 +1,5 @@
+{
+  "protocol_version": 1,
+  "operation": "unregister",
+  "relay_actor": "https://relay.example/actor"
+}

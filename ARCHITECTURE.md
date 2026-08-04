@@ -11,7 +11,11 @@ The initial process contains:
 - no persistence;
 - no registration protocol implementation.
 
-Planned components will be added behind explicit contracts:
+The version 1 contract layer contains closed operation, outcome, error,
+health, and administrative-state vocabulary plus strictly decoded JSON
+fixtures. It has no HTTP, signature, network, or persistence dependencies.
+
+Runtime components will be added behind those explicit contracts:
 
 1. signed relay registration and replacement;
 2. signed daily heartbeat with bounded jitter;

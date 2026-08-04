@@ -1,0 +1,6 @@
+{
+  "protocol_version": 1,
+  "operation": "register",
+  "outcome": "unchanged",
+  "relay_actor": "https://relay.example/actor"
+}

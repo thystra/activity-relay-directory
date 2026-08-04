@@ -1,0 +1,5 @@
+{
+  "protocol_version": 1,
+  "operation": "heartbeat",
+  "relay_actor": "https://relay.example/actor"
+}

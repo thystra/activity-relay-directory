@@ -43,6 +43,11 @@ go build ./cmd/activity-relay-directory
 docker build --pull=false --build-arg VERSION=validation .
 ```
 
+Protocol vocabulary is closed and versioned. When a JSON field, operation,
+outcome, error code, or lifecycle name changes, update `docs/PROTOCOL.md`, the
+Go vocabulary, and `testdata/directory/` together. Fixtures must use reserved
+example identities and must never contain production or connected-site data.
+
 ## AI-assisted maintenance
 
 AI-assisted tools may help draft or review changes. The human maintainer must

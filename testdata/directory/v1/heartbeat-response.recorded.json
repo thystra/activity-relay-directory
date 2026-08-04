@@ -1,0 +1,6 @@
+{
+  "protocol_version": 1,
+  "operation": "heartbeat",
+  "outcome": "recorded",
+  "relay_actor": "https://relay.example/actor"
+}

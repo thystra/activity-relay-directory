@@ -1,5 +1,8 @@
 # Test Data
 
-Versioned protocol fixtures will be stored here when the directory wire
-contract is introduced. Fixtures must exclude production keys, identities,
-host inventories, and connected-site membership.
+`directory/v1/` contains the normative version 1 JSON contract fixtures.
+Fixture tests decode every file strictly and verify the closed operation,
+outcome, and error vocabulary.
+
+Fixtures use reserved `.example` names. They must exclude production keys,
+identities, host inventories, connected-site membership, and user data.

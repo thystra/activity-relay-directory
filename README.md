@@ -13,9 +13,11 @@ This repository currently provides a conservative service scaffold only:
 - strict configuration validation
 - registration disabled by default
 - no registration, heartbeat, unregister, listing, moderation, or pruning API
+- version 1 protocol vocabulary and JSON compatibility fixtures
 
-The directory protocol will be introduced in reviewed contract-first tranches.
-No live directory endpoint is built into Activity-Relay by default.
+The directory protocol is being introduced in reviewed contract-first tranches.
+The current vocabulary and fixtures do not activate request handlers. No live
+directory endpoint is built into Activity-Relay by default.
 
 ## Privacy boundary
 
