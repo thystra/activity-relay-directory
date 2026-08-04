@@ -165,6 +165,27 @@ server-side acceptance time, not a client-supplied signature timestamp.
 
 No heartbeat handler is connected to the HTTP server.
 
+## Unregister request contract
+
+`DecodeUnregisterRequest` applies the shared strict single-object and
+configurable 1 MiB maximum body rules. It accepts only protocol version 1, the
+`unregister` operation, and an already canonical `relay_actor`. Registration
+metadata and every other unknown field are rejected.
+
+The authenticated composition accepts only `POST /v1/relays/unregister` with
+no query or fragment. Body, version, operation, target, and canonical actor
+checks finish before key resolution or nonce reservation. The signing key must
+bind to the exact actor, and the resulting nonce is reserved atomically. A
+signed heartbeat or registration request cannot satisfy this contract.
+
+Success establishes only an authenticated removal intent. It neither decides
+whether the actor is present nor produces the `removed` or `absent` outcome.
+The later persistence transition must be idempotent: an active entry becomes
+absent, while an already absent entry remains absent. Unregister must not erase
+moderation or audit history without a separate explicit retention policy.
+
+No unregister handler is connected to the HTTP server.
+
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
 returns the current state without duplicating it.

@@ -108,3 +108,17 @@ liveness write. A future state layer must require an existing nonsuspended
 registration, enforce rate policy, and record server-side acceptance time in
 one reviewed transition. It must not trust the client's `Date`, `created`, or
 `expires` values as the heartbeat-recency timestamp.
+
+## Unregister request boundary
+
+Unregister reuses the strict bounded identity-object parser but accepts only its
+own operation and exact query-free target. Registration metadata, heartbeat
+requests, duplicate or unknown fields, noncanonical actors, and ambiguous
+targets are rejected before key resolution or nonce reservation. Errors do not
+disclose supplied body or target material.
+
+The complete composition then verifies the exact body and signing actor and
+reserves the nonce atomically. The result is a removal intent, not a deletion.
+A future state transition must be idempotent, return only the closed `removed`
+or `absent` outcome, and retain suspension, moderation, and audit records unless
+a separately reviewed retention policy explicitly permits their removal.

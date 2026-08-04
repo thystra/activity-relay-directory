@@ -76,6 +76,13 @@ operation and target before replay reservation. Authentication success is only
 a heartbeat intent: existence, suspension, rate limits, persistence, and
 server-side acceptance time remain separate gates before recording liveness.
 
+Unregister request code must use `DecodeUnregisterRequest` and
+`VerifyUnregisterAndReserve`. It must accept only canonical actor identity,
+never registration metadata, and must bind the exact unregister operation and
+target before replay reservation. Authentication success is only a removal
+intent. State transitions must be idempotent and preserve moderation and audit
+history unless a separate explicit retention policy has been reviewed.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

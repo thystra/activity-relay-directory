@@ -20,6 +20,7 @@ This repository currently provides a conservative service scaffold only:
 - atomic opaque-key replay-store contract and concurrency-tested reference
 - strict authenticated registration-request contract without a public handler
 - strict authenticated heartbeat-request contract without liveness storage
+- strict authenticated unregister-request contract without state deletion
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live

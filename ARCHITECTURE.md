@@ -25,9 +25,10 @@ HTTP fetch. Its register-specific composition strictly decodes a bounded body,
 binds the exact operation target and canonical identity, then invokes signature
 verification and atomic replay reservation. Heartbeat uses the same shared JSON
 and target primitives while accepting only canonical actor identity and its own
-operation path; it produces no liveness update. These contracts have no handler
-or persistence dependency; network-target enforcement and a shared durable
-replay backend remain later gates.
+operation path; it produces no liveness update. Unregister applies the same
+identity-only boundary to a distinct removal target and produces no deletion.
+These contracts have no handler or persistence dependency; network-target
+enforcement and a shared durable replay backend remain later gates.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
