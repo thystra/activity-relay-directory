@@ -48,6 +48,12 @@ outcome, error code, or lifecycle name changes, update `docs/PROTOCOL.md`, the
 Go vocabulary, and `testdata/directory/` together. Fixtures must use reserved
 example identities and must never contain production or connected-site data.
 
+RFC 9530 digest changes must remain byte-for-byte compatible with the
+Activity-Relay client implementation and `testdata/directory/v1/` fixture.
+Digest verification operates on the exact bounded body bytes before JSON
+decoding. It must use constant-time comparison and never echo an untrusted
+field value in an error.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

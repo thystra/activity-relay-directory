@@ -14,8 +14,10 @@ The initial process contains:
 The version 1 contract layer contains closed operation, outcome, error,
 health, and administrative-state vocabulary plus strictly decoded JSON
 fixtures. It also provides network-free canonical HTTPS relay identity and
-same-origin binding. It has no HTTP, DNS, signature, or persistence
-dependencies; network-target and actor-key verification remain later gates.
+same-origin binding plus RFC 9530 SHA-256 Content-Digest generation and
+verification. It has no HTTP, DNS, signature-verification, or persistence
+dependencies; network-target, message-signature, and actor-key verification
+remain later gates.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-

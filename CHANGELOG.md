@@ -12,7 +12,9 @@
 - Version 1 lifecycle, outcome, error, health, and administrative vocabulary.
 - Strictly decoded JSON request and response contract fixtures.
 - Canonical HTTPS relay actor/public-base normalization and origin binding.
+- RFC 9530 SHA-256 Content-Digest generation, verification, and fixtures.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
+- GitHub funding links aligned with Activity-Relay.
 
 ### Security
 

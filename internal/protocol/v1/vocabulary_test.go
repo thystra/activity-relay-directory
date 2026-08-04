@@ -72,6 +72,7 @@ func TestClosedVocabulary(t *testing.T) {
 
 func TestFixtureManifest(t *testing.T) {
 	expected := []string{
+		"content-digest.valid.json",
 		"error-response.registration-unavailable.json",
 		"heartbeat-request.valid.json",
 		"heartbeat-response.recorded.json",

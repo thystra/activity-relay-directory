@@ -36,3 +36,16 @@ private, link-local, documentation, multicast, and otherwise non-public
 targets, pin each connection to an approved address, and repeat the checks on
 every redirect. It must then bind the resolved actor and signing key to the
 canonical registered identity.
+
+## Content digest
+
+Version 1 requires an RFC 9530 `sha-256` Content-Digest over the exact bounded
+request body bytes. Verification is constant-time after strict Structured
+Fields parsing and never includes an attacker-controlled field value in an
+error. JSON whitespace and other byte-level changes therefore invalidate an
+otherwise well-formed digest.
+
+A content digest is not sender authentication. Future request handlers must
+verify that `content-digest` is covered by the accepted RFC 9421 signature,
+and must not reserve a nonce or mutate directory state until the signature,
+digest, timestamp, identity-binding, and request-bound checks all succeed.

@@ -60,6 +60,19 @@ All three operations will require RFC 9421 HTTP Message Signatures and RFC 9530
 bounded `created` and `expires` times and a unique nonce. Those values remain
 HTTP signature metadata rather than duplicate JSON fields.
 
+Version 1 requires the `sha-256` member of the RFC 9530 Structured Fields
+dictionary. Its value is a 32-byte Byte Sequence containing SHA-256 over the
+exact message content bytes, before any JSON decoding or reserialization.
+Additional digest algorithms may be present and are ignored by this profile.
+Multiple field lines are combined as one dictionary; under RFC 8941 duplicate
+dictionary keys use the last member. A malformed dictionary, absent or
+non-Byte-Sequence `sha-256` member, wrong-length value, or digest mismatch
+fails authentication.
+
+The contract layer can generate and verify this digest without HTTP or network
+access. Digest verification alone does not authenticate a sender; the future
+HTTP transport must cover `content-digest` with a valid RFC 9421 signature.
+
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
 returns the current state without duplicating it.
@@ -111,9 +124,10 @@ does not erase moderation or audit history without a separate explicit policy.
 
 ## Fixtures
 
-Files under `testdata/directory/v1/` are normative examples for the fields and
-closed vocabulary defined in this tranche. Go tests decode them with unknown
-field rejection, verify that outcomes match their operations, and require the
-registration identity to already be canonical. Later server and Activity-Relay
-client implementations must reuse these fixtures or prove byte-independent
-semantic compatibility with them.
+Files under `testdata/directory/v1/` are normative examples for the fields,
+digest encoding, and closed vocabulary defined in this tranche. Go tests
+decode them with unknown field rejection, verify that outcomes match their
+operations, require the registration identity to already be canonical, and
+check the digest against the fixture's exact body string bytes. Later server
+and Activity-Relay client implementations must reuse these fixtures or prove
+byte-for-byte digest and semantic message compatibility with them.
