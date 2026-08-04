@@ -1,0 +1,26 @@
+# Architecture
+
+Activity-Relay Directory is a separate service and release artifact from
+Activity-Relay itself.
+
+The initial process contains:
+
+- environment-backed configuration with strict validation;
+- an HTTP server with health, readiness, and public status endpoints;
+- immutable build-version metadata;
+- no persistence;
+- no registration protocol implementation.
+
+Planned components will be added behind explicit contracts:
+
+1. signed relay registration and replacement;
+2. signed daily heartbeat with bounded jitter;
+3. signed unregister;
+4. replay and duplicate suppression;
+5. moderation and suspension state;
+6. health-state calculation and pruning;
+7. public JSON and human-readable directory views;
+8. operator CLI and bounded administrative actions.
+
+Persistent storage and public registration remain out of scope for the initial
+scaffold.

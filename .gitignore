@@ -1,0 +1,5 @@
+/activity-relay-directory
+/dist/
+/coverage.out
+/*.test
+.env

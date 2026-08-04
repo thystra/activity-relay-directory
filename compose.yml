@@ -1,0 +1,43 @@
+name: activity-relay-directory
+
+services:
+  directory:
+    image: ${ACTIVITY_RELAY_DIRECTORY_IMAGE:-activity-relay-directory:local}
+    build:
+      context: .
+      args:
+        VERSION: ${ACTIVITY_RELAY_DIRECTORY_VERSION:-development}
+    restart: unless-stopped
+    init: true
+    environment:
+      DIRECTORY_LISTEN_ADDRESS: 0.0.0.0:8080
+      DIRECTORY_PUBLIC_BASE_URL: ${DIRECTORY_PUBLIC_BASE_URL:-http://127.0.0.1:8080}
+      DIRECTORY_REGISTRATION_ENABLED: "false"
+      DIRECTORY_MAX_REQUEST_BODY_BYTES: ${DIRECTORY_MAX_REQUEST_BODY_BYTES:-65536}
+    ports:
+      - "${DIRECTORY_PUBLISH_ADDRESS:-127.0.0.1}:${DIRECTORY_HTTP_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: ${DIRECTORY_MEMORY_LIMIT:-256m}
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --quiet
+        - --output-document=/dev/null
+        - http://127.0.0.1:8080/healthz
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: local
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-10m}
+        max-file: ${CONTAINER_LOG_MAX_FILES:-5}
