@@ -62,6 +62,13 @@ verification, actor-binding, and atomic-reservation path, never the stateless
 verifier alone. The package-private memory replay store is test infrastructure,
 not a production or multi-instance backend.
 
+Register request code must use `DecodeRegisterRequest` and
+`VerifyRegisterAndReserve`. Keep the JSON body bounded, reject duplicate and
+unknown names plus trailing values, require the exact version, operation,
+target, and canonical identity, and complete all those gates before nonce
+reservation or registration-state mutation. The contract is not authorization
+to expose a handler or report registration as available.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

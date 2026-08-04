@@ -122,8 +122,9 @@ func (code ErrorCode) Valid() bool {
 	}
 }
 
-// RegisterRequest is the JSON body for a register operation. URL syntax and
-// canonicalization are deliberately enforced by a later protocol tranche.
+// RegisterRequest is the JSON body for a register operation. Production code
+// must decode it through DecodeRegisterRequest so all version 1 constraints
+// are enforced.
 type RegisterRequest struct {
 	ProtocolVersion int       `json:"protocol_version"`
 	Operation       Operation `json:"operation"`

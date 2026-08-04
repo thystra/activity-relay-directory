@@ -21,8 +21,11 @@ the canonical relay actor. An atomic replay interface stores only opaque
 SHA-256-derived key-ID/nonce keys, with a package-private bounded memory
 implementation for contract tests. The combined safe path reserves only after
 all stateless and actor-binding gates succeed. The contract performs no DNS or
-HTTP fetch and has no handler or persistence dependency; network-target
-enforcement and a shared durable replay backend remain later gates.
+HTTP fetch. Its register-specific composition strictly decodes a bounded body,
+binds the exact operation target and canonical identity, then invokes signature
+verification and atomic replay reservation. It has no handler or persistence
+dependency; network-target enforcement and a shared durable replay backend
+remain later gates.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-

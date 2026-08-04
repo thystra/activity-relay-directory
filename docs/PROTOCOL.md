@@ -124,6 +124,26 @@ replay. The package-private bounded memory implementation exists only to prove
 these semantics under concurrency. A shared durable backend remains mandatory
 before any public handler or multi-process deployment can use the contract.
 
+## Register request contract
+
+`DecodeRegisterRequest` accepts exactly one top-level JSON object within an
+operator-selected positive limit no greater than 1 MiB. It rejects malformed
+JSON, duplicate or unknown member names, trailing values, unsupported protocol
+versions, any operation other than `register`, and identities that are invalid
+or not already in canonical same-origin form. Parser errors are bounded classes
+and never include supplied member names, values, or URLs.
+
+The authenticated composition accepts only `POST /v1/relays/register` with no
+query or fragment and then calls the signature, actor-binding, and atomic replay
+contract over the exact body bytes. Request parsing, version, operation, target,
+and identity checks all finish before key resolution or nonce reservation.
+Success returns a verified registration intent only; it performs no persistence
+and does not classify the operation as created, updated, or unchanged.
+
+Future register handlers must use this complete composition with a safely
+resolved actor key and a shared durable replay store. This contract does not
+make registration available and is not connected to the HTTP server.
+
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
 returns the current state without duplicating it.

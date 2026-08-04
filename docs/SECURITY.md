@@ -78,3 +78,18 @@ or multiple service instances. A shared durable implementation and its
 operational failure policy remain mandatory before handler wiring. Runtime key
 retrieval must separately enforce DNS, address, redirect, response-size, media-
 type, and actor-document safety before returning resolved key material.
+
+## Register request boundary
+
+The register contract accepts only a bounded, single top-level JSON object. It
+rejects duplicate and unknown member names, trailing values, wrong versions or
+operations, noncanonical or cross-origin identities, and any target other than
+the exact query-free register endpoint. Errors do not repeat supplied JSON
+names, values, URLs, queries, or fragments.
+
+These semantic and target gates run before key resolution and replay
+reservation. The complete composition then authenticates the exact body, binds
+the signing actor, and atomically reserves the nonce. It returns an intent and
+does not write registration state. Safe network actor resolution, durable replay
+storage, persistence, moderation, rate limiting, and explicit handler review
+remain required before registration can be enabled.

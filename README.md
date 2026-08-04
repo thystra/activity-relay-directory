@@ -18,13 +18,14 @@ This repository currently provides a conservative service scaffold only:
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
 - stateless RFC 9421 directory-request verification contracts and fixture
 - atomic opaque-key replay-store contract and concurrency-tested reference
+- strict authenticated registration-request contract without a public handler
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until safe key
-resolution, a shared durable replay backend, and the remaining request gates
-are implemented.
+resolution, a shared durable replay backend, persistence, moderation, rate
+limits, and the remaining request gates are implemented.
 
 ## Privacy boundary
 
