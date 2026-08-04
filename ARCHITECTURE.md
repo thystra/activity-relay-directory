@@ -15,6 +15,11 @@ The version 1 contract layer contains closed operation, outcome, error,
 health, and administrative-state vocabulary plus strictly decoded JSON
 fixtures. It has no HTTP, signature, network, or persistence dependencies.
 
+An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
+and forward to the loopback Go listener. Proxy configuration is an operator-
+owned deployment layer and must preserve the public authority and request
+target required by future HTTP message-signature verification.
+
 Runtime components will be added behind those explicit contracts:
 
 1. signed relay registration and replacement;

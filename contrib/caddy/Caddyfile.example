@@ -1,0 +1,35 @@
+# File: contrib/caddy/Caddyfile.example
+#
+# Optional Caddy 2 template for Activity-Relay Directory.
+# Replace directory.example.org before enabling it. Caddy manages HTTPS when
+# public DNS and inbound ports 80 and 443 reach this server.
+
+directory.example.org {
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 35s
+		}
+	}
+
+	header {
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+		Referrer-Policy "no-referrer"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+
+	log {
+		output file /var/log/caddy/activity-relay-directory.access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 720h
+		}
+	}
+}
+
+# EOF: contrib/caddy/Caddyfile.example

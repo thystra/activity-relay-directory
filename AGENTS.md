@@ -48,6 +48,11 @@ outcome, error code, or lifecycle name changes, update `docs/PROTOCOL.md`, the
 Go vocabulary, and `testdata/directory/` together. Fixtures must use reserved
 example identities and must never contain production or connected-site data.
 
+When changing a reverse-proxy example, validate it with the corresponding
+Nginx, Apache HTTP Server, or Caddy release. Examples must preserve the public
+host and request target, remain optional, and must not install, enable, reload,
+or otherwise configure an operator's proxy automatically.
+
 ## AI-assisted maintenance
 
 AI-assisted tools may help draft or review changes. The human maintainer must

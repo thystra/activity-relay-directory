@@ -1,0 +1,50 @@
+# File: contrib/apache/activity-relay-directory.conf.example
+#
+# Optional Apache 2.4 template for Activity-Relay Directory.
+#
+# Required modules on Debian/Ubuntu:
+#   a2enmod headers http2 proxy proxy_http rewrite ssl
+#
+# Replace the hostname, certificate paths, and log paths before enabling it.
+# The directory process is expected to listen only on 127.0.0.1:8080.
+
+<VirtualHost *:80>
+    ServerName directory.example.org
+
+    RewriteEngine On
+    RewriteRule ^ https://directory.example.org%{REQUEST_URI} [R=301,L,NE]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName directory.example.org
+    Protocols h2 http/1.1
+
+    SSLEngine on
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+    SSLCertificateFile /etc/letsencrypt/live/directory.example.org/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/directory.example.org/privkey.pem
+
+    LimitRequestBody 1048576
+
+    ProxyRequests Off
+    ProxyPreserveHost On
+    ProxyPass        / http://127.0.0.1:8080/ connectiontimeout=5 timeout=35 nocanon
+    ProxyPassReverse / http://127.0.0.1:8080/
+
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "no-referrer"
+    Header always set X-Frame-Options "DENY"
+    Header always set Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+
+    # Apache core has no direct equivalent of Nginx limit_req. Apply a reviewed
+    # request-rate policy with mod_security, a firewall, or an upstream proxy
+    # before enabling public registration.
+
+    ErrorLog ${APACHE_LOG_DIR}/activity-relay-directory.error.log
+    CustomLog ${APACHE_LOG_DIR}/activity-relay-directory.access.log combined
+</VirtualHost>
+
+# EOF: contrib/apache/activity-relay-directory.conf.example

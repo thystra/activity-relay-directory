@@ -1,0 +1,69 @@
+# File: contrib/nginx/activity-relay-directory.conf.example
+#
+# Optional Nginx template for Activity-Relay Directory.
+# Replace the hostname, certificate paths, and log paths before enabling it.
+# The directory process is expected to listen only on 127.0.0.1:8080.
+
+upstream activity_relay_directory_backend {
+    server 127.0.0.1:8080;
+    keepalive 16;
+}
+
+# These directives belong in Nginx's http context. A normal conf.d or
+# sites-enabled include is commonly loaded there; verify the local layout.
+limit_req_zone $binary_remote_addr zone=directory_per_source:10m rate=30r/s;
+limit_conn_zone $binary_remote_addr zone=directory_connections:10m;
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name directory.example.org;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    server_name directory.example.org;
+
+    ssl_certificate     /etc/letsencrypt/live/directory.example.org/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/directory.example.org/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 1M;
+    client_body_timeout 15s;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+
+    location / {
+        limit_req zone=directory_per_source burst=60 nodelay;
+        limit_conn directory_connections 20;
+        limit_req_status 429;
+        limit_conn_status 429;
+
+        # No URI is appended to proxy_pass. Nginx therefore forwards the
+        # selected public path instead of replacing it with another prefix.
+        proxy_pass http://activity_relay_directory_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Port $server_port;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 35s;
+        proxy_read_timeout 35s;
+    }
+
+    access_log /var/log/nginx/activity-relay-directory.access.log combined;
+    error_log  /var/log/nginx/activity-relay-directory.error.log warn;
+}
+
+# EOF: contrib/nginx/activity-relay-directory.conf.example

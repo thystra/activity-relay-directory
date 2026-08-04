@@ -40,6 +40,10 @@ cp .env.example .env
 docker compose up --build
 ```
 
+Optional, host-neutral Nginx, Apache, and Caddy examples are under `contrib/`.
+They are not installed or enabled automatically. See
+`docs/REVERSE-PROXY.md` before adapting one for a public deployment.
+
 ## Licence
 
 GNU Affero General Public License version 3. See `LICENCE`.
