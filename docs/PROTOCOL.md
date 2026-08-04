@@ -29,10 +29,23 @@ path and body operation is an `invalid_request` error.
 
 `relay_actor` is the canonical ActivityPub relay actor URL and is the durable
 directory identity. Register also carries `public_base_url`, the public origin
-operators expect people and clients to visit. Exact HTTPS, origin, path,
-normalization, actor-resolution, and actor-key binding rules belong to the next
-contract tranche; the current Go types deliberately store these values as
-strings without accepting them at runtime.
+operators expect people and clients to visit.
+
+Version 1 canonical URL syntax requires:
+
+- HTTPS with no credentials, query, or fragment;
+- a lower-case fully qualified ASCII DNS name or canonical IP literal;
+- no empty port, with explicit port 443 removed and other valid ports retained;
+- a public base URL containing only the origin, serialized without `/`;
+- an absolute actor path whose percent escapes are canonicalized, while empty
+  or dot segments, encoded slash, encoded percent, backslash, invalid UTF-8,
+  and control characters are rejected; and
+- the actor and public base URL to use the same normalized origin.
+
+Internationalized DNS names must arrive as ASCII A-labels. The canonicalizer
+does not resolve DNS, fetch the actor, decide whether an IP address is publicly
+routable, or establish actor-key ownership. Those security gates remain
+mandatory before registration can be accepted.
 
 Heartbeat and unregister identify a relay only by `relay_actor`. They cannot
 silently replace registration metadata.
@@ -100,6 +113,7 @@ does not erase moderation or audit history without a separate explicit policy.
 
 Files under `testdata/directory/v1/` are normative examples for the fields and
 closed vocabulary defined in this tranche. Go tests decode them with unknown
-field rejection and verify that outcomes match their operations. Later server
-and Activity-Relay client implementations must reuse these fixtures or prove
-byte-independent semantic compatibility with them.
+field rejection, verify that outcomes match their operations, and require the
+registration identity to already be canonical. Later server and Activity-Relay
+client implementations must reuse these fixtures or prove byte-independent
+semantic compatibility with them.

@@ -48,6 +48,10 @@ outcome, error code, or lifecycle name changes, update `docs/PROTOCOL.md`, the
 Go vocabulary, and `testdata/directory/` together. Fixtures must use reserved
 example identities and must never contain production or connected-site data.
 
+Canonical URL syntax validation is not network-target validation. Keep DNS,
+SSRF controls, redirect checks, actor retrieval, and actor-key binding as
+separate explicit gates, and never echo an untrusted supplied URL in an error.
+
 When changing a reverse-proxy example, validate it with the corresponding
 Nginx, Apache HTTP Server, or Caddy release. Examples must preserve the public
 host and request target, remain optional, and must not install, enable, reload,

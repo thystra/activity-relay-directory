@@ -2,5 +2,5 @@
   "protocol_version": 1,
   "operation": "register",
   "relay_actor": "https://relay.example/actor",
-  "public_base_url": "https://relay.example/"
+  "public_base_url": "https://relay.example"
 }

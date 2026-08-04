@@ -14,6 +14,7 @@ This repository currently provides a conservative service scaffold only:
 - registration disabled by default
 - no registration, heartbeat, unregister, listing, moderation, or pruning API
 - version 1 protocol vocabulary and JSON compatibility fixtures
+- network-free canonical relay identity and URL validation
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
