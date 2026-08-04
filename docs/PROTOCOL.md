@@ -55,10 +55,37 @@ membership lists, user identities, or a site-level relationship graph.
 
 ## Authentication envelope
 
-All three operations will require RFC 9421 HTTP Message Signatures and RFC 9530
-`Content-Digest` over the exact JSON bytes. Signature parameters will include
-bounded `created` and `expires` times and a unique nonce. Those values remain
-HTTP signature metadata rather than duplicate JSON fields.
+All three operations require the version 1 RFC 9421 HTTP Message Signature
+profile and RFC 9530 `Content-Digest` over the exact JSON bytes. These are
+implemented as contract primitives but are not connected to HTTP handlers yet.
+Registration therefore remains unavailable.
+
+Version 1 accepts exactly one paired `Signature-Input` and `Signature`
+dictionary member. The label is chosen by the client, while the signature must
+carry `tag="activity-relay-directory-v1"` and
+`alg="rsa-v1_5-sha256"`. Component parameters, signature-value parameters,
+unknown signature parameters, mismatched labels, and additional signature
+members are rejected. The required covered components, in the order clients
+should emit them, are:
+
+1. `@method`
+2. `@authority`
+3. `@target-uri`
+4. `content-digest`
+5. `content-type`
+6. `date`
+
+Verifiers permit additional unique covered components. Requests must be POSTs
+for the configured canonical HTTPS authority, and `Content-Type` must be the
+single exact value `application/json`. The signed `Date` must be a valid HTTP
+date within the accepted clock window.
+
+The `created`, `expires`, `keyid`, and nonce parameters are required. `created`
+may be at most five minutes old or thirty seconds in the future. `expires` must
+be later than both `created` and verification time and no more than five
+minutes after `created`. Key IDs are bounded to 2048 bytes and nonces to 256
+bytes. Those values remain HTTP signature metadata rather than duplicate JSON
+fields.
 
 Version 1 requires the `sha-256` member of the RFC 9530 Structured Fields
 dictionary. Its value is a 32-byte Byte Sequence containing SHA-256 over the
@@ -67,11 +94,24 @@ Additional digest algorithms may be present and are ignored by this profile.
 Multiple field lines are combined as one dictionary; under RFC 8941 duplicate
 dictionary keys use the last member. A malformed dictionary, absent or
 non-Byte-Sequence `sha-256` member, wrong-length value, or digest mismatch
-fails authentication.
+fails authentication. The signature base covers the complete presented
+`Content-Digest` field value, so an ignored algorithm member cannot be added,
+removed, or changed without invalidating the HTTP message signature.
 
 The contract layer can generate and verify this digest without HTTP or network
 access. Digest verification alone does not authenticate a sender; the future
 HTTP transport must cover `content-digest` with a valid RFC 9421 signature.
+
+The signature verifier accepts key material only through a caller-supplied
+resolver; it performs no DNS lookup or actor retrieval itself. The resolver
+must return the exact requested key ID, a minimum 2048-bit RSA public key, and
+canonical identical public-key-owner and actor identities. After successful
+cryptographic verification, `BindRelayActor` requires that identity to equal
+the canonical `relay_actor` in the request body.
+
+The verifier returns the validated nonce but does not reserve it. Atomic nonce
+reservation and replay rejection are the next stateful protocol gate, and the
+verifier must not be wired to public handlers before that gate exists.
 
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
@@ -131,3 +171,8 @@ operations, require the registration identity to already be canonical, and
 check the digest against the fixture's exact body string bytes. Later server
 and Activity-Relay client implementations must reuse these fixtures or prove
 byte-for-byte digest and semantic message compatibility with them.
+
+`rfc9421-register.valid.json` is a complete verification vector containing the
+exact request target, fields, body, signature, and public test key. It contains
+no private key. Tests fix verification time inside the vector's validity window
+and require cryptographic verification plus relay-actor binding.

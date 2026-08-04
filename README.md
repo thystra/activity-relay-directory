@@ -16,10 +16,13 @@ This repository currently provides a conservative service scaffold only:
 - version 1 protocol vocabulary and JSON compatibility fixtures
 - network-free canonical relay identity and URL validation
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
+- stateless RFC 9421 directory-request verification contracts and fixture
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
-directory endpoint is built into Activity-Relay by default.
+directory endpoint is built into Activity-Relay by default. The signature
+verifier is not sufficient to enable registration until atomic replay storage,
+safe key resolution, and the remaining request gates are implemented.
 
 ## Privacy boundary
 

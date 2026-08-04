@@ -1,0 +1,16 @@
+{
+  "method": "POST",
+  "scheme": "https",
+  "authority": "directory.example",
+  "target": "/v1/relays/register",
+  "content_type": "application/json",
+  "content_digest": "sha-256=:nMqxyjnxJRsYFc3ao3rHES02EXcNrSLyC7b/8bP7kTI=:",
+  "date": "Tue, 04 Aug 2026 18:15:00 GMT",
+  "body": "{\"protocol_version\":1,\"operation\":\"register\",\"relay_actor\":\"https://relay.example/actor\",\"public_base_url\":\"https://relay.example\"}",
+  "signature_input": "directory=(\"@method\" \"@authority\" \"@target-uri\" \"content-digest\" \"content-type\" \"date\");keyid=\"https://relay.example/actor#main-key\";alg=\"rsa-v1_5-sha256\";tag=\"activity-relay-directory-v1\";nonce=\"directory-fixture-nonce-20260804\";created=1785867300;expires=1785867480",
+  "signature": "directory=:Yw/e7MdppceZHsfFV3ffakFfj4AbWQ3HDmMO/L7YJGXtLOwbRhx44U6kalWyK1fnTeynv1O3V+/nQ9OlTH6KYg3CVj/XcN2iLeu8SCSmsmvpFQezq+ApRtVJRxN2cSiMukZdV5qO/vT5Ash6sD8hIIglipsfcW8S2qahsxinDRMaCvXXSeMDdLEjoAT2Ep+xkKyACLIKv2zPxJ5zetbg8MWreyKH8y/vGY1F+I2eZaOBl3lqs9Zl4RSvl9py0TWpiCp8SLVFD9ZjCyuDrneP0+OWF4hQ4FcmrSuBo3D5H6bacCYl+ohN7nk96Gl5exQyr6MaOuBQgjAJDcdzKs4cvA==:",
+  "key_id": "https://relay.example/actor#main-key",
+  "key_owner": "https://relay.example/actor",
+  "key_actor": "https://relay.example/actor",
+  "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtL0lKOG1RHg0Cpj8tpvo\noHSeYUSTXO83dlxiGBwPOID+xtXhGdyBoU17qnyOtbEu+0ITPI1yWQz8MxXE9UGc\nneGjyH12OStViwRDopbpPBAzsQ6oKt/4aV2UXsc6/tIPIa1jSu/stc6NbDA9vvWo\n0TclRn/0SRYCf5CWjYNPP12T0sWOt0z+Gg3dv5yF+BR/QjE8qP4zRbj9BHQVQtvp\nibTC3IcNjK2DldKiDViZp3pjHPZZe9RmcEwP3/aSiQnOmegTDoYAIh98g3Tpc+OU\nZznhDG+79m2RFvyJMciy8Gka7lLhMR6v9yQGdiKXMxOzWA991f/huwNafaHXEY2d\nRwIDAQAB\n-----END PUBLIC KEY-----\n"
+}

@@ -49,3 +49,26 @@ A content digest is not sender authentication. Future request handlers must
 verify that `content-digest` is covered by the accepted RFC 9421 signature,
 and must not reserve a nonce or mutate directory state until the signature,
 digest, timestamp, identity-binding, and request-bound checks all succeed.
+
+## HTTP message signature
+
+The version 1 RFC 9421 contract fixes one application tag, one RSA algorithm,
+the public HTTPS authority, strict JSON content type, bounded creation and
+expiration times, a bounded nonce, and mandatory coverage of method,
+authority, target URI, digest, content type, and date. A signature over one
+operation target cannot therefore be replayed as another operation without
+failing cryptographic verification.
+
+Parsing, policy, time, digest, key-resolution, cryptographic, and actor-binding
+failures use bounded error classes that never include supplied signature
+fields, key IDs, nonces, resolver details, or bodies. Digest validation occurs
+before key resolution. Resolved keys must be at least 2048-bit RSA keys whose
+exact key ID and canonical owner/actor identity are established by the caller's
+authenticated resolver.
+
+The current contract is intentionally stateless. It returns a verified nonce
+but does not consume it, and no public handler calls it. The replay-store gate
+must atomically reserve the key-ID/nonce pair only after digest, key,
+cryptographic signature, and actor-binding checks succeed. Runtime key
+retrieval must separately enforce DNS, address, redirect, response-size, media-
+type, and actor-document safety before returning resolved key material.

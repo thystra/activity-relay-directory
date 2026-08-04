@@ -54,6 +54,12 @@ Digest verification operates on the exact bounded body bytes before JSON
 decoding. It must use constant-time comparison and never echo an untrusted
 field value in an error.
 
+RFC 9421 changes must remain synchronized with `docs/PROTOCOL.md` and the
+complete public-key verification vector in `testdata/directory/v1/`. Signature
+errors must remain bounded and redact supplied fields, key IDs, nonces, bodies,
+and resolver details. Do not wire the stateless verifier to a handler until an
+atomic replay store and the remaining request-security gates are present.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

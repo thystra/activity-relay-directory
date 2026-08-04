@@ -80,6 +80,7 @@ func TestFixtureManifest(t *testing.T) {
 		"register-response.created.json",
 		"register-response.unchanged.json",
 		"register-response.updated.json",
+		"rfc9421-register.valid.json",
 		"unregister-request.valid.json",
 		"unregister-response.absent.json",
 		"unregister-response.removed.json",
