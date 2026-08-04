@@ -83,6 +83,16 @@ target before replay reservation. Authentication success is only a removal
 intent. State transitions must be idempotent and preserve moderation and audit
 history unless a separate explicit retention policy has been reviewed.
 
+SQLite is the reviewed persistence foundation for one active directory process
+on one host. Keep the database on a local filesystem and never share it between
+hosts. Once a migration has been released, do not edit it: add a consecutive
+numbered migration, update `CurrentSchemaVersion`, preserve content-hash drift
+checks, and test fresh, idempotent, concurrent, rollback, and supported-upgrade
+paths. Schema fields must not admit connected-site or user identities, raw
+request bodies, raw nonces, or signing key IDs. Persistence remains inactive
+until startup, readiness, configuration, backup, and container-volume wiring
+are separately reviewed.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

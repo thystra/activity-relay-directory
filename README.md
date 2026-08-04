@@ -21,13 +21,16 @@ This repository currently provides a conservative service scaffold only:
 - strict authenticated registration-request contract without a public handler
 - strict authenticated heartbeat-request contract without liveness storage
 - strict authenticated unregister-request contract without state deletion
+- embedded, transactional SQLite schema migrations without server wiring
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until safe key
-resolution, a shared durable replay backend, persistence, moderation, rate
-limits, and the remaining request gates are implemented.
+resolution, runtime persistence wiring, moderation, rate limits, and the
+remaining request gates are implemented. The SQLite schema is a reviewed
+single-node foundation, not an active database or public API; see
+`docs/PERSISTENCE.md`.
 
 ## Privacy boundary
 

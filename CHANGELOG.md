@@ -18,6 +18,9 @@
 - Strict bounded registration parsing, target binding, and authenticated composition.
 - Strict bounded heartbeat parsing, target binding, and authenticated composition.
 - Strict bounded unregister parsing, target binding, and authenticated composition.
+- Single-node SQLite opener with secure file checks and bounded connection settings.
+- Transactional, content-hashed initial persistence migration for relay state,
+  opaque replay reservations, and append-only lifecycle events.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 

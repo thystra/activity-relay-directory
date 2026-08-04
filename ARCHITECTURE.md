@@ -30,6 +30,16 @@ identity-only boundary to a distinct removal target and produces no deletion.
 These contracts have no handler or persistence dependency; network-target
 enforcement and a shared durable replay backend remain later gates.
 
+The first persistence foundation is an embedded SQLite migration set for one
+active directory process on one host. It defines strict relay lifecycle and
+administrative state, opaque replay reservations, and append-only lifecycle
+events. Migration history is transactional and content-hashed so drift,
+missing history, and databases newer than the binary fail closed. This package
+is not connected to process startup, readiness, request handling, or the
+container yet. SQLite files must remain on local storage; multi-host service
+topology requires a later database backend rather than shared SQLite storage.
+See `docs/PERSISTENCE.md`.
+
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request
@@ -46,5 +56,5 @@ Runtime components will be added behind those explicit contracts:
 7. public JSON and human-readable directory views;
 8. operator CLI and bounded administrative actions.
 
-Persistent storage and public registration remain out of scope for the initial
-scaffold.
+Runtime storage wiring and public registration remain out of scope for the
+initial scaffold.

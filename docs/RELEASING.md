@@ -12,3 +12,9 @@ Before the first release:
 6. perform an integration soak with relay2;
 7. verify that registration remains disabled unless explicitly configured;
 8. publish release notes and rollback instructions.
+
+The embedded SQLite schema is not runtime-active yet. Before a release that
+activates it, test fresh creation, idempotent startup, upgrade from every
+supported schema version, backup restoration, and refusal of drifted or future
+schemas. Release notes must identify the resulting schema version and state
+that downgrade requires restoration of the matching pre-upgrade backup.

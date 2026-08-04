@@ -122,3 +122,23 @@ reserves the nonce atomically. The result is a removal intent, not a deletion.
 A future state transition must be idempotent, return only the closed `removed`
 or `absent` outcome, and retain suspension, moderation, and audit records unless
 a separately reviewed retention policy explicitly permits their removal.
+
+## Persistence boundary
+
+The SQLite foundation is restricted to one active service process on one host
+and local storage. The opener requires an absolute, nonsymlink regular file,
+creates it with mode `0600`, and rejects group- or world-accessible existing
+files. The containing directory must also be owner-only. SQLite files must not
+be shared over NFS or between hosts.
+
+Embedded migrations run transactionally and record a SHA-256 digest. Changed,
+missing, or future migration history fails closed. Relay lifecycle and
+administrative state remain separate, unregister preserves state, and minimal
+audit events are append-only. Replay storage receives only opaque 32-byte
+digests, never raw key IDs or nonces. The schema does not admit connected-site,
+follower, user, or raw request-body data.
+
+This storage package is not wired into the server. Before activation, startup
+must migrate before readiness, database errors must fail closed, replay expiry
+must be bounded and tested, backup/restore must be exercised, and sensitive
+filesystem paths or database errors must not be returned to clients.
