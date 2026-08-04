@@ -17,9 +17,12 @@ fixtures. It also provides network-free canonical HTTPS relay identity and
 same-origin binding plus RFC 9530 SHA-256 Content-Digest generation and
 verification. Its RFC 9421 contract verifies bounded directory POST profiles
 against caller-resolved RSA key material and binds the verified key identity to
-the canonical relay actor. The contract performs no DNS or HTTP fetch and has
-no handler, nonce store, replay state, or persistence dependency; network-
-target enforcement and atomic replay rejection remain later gates.
+the canonical relay actor. An atomic replay interface stores only opaque
+SHA-256-derived key-ID/nonce keys, with a package-private bounded memory
+implementation for contract tests. The combined safe path reserves only after
+all stateless and actor-binding gates succeed. The contract performs no DNS or
+HTTP fetch and has no handler or persistence dependency; network-target
+enforcement and a shared durable replay backend remain later gates.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-

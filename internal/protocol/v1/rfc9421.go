@@ -97,8 +97,9 @@ type RFC9421VerifierOptions struct {
 	Now         func() time.Time
 }
 
-// RFC9421Verifier verifies version 1 directory-operation POST signatures. It
-// deliberately does not reserve nonces; atomic replay storage is a later gate.
+// RFC9421Verifier verifies version 1 directory-operation POST signatures.
+// VerifyPOST is stateless; handler code must use VerifyPOSTAndReserve with a
+// shared durable replay store once the remaining request gates are available.
 type RFC9421Verifier struct {
 	authority   string
 	keyResolver RFC9421KeyResolver

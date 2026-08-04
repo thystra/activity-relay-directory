@@ -109,9 +109,20 @@ canonical identical public-key-owner and actor identities. After successful
 cryptographic verification, `BindRelayActor` requires that identity to equal
 the canonical `relay_actor` in the request body.
 
-The verifier returns the validated nonce but does not reserve it. Atomic nonce
-reservation and replay rejection are the next stateful protocol gate, and the
-verifier must not be wired to public handlers before that gate exists.
+The stateless verifier returns the validated nonce for composition and testing.
+`VerifyPOSTAndReserve` is the handler-safe contract: it completes signature,
+digest, key, and canonical relay-actor binding before atomically reserving an
+opaque replay key. Public handlers must eventually use that combined path,
+never the stateless verifier by itself.
+
+The replay key is SHA-256 over the exact key ID, a zero-byte separator, and the
+nonce. Stores therefore never need the raw key ID or nonce. A successful
+reservation is retained for ten minutes, beyond the complete signature
+acceptance window. Atomic reserve returns false for a duplicate; backend
+errors and exhausted capacity fail closed without being classified as a
+replay. The package-private bounded memory implementation exists only to prove
+these semantics under concurrency. A shared durable backend remains mandatory
+before any public handler or multi-process deployment can use the contract.
 
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature

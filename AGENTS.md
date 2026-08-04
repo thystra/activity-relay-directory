@@ -57,8 +57,10 @@ field value in an error.
 RFC 9421 changes must remain synchronized with `docs/PROTOCOL.md` and the
 complete public-key verification vector in `testdata/directory/v1/`. Signature
 errors must remain bounded and redact supplied fields, key IDs, nonces, bodies,
-and resolver details. Do not wire the stateless verifier to a handler until an
-atomic replay store and the remaining request-security gates are present.
+resolver details, and replay-backend errors. Handler code must use the combined
+verification, actor-binding, and atomic-reservation path, never the stateless
+verifier alone. The package-private memory replay store is test infrastructure,
+not a production or multi-instance backend.
 
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as

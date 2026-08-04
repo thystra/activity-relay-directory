@@ -14,6 +14,7 @@
 - Canonical HTTPS relay actor/public-base normalization and origin binding.
 - RFC 9530 SHA-256 Content-Digest generation, verification, and fixtures.
 - Stateless RFC 9421 directory-request verification and RSA fixture.
+- Atomic opaque-key nonce reservation and replay-rejection contracts.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 

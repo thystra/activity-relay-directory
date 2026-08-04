@@ -66,9 +66,15 @@ before key resolution. Resolved keys must be at least 2048-bit RSA keys whose
 exact key ID and canonical owner/actor identity are established by the caller's
 authenticated resolver.
 
-The current contract is intentionally stateless. It returns a verified nonce
-but does not consume it, and no public handler calls it. The replay-store gate
-must atomically reserve the key-ID/nonce pair only after digest, key,
-cryptographic signature, and actor-binding checks succeed. Runtime key
+The combined verification path atomically reserves a SHA-256-derived replay
+key only after digest, key, cryptographic signature, and actor-binding checks
+succeed. Stores receive no raw key ID or nonce. Replay markers remain for ten
+minutes, and duplicate reservations are distinct from backend or capacity
+failures. Storage failures fail closed and their details are not returned.
+
+The bounded memory implementation is package-private test infrastructure. It
+proves atomicity and expiry behavior but cannot protect against process restart
+or multiple service instances. A shared durable implementation and its
+operational failure policy remain mandatory before handler wiring. Runtime key
 retrieval must separately enforce DNS, address, redirect, response-size, media-
 type, and actor-document safety before returning resolved key material.
