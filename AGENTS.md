@@ -155,6 +155,21 @@ cleanup, nondecreasing time, global concurrency permits, idempotent release,
 and redacted decisions. Admission construction does not authorize handler
 wiring, registration availability, or deployment.
 
+Lifecycle HTTP code must use `httpapi.LifecycleHandler` and remain disabled by
+default. `DIRECTORY_REGISTRATION_ENABLED=true` currently gates register,
+heartbeat, and unregister together and requires an HTTPS public base URL. A
+disabled or incomplete graph must not construct the resolver or mutate state
+and must report registration unavailable. Preserve this exact order: method and
+route, trusted direct-peer source identity, source admission, bounded body read,
+operation-specific combined verification and durable replay reservation,
+actor admission exactly once, server acceptance time, then repository mutation.
+Release the concurrency permit on every exit. Public errors and messages must
+use the fixed mapping in `docs/HANDLERS.md` and redact bodies, targets, signature
+fields, resolver details, replay details, storage details, and moderation data.
+Trusted proxy prefixes must be explicit, canonical, bounded, and interpreted as
+proxies rather than client allowlists. Handler availability does not authorize
+deployment, client activation, public listing, pruning, or an operator endpoint.
+
 When changing a reverse-proxy example, validate it with the corresponding
 Nginx, Apache HTTP Server, or Caddy release. Examples must preserve the public
 host and request target, remain optional, and must not install, enable, reload,

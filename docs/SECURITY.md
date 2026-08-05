@@ -30,19 +30,20 @@ performing network access. It rejects ambiguous authorities and paths and
 requires both URLs to share one origin. Validation errors do not echo the
 supplied URL.
 
-Canonical syntax is not an SSRF decision. The dormant actor resolver separately
+Canonical syntax is not an SSRF decision. The actor resolver separately
 resolves all addresses, rejects prohibited local, private, link-local,
 documentation, multicast, and otherwise non-public targets, pins each
 connection to an approved address, and repeats the checks on every bounded
 redirect. It then binds the resolved actor and signing key to the canonical
-identity. Runtime composition remains unavailable; see `docs/RESOLUTION.md`.
+identity. Enabled lifecycle handlers reach it only after source admission; see
+`docs/RESOLUTION.md`.
 
-The dormant successful-key cache wraps only that production resolver. It
+The successful-key cache wraps only that production resolver. It
 revalidates complete actor/key binding, keeps a fixed entry ceiling and
 non-sliding five-minute maximum TTL, returns copied RSA material, never caches
 errors, and never serves expired data. Eviction triggers another safe fetch
 rather than bypassing resolution. Concurrent cold misses remain subject to the
-separate admission ceiling once composed.
+composed admission ceiling.
 
 ## Content digest
 
@@ -52,7 +53,7 @@ Fields parsing and never includes an attacker-controlled field value in an
 error. JSON whitespace and other byte-level changes therefore invalidate an
 otherwise well-formed digest.
 
-A content digest is not sender authentication. Future request handlers must
+A content digest is not sender authentication. Lifecycle handlers
 verify that `content-digest` is covered by the accepted RFC 9421 signature,
 and must not reserve a nonce or mutate directory state until the signature,
 digest, timestamp, identity-binding, and request-bound checks all succeed.
@@ -81,16 +82,16 @@ failures. Storage failures fail closed and their details are not returned.
 
 The bounded memory implementation is package-private test infrastructure. It
 proves atomicity and expiry behavior but cannot protect against process restart
-or multiple service instances. The dormant SQLite implementation is the
+or multiple service instances. The SQLite implementation is the
 durable single-host store: it accepts only opaque 32-byte keys, persists across
 restart, uses exact inclusive expiry, and prunes a bounded number of expired
 rows in the reservation transaction. It is not suitable for a multi-host
-service. Admission wiring, bounded maintenance, operational failure handling, and
-explicit verifier wiring remain mandatory before handler wiring. The dormant
-resolver now enforces DNS, address, redirect, response-size, media-type, actor-
+service. Enabled handlers use it and a separate five-minute schedule performs
+at most 4096 additional expired-row removals per run. The resolver enforces
+DNS, address, redirect, response-size, media-type, actor-
 document, and RSA-key safety before returning resolved key material.
 
-The dormant admission component separately derives a source from the direct
+The admission component separately derives a source from the direct
 socket peer, trusting an overwritten `X-Real-IP` only from an explicitly
 configured proxy prefix. Private and LAN client addresses remain valid;
 trusted prefixes identify proxies, not permitted clients. Operation-specific
@@ -109,11 +110,10 @@ names, values, URLs, queries, or fragments.
 
 These semantic and target gates run before key resolution and replay
 reservation. The complete composition then authenticates the exact body, binds
-the signing actor, and atomically reserves the nonce. It returns an intent and
-does not write registration state. The dormant repository revalidates canonical
-bounded identity and can commit an audited state transition, but safe resolver
-composition, durable replay wiring, moderation, admission wiring, and explicit
-handler review remain required before registration can be enabled.
+the signing actor, and atomically reserves the nonce. Actor admission follows,
+then the repository revalidates canonical bounded identity and commits the
+audited state transition at server acceptance time. The complete graph remains
+disabled by default.
 
 ## Heartbeat request boundary
 
@@ -125,12 +125,11 @@ supplied JSON or target material.
 
 After those gates, the complete composition verifies the exact body and signing
 actor and reserves the nonce atomically. This result is an intent, not a
-liveness write. The dormant repository requires an existing nonsuspended
-registration and atomically records server-side acceptance time with its audit
-event. A future handler must still enforce safe resolution, use the durable
-replay store, and apply admission policy before calling it. It must not trust the
-client's `Date`, `created`, or `expires` values as the heartbeat-recency
-timestamp.
+liveness write. The repository requires an existing nonsuspended registration
+and atomically records server-side acceptance time with its audit event. The
+handler enforces safe resolution, durable replay, and admission before calling
+it. It never trusts the client's `Date`, `created`, or `expires` values as the
+heartbeat-recency timestamp.
 
 ## Unregister request boundary
 
@@ -142,10 +141,10 @@ disclose supplied body or target material.
 
 The complete composition then verifies the exact body and signing actor and
 reserves the nonce atomically. The result is a removal intent, not a deletion.
-The dormant state transition is idempotent, returns only the closed `removed`
-or `absent` outcome, and retains suspension, moderation, and audit records. No
-handler invokes it, and only a separately reviewed retention policy may permit
-history removal.
+The state transition is idempotent, returns only the closed `removed` or
+`absent` outcome, and retains suspension, moderation, and audit records. The
+handler invokes it only after authenticated replay-protected admission, and
+only a separately reviewed retention policy may permit history removal.
 
 ## Persistence boundary
 
@@ -185,7 +184,7 @@ notes are not stored. Those fields, database details, and internal moderation
 outcomes must not reach public errors or listing data. No HTTP endpoint or CLI
 invokes this repository yet. See `docs/MODERATION.md`.
 
-Before production deployment, backup/restore must be exercised. Before request
-handlers are enabled, durable replay composition, cleanup scheduling, admission
-composition, and all remaining request gates must be bounded and tested; database
-errors must continue to fail closed without reaching clients.
+Before production deployment, backup/restore and the disabled/enabled lifecycle
+boundary must be exercised. Database errors must continue to fail closed
+without reaching clients. See `docs/HANDLERS.md` for the reviewed handler order,
+fixed initial limits, proxy trust boundary, and HTTP mappings.

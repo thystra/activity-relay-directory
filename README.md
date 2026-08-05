@@ -12,7 +12,8 @@ This repository currently provides a conservative service scaffold only:
 - `GET /v1/status`
 - strict configuration validation
 - registration disabled by default
-- no registration, heartbeat, unregister, listing, moderation, or pruning API
+- signed register, heartbeat, and unregister APIs, disabled together by default
+- no public listing, operator moderation, or pruning API
 - version 1 protocol vocabulary and JSON compatibility fixtures
 - network-free canonical relay identity and URL validation
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
@@ -27,22 +28,25 @@ This repository currently provides a conservative service scaffold only:
   audit records, without an operator surface
 - durable opaque replay reservations with bounded expiry cleanup
 - bounded SSRF-resistant ActivityPub actor and signing-key resolution with a
-  success-only key cache, without handler wiring
+  success-only key cache
 - bounded two-stage source, authenticated-actor, and concurrency admission
-  without handler wiring
+- fail-closed handler composition with durable replay and audited SQLite state
 
 The directory protocol is being introduced in reviewed contract-first tranches.
-The current vocabulary and fixtures do not activate request handlers. No live
-directory endpoint is built into Activity-Relay by default. The signature
-and replay contracts are not sufficient to enable registration until resolver
-composition, operator moderation wiring, admission wiring, handler composition,
-and the remaining request gates are implemented. The process opens and migrates a single-node
-SQLite database before listening; dormant repositories can apply audited
-lifecycle and moderation transitions and durable opaque replay reservations,
-but no public or operator request handler calls them. The actor resolver is
-also dormant and no runtime component initiates actor retrieval. See
-`docs/PERSISTENCE.md`, `docs/MODERATION.md`, and `docs/RESOLUTION.md`. The
-dormant in-memory admission policy is documented in `docs/ADMISSION.md`.
+The lifecycle routes remain fail-closed unless
+`DIRECTORY_REGISTRATION_ENABLED=true` and the complete dependency graph starts
+successfully. With the default `false` value, no request can trigger actor
+retrieval, replay reservation, or lifecycle mutation. Activity-Relay itself
+also has no directory URL active by default.
+
+When explicitly enabled, the server composes bounded body parsing, direct-peer
+source derivation, two-stage admission, safe actor/key resolution and caching,
+RFC 9530 and RFC 9421 verification, durable nonce reservation, suspension
+checks, and audited SQLite transitions. See `docs/HANDLERS.md`,
+`docs/PERSISTENCE.md`, `docs/MODERATION.md`, `docs/RESOLUTION.md`, and
+`docs/ADMISSION.md`. Public listings, operator moderation transport, health
+classification, pruning, and Activity-Relay client integration remain later
+work.
 
 ## Privacy boundary
 

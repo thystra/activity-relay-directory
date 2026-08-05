@@ -22,6 +22,7 @@ service itself with:
 DIRECTORY_LISTEN_ADDRESS=127.0.0.1:8080
 DIRECTORY_PUBLIC_BASE_URL=https://directory.example.org
 DIRECTORY_REGISTRATION_ENABLED=false
+DIRECTORY_TRUSTED_PROXY_PREFIXES=127.0.0.1/32
 ```
 
 Keep the Go listener on loopback when the proxy is the public entry point. The
@@ -30,7 +31,8 @@ the service default remains the smaller 64 KiB limit.
 
 ## Signature-sensitive forwarding
 
-Future register, heartbeat, and unregister requests use RFC 9421 signatures.
+Register, heartbeat, and unregister requests use RFC 9421 signatures when the
+lifecycle graph is enabled.
 The proxy must preserve the public `Host`, path, and query exactly and must not
 redirect a signed POST between different paths or authorities. TLS terminates
 at the proxy; the configured public base URL supplies the external HTTPS
@@ -42,11 +44,13 @@ override Caddy's upstream `Host` without repeating signature compatibility
 tests.
 
 The examples also overwrite `X-Real-IP` from their connection metadata. The
-dormant source resolver accepts that field only when the direct socket peer is
+source resolver accepts that field only when the direct socket peer is
 an explicitly trusted proxy; otherwise it ignores all forwarding fields. It
 does not use appendable `Forwarded` or `X-Forwarded-For` chains as a security
 identity. Prefer trusting only the exact local proxy addresses
-`127.0.0.1/32` and, when used, `::1/128`. Do not trust a whole LAN merely to
+`127.0.0.1/32` and, when used, `::1/128`, but only when those are the addresses
+the service actually observes. Host-to-container port publishing may present a
+container-network gateway instead of loopback. Do not trust a whole LAN merely to
 permit LAN clients: private client addresses are already valid sources. Nested
 proxies or CDNs require a separately reviewed trust chain. See
 `docs/ADMISSION.md`.
@@ -114,7 +118,7 @@ certificates.
 
 ## Verification
 
-The initial scaffold exposes only these read-only endpoints:
+With lifecycle service disabled, verify these read-only endpoints:
 
 ```text
 /healthz
@@ -132,4 +136,6 @@ curl --fail --silent --show-error https://directory.example.org/v1/status |
 ```
 
 Registration paths remain unavailable until their security and storage gates
-are implemented. Proxy installation alone must not enable registration.
+are constructed and `DIRECTORY_REGISTRATION_ENABLED=true`. Proxy installation
+alone must not enable registration. Before changing that flag, verify the
+trusted direct-peer prefix and follow `docs/HANDLERS.md`.

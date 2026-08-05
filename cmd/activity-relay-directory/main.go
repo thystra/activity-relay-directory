@@ -7,16 +7,51 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
+	"github.com/thystra/activity-relay-directory/internal/admission"
 	"github.com/thystra/activity-relay-directory/internal/buildinfo"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
+	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	storage "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
+
+const (
+	replayMaintenanceInterval = 5 * time.Minute
+	replayMaintenanceBatch    = 4096
+)
+
+func lifecycleAdmissionConfig() admission.Config {
+	return admission.Config{
+		Source: admission.Rate{
+			Burst:          60,
+			RefillInterval: time.Second,
+		},
+		Actor: admission.Rate{
+			Burst:          10,
+			RefillInterval: time.Minute,
+		},
+		MaxSources:         10_000,
+		MaxActors:          10_000,
+		MaxConcurrent:      32,
+		IdleTTL:            24 * time.Hour,
+		CleanupLimit:       128,
+		OverloadRetryAfter: 5 * time.Second,
+	}
+}
+
+func lifecycleActorCacheConfig() actorresolver.CacheConfig {
+	return actorresolver.CacheConfig{
+		MaxEntries: 4096,
+		TTL:        5 * time.Minute,
+	}
+}
 
 func main() {
 	os.Exit(run(os.Args))
@@ -55,14 +90,37 @@ func run(arguments []string) int {
 		}
 	}()
 
+	lifecycle, err := initializeLifecycle(cfg, database)
+	if err != nil {
+		logger.Error("lifecycle initialization failed", "error", err)
+		return 1
+	}
+	if lifecycle != nil {
+		go runReplayMaintenance(
+			signals,
+			lifecycle.replayStore,
+			replayMaintenanceInterval,
+			replayMaintenanceBatch,
+			func(err error) {
+				logger.Error("replay maintenance failed", "error", err)
+			},
+		)
+	}
+
+	var lifecycleHandler *httpapi.LifecycleHandler
+	if lifecycle != nil {
+		lifecycleHandler = lifecycle.handler
+	}
+
 	server := &http.Server{
 		Addr: cfg.ListenAddress,
-		Handler: httpapi.NewHandler(
+		Handler: httpapi.NewHandlerWithLifecycle(
 			cfg,
 			buildinfo.Version,
 			func(ctx context.Context) error {
 				return storage.CheckReady(ctx, database)
 			},
+			lifecycleHandler,
 		),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -87,7 +145,7 @@ func run(arguments []string) int {
 		"address", cfg.ListenAddress,
 		"public_base_url", cfg.PublicBaseURL,
 		"registration_enabled", cfg.RegistrationEnabled,
-		"registration_available", false,
+		"registration_available", lifecycleHandler != nil,
 		"database_schema_version", storage.CurrentSchemaVersion,
 		"version", buildinfo.Version,
 	)
@@ -100,6 +158,107 @@ func run(arguments []string) int {
 
 	logger.Info("directory service stopped")
 	return 0
+}
+
+type lifecycleRuntime struct {
+	handler     *httpapi.LifecycleHandler
+	replayStore *storage.RFC9421ReplayStore
+}
+
+func initializeLifecycle(
+	cfg config.Config,
+	database *sql.DB,
+) (*lifecycleRuntime, error) {
+	if !cfg.RegistrationEnabled {
+		return nil, nil
+	}
+	if database == nil {
+		return nil, httpapi.ErrLifecycleConfiguration
+	}
+	publicBase, err := url.Parse(cfg.PublicBaseURL)
+	if err != nil || publicBase.Scheme != "https" || publicBase.Host == "" {
+		return nil, httpapi.ErrLifecycleConfiguration
+	}
+	sourceResolver, err := admission.NewSourceResolver(cfg.TrustedProxyPrefixes)
+	if err != nil {
+		return nil, err
+	}
+	limiter, err := admission.New(lifecycleAdmissionConfig())
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := actorresolver.New("Activity-Relay-Directory")
+	if err != nil {
+		return nil, err
+	}
+	cachedResolver, err := actorresolver.NewCachedResolver(
+		resolver,
+		lifecycleActorCacheConfig(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	verifier, err := v1.NewRFC9421Verifier(v1.RFC9421VerifierOptions{
+		Authority:   publicBase.Host,
+		KeyResolver: cachedResolver,
+		Now:         time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	replayStore, err := storage.NewRFC9421ReplayStore(database)
+	if err != nil {
+		return nil, err
+	}
+	repository, err := storage.NewRelayRepository(database)
+	if err != nil {
+		return nil, err
+	}
+	handler, err := httpapi.NewLifecycleHandler(httpapi.LifecycleDependencies{
+		Verifier:         verifier,
+		ReplayStore:      replayStore,
+		Repository:       repository,
+		SourceResolver:   sourceResolver,
+		Limiter:          limiter,
+		MaximumBodyBytes: cfg.MaxRequestBodyBytes,
+		Now:              time.Now,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &lifecycleRuntime{handler: handler, replayStore: replayStore}, nil
+}
+
+type replayCleaner interface {
+	CleanupExpiredRFC9421Replay(context.Context, int) (int64, error)
+}
+
+func runReplayMaintenance(
+	ctx context.Context,
+	cleaner replayCleaner,
+	interval time.Duration,
+	maximum int,
+	onError func(error),
+) {
+	if ctx == nil || cleaner == nil || interval <= 0 || maximum <= 0 {
+		if onError != nil {
+			onError(errors.New("replay maintenance configuration is invalid"))
+		}
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := cleaner.CleanupExpiredRFC9421Replay(ctx, maximum); err != nil &&
+				onError != nil && ctx.Err() == nil {
+				onError(err)
+			}
+		}
+	}
 }
 
 func initializeDatabase(ctx context.Context, path string) (*sql.DB, error) {

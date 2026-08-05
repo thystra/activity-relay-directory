@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ func TestLoadDefaultsRegistrationDisabled(t *testing.T) {
 	t.Setenv("DIRECTORY_LISTEN_ADDRESS", "")
 	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "")
 	t.Setenv("DIRECTORY_MAX_REQUEST_BODY_BYTES", "")
+	t.Setenv("DIRECTORY_TRUSTED_PROXY_PREFIXES", "")
 
 	cfg, err := Load()
 	if err != nil {
@@ -28,6 +30,9 @@ func TestLoadDefaultsRegistrationDisabled(t *testing.T) {
 
 	if cfg.MaxRequestBodyBytes != defaultMaxRequestBodyBytes {
 		t.Fatalf("MaxRequestBodyBytes = %d", cfg.MaxRequestBodyBytes)
+	}
+	if len(cfg.TrustedProxyPrefixes) != 0 {
+		t.Fatalf("TrustedProxyPrefixes = %#v", cfg.TrustedProxyPrefixes)
 	}
 }
 
@@ -57,6 +62,83 @@ func TestLoadRejectsRegistrationGarbage(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() unexpectedly succeeded")
+	}
+}
+
+func TestLoadExplicitlyEnablesHTTPSLifecycleGraph(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.RegistrationEnabled {
+		t.Fatal("RegistrationEnabled = false")
+	}
+}
+
+func TestLoadParsesCanonicalTrustedProxyPrefixes(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv(
+		"DIRECTORY_TRUSTED_PROXY_PREFIXES",
+		"127.0.0.1/32, ::1/128, 192.0.2.10/32",
+	)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	want := []netip.Prefix{
+		netip.MustParsePrefix("127.0.0.1/32"),
+		netip.MustParsePrefix("::1/128"),
+		netip.MustParsePrefix("192.0.2.10/32"),
+	}
+	if len(cfg.TrustedProxyPrefixes) != len(want) {
+		t.Fatalf("TrustedProxyPrefixes = %#v", cfg.TrustedProxyPrefixes)
+	}
+	for index := range want {
+		if cfg.TrustedProxyPrefixes[index] != want[index] {
+			t.Fatalf("TrustedProxyPrefixes = %#v, want %#v", cfg.TrustedProxyPrefixes, want)
+		}
+	}
+}
+
+func TestLoadRejectsInvalidTrustedProxyPrefixes(t *testing.T) {
+	for _, value := range []string{
+		"127.0.0.1",
+		"127.0.0.1/24",
+		"::ffff:127.0.0.1/128",
+		"0.0.0.0/0",
+		"ff00::/8",
+		"127.0.0.1/32,127.0.0.1/32",
+		"127.0.0.1/32,",
+	} {
+		t.Run(value, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+			t.Setenv("DIRECTORY_TRUSTED_PROXY_PREFIXES", value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() accepted %q", value)
+			}
+		})
+	}
+}
+
+func TestValidateRequiresHTTPSWhenRegistrationEnabled(t *testing.T) {
+	cfg := Config{
+		ListenAddress:        "127.0.0.1:8080",
+		PublicBaseURL:        "http://127.0.0.1:8080",
+		DatabasePath:         filepath.Join(t.TempDir(), "directory.sqlite"),
+		RegistrationEnabled:  true,
+		MaxRequestBodyBytes:  defaultMaxRequestBodyBytes,
+		TrustedProxyPrefixes: nil,
+	}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "HTTPS") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

@@ -144,8 +144,8 @@ func (store *memoryRFC9421ReplayStore) ReserveRFC9421Replay(
 }
 
 // VerifyPOSTAndReserve performs every stateless verification and actor-binding
-// gate before atomically reserving the nonce. Public handlers must eventually
-// use this path with a durable store appropriate to the service topology,
+// gate before atomically reserving the nonce. Public handlers must use this
+// path with a durable store appropriate to the service topology,
 // never VerifyPOST by itself.
 func (verifier *RFC9421Verifier) VerifyPOSTAndReserve(
 	request *http.Request,

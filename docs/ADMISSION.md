@@ -2,11 +2,9 @@
 
 ## Status
 
-`internal/admission` is a dormant, in-memory policy component. It is not
-constructed by the running service, no lifecycle handler exists, and
-registration remains disabled. This tranche defines the bounds needed before
-actor resolution, signature verification, replay reservation, or state
-mutation can be exposed.
+`internal/admission` is the in-memory policy component used by explicitly
+enabled lifecycle handlers. Registration remains disabled by default, in which
+case the running service does not construct this component.
 
 The policy is intentionally process-local. It limits work within one directory
 process; it is not a distributed quota and does not replace a reverse proxy,
@@ -33,8 +31,9 @@ a reviewed trust policy; see RFC 7239, section 8.1.
 
 Prefer exact `/32` and `/128` proxy host prefixes. Trusting a LAN range means
 every host in that range may assert a client identity. The supplied Nginx,
-Apache, and Caddy examples overwrite `X-Real-IP`, but runtime construction and
-trusted-prefix configuration remain a later handler-composition step.
+Apache, and Caddy examples overwrite `X-Real-IP`. Runtime construction reads
+the explicit `DIRECTORY_TRUSTED_PROXY_PREFIXES` list; an empty list trusts no
+proxy. See `docs/HANDLERS.md` for container-topology cautions.
 
 ## Two-stage admission
 
@@ -56,8 +55,7 @@ Each operation has an independent bucket for a given source or actor. Register,
 heartbeat, and unregister traffic therefore cannot silently consume one
 another's quota. Every accepted stage consumes one token. Buckets hold a fixed
 burst and restore one token per configured interval. A rate rejection returns
-a deterministic minimum retry duration suitable for a future `Retry-After`
-header.
+a deterministic minimum retry duration suitable for `Retry-After`.
 
 ## Bounded overload behavior
 
@@ -79,17 +77,16 @@ or growing memory. A backwards wall-clock adjustment neither refills nor
 expires state.
 
 Decisions contain only a fixed class and duration, never a source address or
-actor URL. Future HTTP composition is expected to map source, actor,
-concurrency, and capacity rejection to the version 1 `rate_limited` error and
-HTTP 429. RFC 6585 permits a 429 response to include `Retry-After`; the exact
-public mapping and response text remain part of the handler tranche.
+actor URL. HTTP composition maps source, actor, concurrency, and capacity
+rejection to the version 1 `rate_limited` error and HTTP 429. RFC 6585 permits
+a 429 response to include `Retry-After`; the handler emits bounded integer
+seconds when the decision provides a duration.
 
-## Remaining work
+## Runtime composition
 
-Before a lifecycle endpoint is enabled, handler composition must select and
-validate operational limits, construct the trusted-proxy source resolver,
-apply source admission before expensive work, apply actor admission only after
-authentication, use the durable replay store, enforce moderation and state
-rules, map bounded public errors, and test all cleanup paths. Multi-process or
-multi-host deployment would additionally require a reviewed shared rate-policy
-design if quotas must apply across processes.
+The initial fixed runtime limits are documented in `docs/HANDLERS.md`. Source
+admission runs before body parsing, resolution, or verification. Actor
+admission runs exactly once after authenticated actor binding and durable replay
+reservation while the source permit remains active. Every exit releases the
+permit. Multi-process or multi-host deployment would require a reviewed shared
+rate-policy design if quotas must apply across processes.

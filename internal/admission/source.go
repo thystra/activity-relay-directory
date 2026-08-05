@@ -1,5 +1,5 @@
-// Package admission provides bounded, in-memory request admission primitives.
-// It is not connected to HTTP request handlers.
+// Package admission provides bounded, in-memory request admission primitives
+// for explicitly enabled lifecycle handlers.
 package admission
 
 import (

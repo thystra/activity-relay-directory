@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
+	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 )
 
 const (
@@ -24,7 +25,20 @@ func NewHandler(
 	version string,
 	checkReadiness ReadinessCheck,
 ) http.Handler {
+	return NewHandlerWithLifecycle(cfg, version, checkReadiness, nil)
+}
+
+// NewHandlerWithLifecycle returns the public HTTP surface and conditionally
+// enables the three signed lifecycle routes only when both the runtime flag and
+// the complete dependency graph are present.
+func NewHandlerWithLifecycle(
+	cfg config.Config,
+	version string,
+	checkReadiness ReadinessCheck,
+	lifecycle *LifecycleHandler,
+) http.Handler {
 	mux := http.NewServeMux()
+	registrationAvailable := cfg.RegistrationEnabled && lifecycle != nil
 
 	mux.HandleFunc("/healthz", func(response http.ResponseWriter, request *http.Request) {
 		if !allowReadMethod(response, request) {
@@ -71,9 +85,22 @@ func NewHandler(
 			"version":                version,
 			"public_base_url":        cfg.PublicBaseURL,
 			"registration_enabled":   cfg.RegistrationEnabled,
-			"registration_available": false,
+			"registration_available": registrationAvailable,
 		})
 	})
+
+	active := lifecycle
+	if !registrationAvailable {
+		active = nil
+	}
+	registerLifecycleRoute := func(path string, operation v1.Operation) {
+		mux.HandleFunc(path, func(response http.ResponseWriter, request *http.Request) {
+			active.serve(response, request, operation)
+		})
+	}
+	registerLifecycleRoute(v1.RegisterEndpointPath, v1.OperationRegister)
+	registerLifecycleRoute(v1.HeartbeatEndpointPath, v1.OperationHeartbeat)
+	registerLifecycleRoute(v1.UnregisterEndpointPath, v1.OperationUnregister)
 
 	return securityHeaders(mux)
 }

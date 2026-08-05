@@ -15,7 +15,7 @@ const (
 )
 
 // RFC9421ReplayStore durably reserves opaque key-ID/nonce digests in SQLite.
-// It stores no raw signature identifier and is not connected to HTTP handlers.
+// It stores no raw signature identifier.
 type RFC9421ReplayStore struct {
 	database     *sql.DB
 	now          func() time.Time

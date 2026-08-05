@@ -1,5 +1,5 @@
 // Package actorresolver provides bounded, SSRF-resistant ActivityPub actor and
-// RSA signing-key resolution. It is not connected to HTTP request handlers.
+// RSA signing-key resolution for explicitly enabled lifecycle handlers.
 package actorresolver
 
 import (

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -15,15 +16,17 @@ const (
 	defaultListenAddress       = "127.0.0.1:8080"
 	defaultMaxRequestBodyBytes = int64(64 * 1024)
 	maxRequestBodyBytes        = int64(1024 * 1024)
+	maximumTrustedProxies      = 32
 )
 
 // Config is the directory service's process configuration.
 type Config struct {
-	ListenAddress       string
-	PublicBaseURL       string
-	DatabasePath        string
-	RegistrationEnabled bool
-	MaxRequestBodyBytes int64
+	ListenAddress        string
+	PublicBaseURL        string
+	DatabasePath         string
+	RegistrationEnabled  bool
+	MaxRequestBodyBytes  int64
+	TrustedProxyPrefixes []netip.Prefix
 }
 
 // Load reads configuration from the process environment.
@@ -57,6 +60,14 @@ func Load() (Config, error) {
 		}
 		cfg.MaxRequestBodyBytes = value
 	}
+
+	trustedProxyPrefixes, err := parseTrustedProxyPrefixes(
+		os.Getenv("DIRECTORY_TRUSTED_PROXY_PREFIXES"),
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.TrustedProxyPrefixes = trustedProxyPrefixes
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -111,6 +122,11 @@ func (cfg Config) Validate() error {
 	default:
 		return errors.New("DIRECTORY_PUBLIC_BASE_URL must use HTTP or HTTPS")
 	}
+	if cfg.RegistrationEnabled && parsed.Scheme != "https" {
+		return errors.New(
+			"DIRECTORY_REGISTRATION_ENABLED requires an HTTPS public base URL",
+		)
+	}
 
 	if parsed.Path != "" && parsed.Path != "/" {
 		return errors.New(
@@ -126,7 +142,50 @@ func (cfg Config) Validate() error {
 		)
 	}
 
+	if len(cfg.TrustedProxyPrefixes) > maximumTrustedProxies {
+		return errors.New("too many DIRECTORY_TRUSTED_PROXY_PREFIXES")
+	}
+	seenPrefixes := make(map[netip.Prefix]struct{}, len(cfg.TrustedProxyPrefixes))
+	for _, prefix := range cfg.TrustedProxyPrefixes {
+		if !validTrustedProxyPrefix(prefix) {
+			return errors.New("DIRECTORY_TRUSTED_PROXY_PREFIXES is invalid")
+		}
+		if _, duplicate := seenPrefixes[prefix]; duplicate {
+			return errors.New("DIRECTORY_TRUSTED_PROXY_PREFIXES contains a duplicate")
+		}
+		seenPrefixes[prefix] = struct{}{}
+	}
+
 	return nil
+}
+
+func parseTrustedProxyPrefixes(value string) ([]netip.Prefix, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	if len(parts) > maximumTrustedProxies {
+		return nil, errors.New("too many DIRECTORY_TRUSTED_PROXY_PREFIXES")
+	}
+	prefixes := make([]netip.Prefix, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		prefix, err := netip.ParsePrefix(part)
+		if err != nil || !validTrustedProxyPrefix(prefix) {
+			return nil, errors.New("DIRECTORY_TRUSTED_PROXY_PREFIXES is invalid")
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, nil
+}
+
+func validTrustedProxyPrefix(prefix netip.Prefix) bool {
+	if !prefix.IsValid() || prefix.Addr().Is4In6() || prefix != prefix.Masked() {
+		return false
+	}
+	address := prefix.Addr()
+	return !address.IsUnspecified() && !address.IsMulticast()
 }
 
 func envOrDefault(name string, fallback string) string {

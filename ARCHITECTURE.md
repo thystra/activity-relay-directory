@@ -9,7 +9,7 @@ The initial process contains:
 - an HTTP server with health, readiness, and public status endpoints;
 - immutable build-version metadata;
 - single-node SQLite startup migration and readiness checks;
-- no registration protocol implementation.
+- fail-closed signed lifecycle handlers that remain disabled by default.
 
 The version 1 contract layer contains closed operation, outcome, error,
 health, and administrative-state vocabulary plus strictly decoded JSON
@@ -27,10 +27,9 @@ verification and atomic replay reservation. Heartbeat uses the same shared JSON
 and target primitives while accepting only canonical actor identity and its own
 operation path; it produces no liveness update. Unregister applies the same
 identity-only boundary to a distinct removal target and produces no deletion.
-These contracts have no handler or persistence dependency; network-target
-enforcement now exists behind a dormant actor resolver, while runtime
-composition with that resolver and the durable replay adapter remains a later
-gate.
+The contract packages remain independently testable. The runtime composes them
+with the safe actor resolver, durable replay adapter, admission policy, and
+state repository only when lifecycle service is explicitly enabled.
 
 The first persistence foundation is an embedded SQLite migration set for one
 active directory process on one host. It defines strict relay lifecycle and
@@ -41,9 +40,9 @@ missing history, and databases newer than the binary fail closed. Process
 startup requires an absolute database path, applies migrations before opening
 the HTTP listener, and keeps readiness dependent on the current reachable
 schema. The container supplies an owner-only data directory through a named
-local volume while retaining a read-only root filesystem. No request handler
-mutates storage. A backend-neutral repository contract and SQLite implementation
-now provide transactional register, heartbeat, and unregister outcomes with an
+local volume while retaining a read-only root filesystem. A backend-neutral
+repository contract and SQLite implementation provide transactional register,
+heartbeat, and unregister outcomes with an
 append-only event in the same commit. They reject noncanonical input, regressing
 server time, absent heartbeat targets, and suspended register or heartbeat
 intents. A separate dormant moderation contract applies idempotent suspend and
@@ -54,16 +53,15 @@ HTTP endpoint. SQLite files must remain local; multi-host service topology
 requires a later database backend rather than shared SQLite storage. See
 `docs/PERSISTENCE.md` and `docs/MODERATION.md`.
 
-The SQLite replay store implements the existing RFC 9421 opaque-key interface.
+The SQLite replay store implements the RFC 9421 opaque-key interface.
 It uses the schema's 32-byte primary key for atomic duplicate suppression across
 connections and process restart. Each reservation removes an expired copy of
 its exact key, prunes only a fixed batch of other expired rows, and enforces the
-protocol's ten-minute maximum retention. A separate bounded cleanup method is
-available for later maintenance scheduling. The store is not constructed by
-runtime code or passed to a verifier yet.
+protocol's ten-minute maximum retention. Enabled runtime wiring passes it to
+the verifier and also performs a bounded 4096-row cleanup every five minutes.
 
-The ActivityPub actor resolver implements the verifier's existing key-resolver
-interface without joining the runtime graph. It derives one fragment-free actor
+The ActivityPub actor resolver implements the verifier's key-resolver
+interface. It derives one fragment-free actor
 URL from a canonical fragment-bearing key ID, performs proxy-free bounded HTTPS
 retrieval through DNS and redirect SSRF checks, and pins each connection to an
 approved address. The actor document must identify the requested `Application`
@@ -71,28 +69,28 @@ or `Service`, publish the exact requested key, and bind its canonical owner to
 the actor. Both SubjectPublicKeyInfo and legacy PKCS#1 RSA public keys are
 accepted within reviewed size and strength limits. See `docs/RESOLUTION.md`.
 
-A dormant wrapper adds a fixed-capacity, non-sliding, success-only cache around
-that exact resolver. It revalidates the fully bound result, never caches
+A fixed-capacity, non-sliding, success-only cache wraps that exact resolver in
+the enabled lifecycle graph. It revalidates the fully bound result, never caches
 failures or serves expired data, and returns isolated RSA-key copies. Cache
-eviction can only cause another safe retrieval. It remains outside the runtime
-graph and relies on the separate admission ceiling to bound concurrent cold
-misses.
+eviction can only cause another safe retrieval. Source admission and the global
+concurrency ceiling run before a cache miss can initiate retrieval.
+
+The lifecycle HTTP composition is one fail-closed graph: exact routes and body
+bounds, source admission, strict decoding, signature/digest/actor verification,
+durable replay reservation, actor admission, and transactional persistence.
+The registration flag currently gates register, heartbeat, and unregister
+together. A disabled or incomplete graph reports registration unavailable and
+does not construct the resolver. See `docs/HANDLERS.md`.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request
-target required by future HTTP message-signature verification.
+target required by HTTP message-signature verification.
 
-Runtime components will be added behind those explicit contracts:
+Remaining components will be added behind explicit contracts:
 
-1. signed relay registration and replacement;
-2. signed daily heartbeat with bounded jitter;
-3. signed unregister;
-4. durable replay, admission, and verifier composition;
-5. authenticated operator access to moderation state;
-6. health-state calculation and pruning;
-7. public JSON and human-readable directory views;
-8. bounded maintenance and retention policy.
-
-Resolver/replay/verifier wiring, transport handlers, and public registration
-remain out of scope for the initial scaffold.
+1. authenticated operator access to moderation state;
+2. health-state calculation and pruning;
+3. public JSON and human-readable directory views;
+4. bounded retention policy;
+5. Activity-Relay client integration and soak testing.

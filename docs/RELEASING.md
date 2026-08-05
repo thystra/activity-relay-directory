@@ -31,6 +31,14 @@ across restart and supported service topology, expiry-boundary replacement,
 bounded cleanup scheduling, failure rollback, and the reviewed admission policy
 under sustained unique traffic.
 
+Signed lifecycle handlers are present but disabled by default. Before their
+first deployment, validate both disabled and explicitly enabled startup,
+`registration_available`, exact proxy peer derivation, all HTTP mappings in
+`docs/HANDLERS.md`, real Activity-Relay signatures for all three operations,
+nonce rejection across restart, suspension behavior, fixed admission bounds,
+maintenance cancellation, database backup/restore, and logs for data leakage.
+Enabling the server does not activate an Activity-Relay client.
+
 Before actor resolution is wired or released, compare the prohibited-address
 policy with the current IANA IPv4 and IPv6 special-purpose registries. Validate
 mixed public/private DNS answers, direct literals, connection pinning, custom

@@ -99,8 +99,7 @@ type RFC9421VerifierOptions struct {
 
 // RFC9421Verifier verifies version 1 directory-operation POST signatures.
 // VerifyPOST is stateless; handler code must use VerifyPOSTAndReserve with a
-// durable replay store appropriate to the service topology once the remaining
-// request gates are available.
+// durable replay store appropriate to the service topology.
 type RFC9421Verifier struct {
 	authority   string
 	keyResolver RFC9421KeyResolver

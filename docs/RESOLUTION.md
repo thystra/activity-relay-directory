@@ -2,10 +2,10 @@
 
 ## Status
 
-`internal/actorresolver.Resolver` is a dormant implementation of the version 1
-RFC 9421 key-resolver interface. Constructing it performs no DNS or HTTP work.
-The running directory does not construct it, no verifier receives it, and no
-public handler can trigger actor retrieval in this tranche.
+`internal/actorresolver.Resolver` implements the version 1 RFC 9421 key-resolver
+interface. Constructing it performs no DNS or HTTP work. The running directory
+constructs it only when the complete lifecycle graph is explicitly enabled;
+source admission occurs before any handler can trigger actor retrieval.
 
 The resolver follows the ActivityPub and ActivityStreams actor representation
 defined by:
@@ -85,7 +85,7 @@ and parser failures are not exposed to request clients.
 
 ## Successful-key cache
 
-`internal/actorresolver.CachedResolver` is a dormant wrapper around the exact
+`internal/actorresolver.CachedResolver` wraps the exact
 production `Resolver`; it cannot wrap an arbitrary network resolver. It
 revalidates canonical key-ID and network-target syntax before every lookup and
 caches only a successful result whose key ID, owner, actor ID, RSA size, and
@@ -102,16 +102,14 @@ work of its own.
 Every returned RSA key has an independent modulus copy so a caller cannot
 mutate cached cryptographic state. Cache time cannot move backwards. Concurrent
 hits are synchronized; concurrent cold misses may each perform a retrieval,
-and the separate global admission limit must bound that work when runtime
-composition occurs. Same-key-ID rotation can cause temporary signature
-rejection only until the fixed TTL expires; this tranche does not add an
-attacker-triggerable stale fallback or refresh retry.
+and the composed global admission limit bounds that work. Same-key-ID rotation
+can cause temporary signature rejection only until the fixed TTL expires. This
+tranche does not add an attacker-triggerable stale fallback or refresh retry.
 
-## Remaining gates
+## Runtime boundary
 
-The dormant policy in `docs/ADMISSION.md` now provides bounded source and
-authenticated-actor buckets plus global concurrency admission. Before handler
-composition, the project still requires their runtime configuration and exact
-ordering with the cached resolver, moderation, durable replay scheduling,
-public error/status mapping, and complete handler tests. None of these dormant
-components authorizes registration or deployment.
+The policy in `docs/ADMISSION.md` provides bounded source and authenticated-
+actor buckets plus global concurrency admission. Enabled handlers compose its
+exact ordering with the cached resolver, durable replay scheduling, moderation
+state, public error mapping, and persistence. This code remains disabled by
+default and does not itself authorize deployment; see `docs/HANDLERS.md`.

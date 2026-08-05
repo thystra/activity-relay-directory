@@ -3,10 +3,9 @@
 ## Status and scope
 
 Version 1 vocabulary and JSON message shapes are defined here and in
-`testdata/directory/v1/`. They are contract fixtures, not active HTTP APIs.
-Registration remains unavailable until the implemented URL, signature, replay,
-persistence, resolver, and admission components are composed with reviewed
-transport, moderation, and handler gates.
+`testdata/directory/v1/`. The signed lifecycle HTTP routes compose these
+contracts but remain disabled together by default. See `docs/HANDLERS.md` for
+activation, ordering, status mapping, and operational bounds.
 
 ## Versioning and encoding
 
@@ -15,7 +14,7 @@ uses UTF-8 JSON with the strict media type `application/json`. Implementations
 must reject unknown fields, trailing JSON values, unsupported versions, and
 bodies above the configured size limit.
 
-The signed operations and their planned endpoints are:
+The signed operations and their endpoints are:
 
 | Operation | Method and path | Purpose |
 |---|---|---|
@@ -57,9 +56,8 @@ membership lists, user identities, or a site-level relationship graph.
 ## Authentication envelope
 
 All three operations require the version 1 RFC 9421 HTTP Message Signature
-profile and RFC 9530 `Content-Digest` over the exact JSON bytes. These are
-implemented as contract primitives but are not connected to HTTP handlers yet.
-Registration therefore remains unavailable.
+profile and RFC 9530 `Content-Digest` over the exact JSON bytes. Enabled
+handlers invoke the complete verifier and durable replay path.
 
 Version 1 accepts exactly one paired `Signature-Input` and `Signature`
 dictionary member. The label is chosen by the client, while the signature must
@@ -100,8 +98,8 @@ fails authentication. The signature base covers the complete presented
 removed, or changed without invalidating the HTTP message signature.
 
 The contract layer can generate and verify this digest without HTTP or network
-access. Digest verification alone does not authenticate a sender; the future
-HTTP transport must cover `content-digest` with a valid RFC 9421 signature.
+access. Digest verification alone does not authenticate a sender; the HTTP
+transport requires `content-digest` to be covered by a valid RFC 9421 signature.
 
 The signature verifier accepts key material only through a caller-supplied
 resolver; it performs no DNS lookup or actor retrieval itself. The resolver
@@ -110,19 +108,20 @@ canonical identical public-key-owner and actor identities. After successful
 cryptographic verification, `BindRelayActor` requires that identity to equal
 the canonical `relay_actor` in the request body.
 
-The dormant production resolver accepts a canonical fragment-bearing key ID
+The production resolver accepts a canonical fragment-bearing key ID
 whose fragment-free form is the actor URL. It retrieves only that HTTPS actor
 document through the bounded network policy in `docs/RESOLUTION.md`. The actor
 must be an `Application` or `Service`, its `id` must equal the requested actor
 URL, and exactly one embedded public key must have the requested key ID and the
-actor as owner. This is authenticated key discovery for signature verification;
-it is not registration authorization and is not connected to runtime code.
+actor as owner. This is authenticated key discovery for signature verification,
+not registration authorization. Enabled lifecycle handlers reach it only after
+source admission and through the bounded successful-key cache.
 
 The stateless verifier returns the validated nonce for composition and testing.
 `VerifyPOSTAndReserve` is the handler-safe contract: it completes signature,
 digest, key, and canonical relay-actor binding before atomically reserving an
-opaque replay key. Public handlers must eventually use that combined path,
-never the stateless verifier by itself.
+opaque replay key. Public handlers use that combined path, never the stateless
+verifier by itself.
 
 The replay key is SHA-256 over the exact key ID, a zero-byte separator, and the
 nonce. Stores therefore never need the raw key ID or nonce. A successful
@@ -132,13 +131,12 @@ errors and exhausted capacity fail closed without being classified as a
 replay.
 
 The package-private bounded memory implementation remains contract test
-infrastructure. A dormant SQLite implementation now persists the same opaque
+infrastructure. The SQLite implementation persists the same opaque
 key across process restart and atomically suppresses conflicts across
 independent local connections. It rejects expired or overlong retention,
 replaces a key exactly at expiry, and performs fixed-size expired-row cleanup
-in the reservation transaction. It is neither constructed by runtime code nor
-passed to a verifier. Safe request handlers and multi-host storage therefore
-remain unavailable.
+in the reservation transaction. The enabled graph passes it to the verifier
+and schedules separate bounded cleanup. SQLite remains a single-host backend.
 
 ## Register request contract
 
@@ -153,20 +151,21 @@ The authenticated composition accepts only `POST /v1/relays/register` with no
 query or fragment and then calls the signature, actor-binding, and atomic replay
 contract over the exact body bytes. Request parsing, version, operation, target,
 and identity checks all finish before key resolution or nonce reservation.
-Success returns a verified registration intent only; it performs no persistence
-and does not classify the operation as created, updated, or unchanged.
+The contract function returns a verified registration intent only. The handler
+then applies actor admission and the transactional repository to classify the
+operation as created, updated, or unchanged.
 
-The dormant state repository can atomically classify and audit a verified
+The state repository atomically classifies and audits a verified
 intent: a new actor is `created`, an identical registered actor is `unchanged`,
 and a retained unregistered actor restored to registered state is `updated`.
 Restoration keeps the first registration time and clears obsolete heartbeat
 recency. Administrative suspension blocks register and is never silently
 cleared.
 
-Future register handlers must use the complete authenticated composition with
-the dormant safe actor resolver and durable replay store before calling the
-state repository at a server-owned acceptance time. None of those layers makes
-registration available or connects it to the HTTP server.
+The register handler uses the complete authenticated composition with the safe
+actor resolver and durable replay store before calling the state repository at
+a server-owned acceptance time. It remains unavailable unless the complete
+lifecycle graph is explicitly enabled.
 
 ## Heartbeat request contract
 
@@ -181,17 +180,15 @@ query or fragment. Body, version, operation, target, and canonical actor checks
 finish before key resolution or nonce reservation. The signing key must bind to
 the exact actor, and the resulting nonce is reserved atomically.
 
-Success establishes only an authenticated heartbeat intent. It does not prove
-that the actor is registered or administratively active, record liveness, or
-produce the `recorded` outcome. The dormant state repository now enforces an
+The contract function establishes only an authenticated heartbeat intent. It
+does not prove that the actor is registered or administratively active, record
+liveness, or produce the `recorded` outcome. The state repository enforces an
 existing active registration, rejects suspension, and records server-side
 acceptance time atomically with a `heartbeat_recorded` event. Dormant
 administrative transitions can apply or clear suspension for an existing
-retained relay. Handler wiring, operator transport, durable replay composition,
-and admission wiring remain later gates.
+retained relay. The enabled handler composes durable replay, admission, and
+repository persistence; operator moderation transport remains later work.
 Liveness recency must never use a client-supplied signature timestamp.
-
-No heartbeat handler is connected to the HTTP server.
 
 ## Unregister request contract
 
@@ -206,14 +203,14 @@ checks finish before key resolution or nonce reservation. The signing key must
 bind to the exact actor, and the resulting nonce is reserved atomically. A
 signed heartbeat or registration request cannot satisfy this contract.
 
-Success establishes only an authenticated removal intent. It neither decides
-whether the actor is present nor produces the `removed` or `absent` outcome.
-The dormant repository implements the later idempotent transition: a registered
+The contract function establishes only an authenticated removal intent. It
+neither decides whether the actor is present nor produces the `removed` or
+`absent` outcome.
+The repository implements the idempotent transition: a registered
 entry becomes `removed`, while an unknown or already unregistered entry remains
 `absent`. It records the outcome atomically and preserves suspension,
-moderation, and audit history. No unregister handler calls it yet.
-
-No unregister handler is connected to the HTTP server.
+moderation, and audit history. The enabled unregister handler calls it only
+after the complete authenticated and admitted request path.
 
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
@@ -221,7 +218,7 @@ returns the current state without duplicating it.
 
 ## Request admission contract
 
-The dormant in-memory admission component derives the client source from the
+The in-memory admission component derives the client source from the
 direct socket peer and accepts an overwritten `X-Real-IP` only from an
 explicitly trusted proxy. Trusted prefixes name proxies rather than permitted
 clients, so private and LAN client addresses are valid sources. Appendable
@@ -235,10 +232,9 @@ authenticated-actor state, cleanup work, and concurrent work are all bounded;
 capacity and limit exhaustion fail closed with fixed decisions and retry
 guidance. See `docs/ADMISSION.md`.
 
-The component is not wired to HTTP. Future handlers will map policy rejection
-to the closed `rate_limited` code and HTTP 429, with bounded response text and
-an optional `Retry-After`. Exact HTTP mapping remains unavailable until that
-handler tranche is reviewed.
+Lifecycle handlers map policy rejection to the closed `rate_limited` code and
+HTTP 429, with bounded response text and an integer `Retry-After` when the
+decision provides one. See `docs/HANDLERS.md`.
 
 ## Outcomes
 
@@ -266,10 +262,10 @@ on the code, never the message. Version 1 codes are:
 - `rate_limited`
 - `internal_error`
 
-Detailed status-code mappings and authentication challenges will be fixed when
-the HTTP transport is implemented. Error responses must not disclose key
-material, signatures, nonces, internal storage identifiers, or moderation
-notes.
+Status-code mappings are fixed in `docs/HANDLERS.md`. Error responses must not
+disclose key material, signatures, nonces, internal storage identifiers, or
+moderation notes. Clients authenticate proactively; version 1 does not emit an
+authentication challenge.
 
 ## Lifecycle vocabulary
 

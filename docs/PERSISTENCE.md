@@ -13,9 +13,10 @@ or a schema newer than the binary. The `/readyz` endpoint checks that the
 database remains reachable at the current schema version and returns only a
 redacted `503 not ready` when that check fails.
 
-No registration, heartbeat, unregister, moderation, or replay handler writes
-to this database yet. Runtime wiring and a dormant lifecycle repository make
-the schema operational; they do not make the directory protocol available.
+Explicitly enabled lifecycle handlers use this database for durable replay and
+audited register, heartbeat, and unregister transitions. They remain disabled
+together by default. No public listing, operator moderation, or pruning handler
+writes to the database.
 
 ## Database opening
 
@@ -108,9 +109,9 @@ wrapped in a stable internal class; public handlers must map that class without
 exposing database details.
 
 The repository does not authenticate, resolve, rate-limit, or authorize an
-intent. A future handler may call it only after strict body and target parsing,
+intent. Enabled handlers call it only after strict body and target parsing,
 safe actor/key resolution, signature and actor binding, durable replay
-reservation, moderation gates, and server acceptance-time capture.
+reservation, actor admission, and server acceptance-time capture.
 
 ## Administrative moderation transitions
 
@@ -165,12 +166,12 @@ cleanup method requires a positive caller-selected bound no greater than 4096.
 Cleanup and insertion share one transaction, so an insertion failure restores
 any rows selected for cleanup.
 
-Expired rows may remain harmlessly when no requests or maintenance calls occur;
-they never become valid again. Before handlers are enabled, the dormant
-admission policy must be composed with a bounded maintenance schedule so
-sustained unique traffic cannot create an operational storage backlog. The
-store remains dormant and is not passed to the request verifier in this
-tranche.
+Expired rows may remain harmlessly between requests or maintenance calls; they
+never become valid again. Enabled runtime wiring passes the store to the
+verifier and runs a five-minute maintenance ticker that deletes at most 4096
+expired rows per pass. Reservation still performs its independent 256-row
+cleanup batch. Maintenance failure is logged internally and does not weaken
+replay rejection.
 
 ## Migrations
 
