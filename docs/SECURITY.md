@@ -90,9 +90,10 @@ names, values, URLs, queries, or fragments.
 These semantic and target gates run before key resolution and replay
 reservation. The complete composition then authenticates the exact body, binds
 the signing actor, and atomically reserves the nonce. It returns an intent and
-does not write registration state. Safe network actor resolution, durable replay
-storage, persistence, moderation, rate limiting, and explicit handler review
-remain required before registration can be enabled.
+does not write registration state. The dormant repository revalidates canonical
+bounded identity and can commit an audited state transition, but safe network
+actor resolution, durable replay storage, moderation, rate limiting, and
+explicit handler review remain required before registration can be enabled.
 
 ## Heartbeat request boundary
 
@@ -104,10 +105,11 @@ supplied JSON or target material.
 
 After those gates, the complete composition verifies the exact body and signing
 actor and reserves the nonce atomically. This result is an intent, not a
-liveness write. A future state layer must require an existing nonsuspended
-registration, enforce rate policy, and record server-side acceptance time in
-one reviewed transition. It must not trust the client's `Date`, `created`, or
-`expires` values as the heartbeat-recency timestamp.
+liveness write. The dormant repository requires an existing nonsuspended
+registration and atomically records server-side acceptance time with its audit
+event. A future handler must still enforce safe resolution, durable replay, and
+rate policy before calling it. It must not trust the client's `Date`, `created`,
+or `expires` values as the heartbeat-recency timestamp.
 
 ## Unregister request boundary
 
@@ -119,9 +121,10 @@ disclose supplied body or target material.
 
 The complete composition then verifies the exact body and signing actor and
 reserves the nonce atomically. The result is a removal intent, not a deletion.
-A future state transition must be idempotent, return only the closed `removed`
-or `absent` outcome, and retain suspension, moderation, and audit records unless
-a separately reviewed retention policy explicitly permits their removal.
+The dormant state transition is idempotent, returns only the closed `removed`
+or `absent` outcome, and retains suspension, moderation, and audit records. No
+handler invokes it, and only a separately reviewed retention policy may permit
+history removal.
 
 ## Persistence boundary
 
@@ -144,6 +147,14 @@ errors are fixed and do not expose filesystem paths or database details. The
 container confines persistent writes to an owner-only named volume while its
 root filesystem remains read-only.
 
+Lifecycle inputs are canonicalized and byte-bounded again at the repository.
+State time cannot precede the actor's current state or latest audit event.
+Register and heartbeat cannot clear or bypass suspension; heartbeat cannot
+create a missing registration; unregister preserves suspension. Each successful
+outcome and event commit in one immediate transaction, and forced event failure
+rolls the state mutation back.
+
 Before production deployment, backup/restore must be exercised. Before request
-handlers are enabled, replay expiry and state transitions must be bounded and
-tested; database errors must continue to fail closed without reaching clients.
+handlers are enabled, durable replay expiry and all remaining request gates must
+be bounded and tested; database errors must continue to fail closed without
+reaching clients.

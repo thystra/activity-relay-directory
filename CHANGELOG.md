@@ -23,6 +23,8 @@
   opaque replay reservations, and append-only lifecycle events.
 - Required SQLite startup migration, database-backed readiness, graceful close,
   and persistent owner-only Compose data volume.
+- Backend-neutral relay repository contract and atomic SQLite register,
+  heartbeat, unregister, and append-only audit transitions.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 
@@ -33,3 +35,6 @@
 - Request-body limits are bounded even before request endpoints exist.
 - Database initialization and schema mismatch fail before the HTTP listener starts.
 - Readiness failures do not disclose database errors or filesystem paths.
+- Relay transitions reject noncanonical identities, backward acceptance time,
+  absent or suspended heartbeat targets, and suspended registration.
+- State mutation rolls back when its corresponding audit event cannot commit.

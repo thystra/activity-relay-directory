@@ -39,8 +39,12 @@ startup requires an absolute database path, applies migrations before opening
 the HTTP listener, and keeps readiness dependent on the current reachable
 schema. The container supplies an owner-only data directory through a named
 local volume while retaining a read-only root filesystem. No request handler
-mutates storage. SQLite files must remain local; multi-host service topology
-requires a later database backend rather than shared SQLite storage. See
+mutates storage. A backend-neutral repository contract and SQLite implementation
+now provide transactional register, heartbeat, and unregister outcomes with an
+append-only event in the same commit. They reject noncanonical input, regressing
+server time, absent heartbeat targets, and suspended register or heartbeat
+intents. SQLite files must remain local; multi-host service topology requires a
+later database backend rather than shared SQLite storage. See
 `docs/PERSISTENCE.md`.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
@@ -59,5 +63,5 @@ Runtime components will be added behind those explicit contracts:
 7. public JSON and human-readable directory views;
 8. operator CLI and bounded administrative actions.
 
-Storage state transitions and public registration remain out of scope for the
-initial scaffold.
+Durable replay wiring, safe actor resolution, transport handlers, and public
+registration remain out of scope for the initial scaffold.

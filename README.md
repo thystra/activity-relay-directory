@@ -22,15 +22,17 @@ This repository currently provides a conservative service scaffold only:
 - strict authenticated heartbeat-request contract without liveness storage
 - strict authenticated unregister-request contract without state deletion
 - startup SQLite migration and database-backed readiness checks
+- atomic register, heartbeat, and unregister state transitions without handlers
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until safe key
-resolution, storage state transitions, moderation, rate limits, and the
-remaining request gates are implemented. The process now opens and migrates a
-single-node SQLite database before listening, but no public request handler
-writes to it; see `docs/PERSISTENCE.md`.
+resolution, durable replay wiring, moderation, rate limits, and the remaining
+request gates are implemented. The process opens and migrates a single-node
+SQLite database before listening, and the dormant repository can apply audited
+lifecycle transitions, but no public request handler calls it; see
+`docs/PERSISTENCE.md`.
 
 ## Privacy boundary
 

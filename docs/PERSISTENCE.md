@@ -14,8 +14,8 @@ database remains reachable at the current schema version and returns only a
 redacted `503 not ready` when that check fails.
 
 No registration, heartbeat, unregister, moderation, or replay handler writes
-to this database yet. Runtime wiring makes the schema operational; it does not
-make the directory protocol available.
+to this database yet. Runtime wiring and a dormant lifecycle repository make
+the schema operational; they do not make the directory protocol available.
 
 ## Database opening
 
@@ -68,6 +68,43 @@ bypassing those triggers.
 
 The schema contains no connected-site identities, followers, user identities,
 raw request bodies, raw nonces, or signing key IDs.
+
+## Relay state transitions
+
+`internal/storage.RelayRepository` defines backend-neutral register, heartbeat,
+and unregister operations at a server-owned acceptance time. The SQLite
+implementation validates canonical bounded identities again at the storage
+boundary and applies each state change plus its append-only event within one
+immediate transaction.
+
+Register has these outcomes:
+
+- a never-registered canonical actor becomes `created` and administratively
+  active;
+- an already registered actor with identical metadata is `unchanged`, leaving
+  its state timestamp untouched while recording the accepted intent; and
+- a retained unregistered actor becomes `updated`, preserving its original
+  registration timestamp while clearing unregister and old-heartbeat recency.
+
+Administrative suspension blocks register without clearing suspension.
+Heartbeat requires a registered, administratively active relay and records the
+server acceptance time as both current liveness and state update time.
+
+Unregister is idempotent. A registered relay becomes `removed`; an unknown or
+already unregistered relay is `absent`. Repeated authenticated absent intents
+may each receive an audit event but never create or duplicate relay state.
+Unregister remains permitted for a suspended relay and preserves its suspension
+timestamp and audit history.
+
+Acceptance time must be at or after both the actor's current state time and its
+latest event time. This prevents a clock regression from silently moving state
+or audit history backward. Backend failures remain wrapped in a stable internal
+class; public handlers must map that class without exposing database details.
+
+The repository does not authenticate, resolve, rate-limit, or authorize an
+intent. A future handler may call it only after strict body and target parsing,
+safe actor/key resolution, signature and actor binding, durable replay
+reservation, moderation gates, and server acceptance-time capture.
 
 ## Migrations
 

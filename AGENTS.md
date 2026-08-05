@@ -95,6 +95,16 @@ the container must preserve its read-only root filesystem with only the local
 data volume writable. Runtime storage wiring does not authorize state-mutating
 handlers or deployment.
 
+Relay lifecycle code must use the `storage.RelayRepository` contract after all
+authentication, safe-resolution, replay, and policy gates. Repository inputs
+must remain canonical and bounded. Use server acceptance time, reject per-actor
+time regression, block register and heartbeat while suspended, require active
+registration for heartbeat, allow idempotent unregister without clearing
+suspension, and commit every successful outcome with its matching append-only
+event in one transaction. Backend details may be logged internally but must
+never be exposed to clients. The repository is not authorization to add a
+handler or report registration as available.
+
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.

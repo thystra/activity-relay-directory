@@ -1,5 +1,6 @@
-// Package sqlite provides the single-node SQLite persistence contract. It is
-// not connected to the directory HTTP server until later storage tranches.
+// Package sqlite provides single-node SQLite migrations, readiness, and relay
+// state repositories. Lifecycle repositories remain disconnected from HTTP
+// handlers until later security tranches.
 package sqlite
 
 import (

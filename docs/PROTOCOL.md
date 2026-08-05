@@ -140,9 +140,17 @@ and identity checks all finish before key resolution or nonce reservation.
 Success returns a verified registration intent only; it performs no persistence
 and does not classify the operation as created, updated, or unchanged.
 
-Future register handlers must use this complete composition with a safely
-resolved actor key and a shared durable replay store. This contract does not
-make registration available and is not connected to the HTTP server.
+The dormant state repository can atomically classify and audit a verified
+intent: a new actor is `created`, an identical registered actor is `unchanged`,
+and a retained unregistered actor restored to registered state is `updated`.
+Restoration keeps the first registration time and clears obsolete heartbeat
+recency. Administrative suspension blocks register and is never silently
+cleared.
+
+Future register handlers must use the complete authenticated composition with
+a safely resolved actor key and durable replay store before calling that
+repository at a server-owned acceptance time. Neither layer makes registration
+available or connects it to the HTTP server.
 
 ## Heartbeat request contract
 
@@ -159,9 +167,11 @@ the exact actor, and the resulting nonce is reserved atomically.
 
 Success establishes only an authenticated heartbeat intent. It does not prove
 that the actor is registered or administratively active, record liveness, or
-produce the `recorded` outcome. Those checks and the state transition require
-the later persistence and moderation contracts. Liveness recency must use the
-server-side acceptance time, not a client-supplied signature timestamp.
+produce the `recorded` outcome. The dormant state repository now enforces an
+existing active registration, rejects suspension, and records server-side
+acceptance time atomically with a `heartbeat_recorded` event. Handler wiring,
+moderation operations, durable replay, and rate policy remain later gates.
+Liveness recency must never use a client-supplied signature timestamp.
 
 No heartbeat handler is connected to the HTTP server.
 
@@ -180,9 +190,10 @@ signed heartbeat or registration request cannot satisfy this contract.
 
 Success establishes only an authenticated removal intent. It neither decides
 whether the actor is present nor produces the `removed` or `absent` outcome.
-The later persistence transition must be idempotent: an active entry becomes
-absent, while an already absent entry remains absent. Unregister must not erase
-moderation or audit history without a separate explicit retention policy.
+The dormant repository implements the later idempotent transition: a registered
+entry becomes `removed`, while an unknown or already unregistered entry remains
+`absent`. It records the outcome atomically and preserves suspension,
+moderation, and audit history. No unregister handler calls it yet.
 
 No unregister handler is connected to the HTTP server.
 
