@@ -7,11 +7,12 @@ import (
 	"testing"
 )
 
-func TestLoadDefaultsRegistrationDisabled(t *testing.T) {
+func TestLoadDefaultsLifecycleDisabled(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
 	t.Setenv("DIRECTORY_LISTEN_ADDRESS", "")
 	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "")
+	t.Setenv("DIRECTORY_LIFECYCLE_ENABLED", "")
 	t.Setenv("DIRECTORY_MAX_REQUEST_BODY_BYTES", "")
 	t.Setenv("DIRECTORY_TRUSTED_PROXY_PREFIXES", "")
 
@@ -24,8 +25,8 @@ func TestLoadDefaultsRegistrationDisabled(t *testing.T) {
 		t.Fatalf("ListenAddress = %q", cfg.ListenAddress)
 	}
 
-	if cfg.RegistrationEnabled {
-		t.Fatal("registration must default to disabled")
+	if cfg.LifecycleEnabled {
+		t.Fatal("lifecycle graph must default to disabled")
 	}
 
 	if cfg.MaxRequestBodyBytes != defaultMaxRequestBodyBytes {
@@ -55,10 +56,10 @@ func TestLoadRejectsNonLoopbackHTTP(t *testing.T) {
 	}
 }
 
-func TestLoadRejectsRegistrationGarbage(t *testing.T) {
+func TestLoadRejectsLifecycleGarbage(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
-	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "sometimes")
+	t.Setenv("DIRECTORY_LIFECYCLE_ENABLED", "sometimes")
 
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() unexpectedly succeeded")
@@ -68,14 +69,24 @@ func TestLoadRejectsRegistrationGarbage(t *testing.T) {
 func TestLoadExplicitlyEnablesHTTPSLifecycleGraph(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
-	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "true")
+	t.Setenv("DIRECTORY_LIFECYCLE_ENABLED", "true")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if !cfg.RegistrationEnabled {
-		t.Fatal("RegistrationEnabled = false")
+	if !cfg.LifecycleEnabled {
+		t.Fatal("LifecycleEnabled = false")
+	}
+}
+
+func TestLoadRejectsRetiredRegistrationFlag(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_REGISTRATION_ENABLED", "true")
+
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "renamed") {
+		t.Fatalf("Load() error = %v", err)
 	}
 }
 
@@ -127,12 +138,12 @@ func TestLoadRejectsInvalidTrustedProxyPrefixes(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresHTTPSWhenRegistrationEnabled(t *testing.T) {
+func TestValidateRequiresHTTPSWhenLifecycleEnabled(t *testing.T) {
 	cfg := Config{
 		ListenAddress:        "127.0.0.1:8080",
 		PublicBaseURL:        "http://127.0.0.1:8080",
 		DatabasePath:         filepath.Join(t.TempDir(), "directory.sqlite"),
-		RegistrationEnabled:  true,
+		LifecycleEnabled:     true,
 		MaxRequestBodyBytes:  defaultMaxRequestBodyBytes,
 		TrustedProxyPrefixes: nil,
 	}

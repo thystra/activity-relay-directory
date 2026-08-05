@@ -9,6 +9,8 @@ import (
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 )
 
+const MaximumOperatorIDBytes = 128
+
 var (
 	// ErrRepositoryConfiguration identifies a missing or unusable repository
 	// dependency.
@@ -28,6 +30,10 @@ var (
 	// ErrRelaySuspended means moderation blocks register or heartbeat without
 	// altering the suspension record.
 	ErrRelaySuspended = errors.New("relay is administratively suspended")
+
+	// ErrEnrollmentClosed means a never-seen relay cannot create its first
+	// retained row while the operator-owned enrollment policy is closed.
+	ErrEnrollmentClosed = errors.New("directory enrollment is closed")
 
 	// ErrStorageFailure identifies a database failure. Callers must never expose
 	// wrapped backend details to public clients.
@@ -53,6 +59,58 @@ type ModerationIntent struct {
 	RelayActor  string
 	ModeratorID string
 	ReasonCode  string
+}
+
+// EnrollmentIntent records one local operator decision. OperatorID remains
+// private administrative audit metadata and is never returned publicly.
+type EnrollmentIntent struct {
+	OperatorID string
+}
+
+// ValidOperatorID reports whether a private local administrative identity uses
+// the shared bounded token grammar.
+func ValidOperatorID(value string) bool {
+	if len(value) == 0 || len(value) > MaximumOperatorIDBytes {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if (character >= 'A' && character <= 'Z') ||
+			(character >= 'a' && character <= 'z') ||
+			(character >= '0' && character <= '9') {
+			continue
+		}
+		if index > 0 && (character == '@' || character == '.' ||
+			character == '_' || character == ':' || character == '+' ||
+			character == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+// EnrollmentOutcome classifies an idempotent enrollment policy decision.
+type EnrollmentOutcome string
+
+const (
+	EnrollmentOpened        EnrollmentOutcome = "opened"
+	EnrollmentAlreadyOpen   EnrollmentOutcome = "already_open"
+	EnrollmentClosed        EnrollmentOutcome = "closed"
+	EnrollmentAlreadyClosed EnrollmentOutcome = "already_closed"
+)
+
+// Valid reports whether an outcome belongs to the closed enrollment contract.
+func (outcome EnrollmentOutcome) Valid() bool {
+	switch outcome {
+	case EnrollmentOpened,
+		EnrollmentAlreadyOpen,
+		EnrollmentClosed,
+		EnrollmentAlreadyClosed:
+		return true
+	default:
+		return false
+	}
 }
 
 // ModerationOutcome classifies an idempotent administrative transition. It is
@@ -113,4 +171,16 @@ type ModerationRepository interface {
 		ModerationIntent,
 		time.Time,
 	) (ModerationOutcome, error)
+}
+
+// EnrollmentRepository reads and changes the durable admission policy. Policy
+// changes and their private audit events must commit atomically.
+type EnrollmentRepository interface {
+	EnrollmentOpen(context.Context) (bool, error)
+	SetEnrollment(
+		context.Context,
+		bool,
+		EnrollmentIntent,
+		time.Time,
+	) (EnrollmentOutcome, error)
 }

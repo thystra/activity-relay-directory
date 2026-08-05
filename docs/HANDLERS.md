@@ -7,17 +7,27 @@ Activity-Relay client, or provide public listings.
 
 ## Fail-closed activation
 
-`DIRECTORY_REGISTRATION_ENABLED` defaults to `false`. While false, the process
+`DIRECTORY_LIFECYCLE_ENABLED` defaults to `false`. While false, the process
 does not construct the actor resolver, signing-key cache, verifier, replay
 store adapter, lifecycle repository, or admission graph. Lifecycle POSTs return
-HTTP 503 with `registration_unavailable`, and `/v1/status` reports
-`registration_available: false`.
+HTTP 503 with `lifecycle_unavailable`, and `/v1/status` reports
+`lifecycle_available: false`.
 
 Setting the value to `true` requires an HTTPS `DIRECTORY_PUBLIC_BASE_URL`. The
 process exits before listening if any lifecycle dependency cannot be
-constructed. Only a complete enabled graph makes `/v1/status` report
-registration available. In this first transport contract, the flag gates all
-three operations together; it is not yet a separate new-registration switch.
+constructed. Only a complete enabled graph makes `/v1/status` report lifecycle
+availability. The retired pre-release `DIRECTORY_REGISTRATION_ENABLED` name is
+rejected.
+
+The durable enrollment policy is independent and defaults closed. The status
+document reports `lifecycle_enabled`, `lifecycle_available`, and
+`enrollment_open` separately. Closing enrollment rejects only a register intent
+whose authenticated actor has no retained relay row. Existing retained actors
+may register, heartbeat, and unregister while enrollment is closed, subject to
+suspension and the remaining gates. Local policy changes use
+`activity-relay-directory admin enrollment status|open|close`; open and close
+require `--operator ID` and append a private bounded audit event transactionally.
+No remote enrollment administration route exists.
 
 ## Request order
 
@@ -81,15 +91,17 @@ details, or moderation audit data.
 
 | HTTP status | Version 1 code | Meaning |
 | --- | --- | --- |
-| 400 | `invalid_request` | malformed target/body, absent heartbeat state, or invalid source |
+| 400 | `invalid_request` | malformed target/body or invalid source |
 | 400 | `unsupported_protocol_version` | unsupported body version |
 | 401 | `authentication_failed` | digest, signature, time, key, or actor binding failed |
 | 403 | `relay_suspended` | moderation blocks register or heartbeat |
+| 403 | `enrollment_closed` | a never-seen actor cannot create its first retained row |
 | 409 | `replay_detected` | opaque key/nonce reservation already exists |
+| 409 | `relay_not_registered` | heartbeat actor has no active registration |
 | 413 | `invalid_request` | transport body exceeds the configured ceiling |
 | 429 | `rate_limited` | source, actor, concurrency, or bounded-state admission rejected |
 | 500 | `internal_error` | storage or dependency failure |
-| 503 | `registration_unavailable` | lifecycle graph is disabled or incomplete |
+| 503 | `lifecycle_unavailable` | lifecycle graph is disabled or incomplete |
 
 HTTP 429 includes an integer `Retry-After` when the admission decision provides
 one. Unsupported methods return HTTP 405 with `Allow: POST`. This profile does

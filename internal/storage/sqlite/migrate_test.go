@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
@@ -77,6 +79,8 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 		"replay_reservations",
 		"relay_events",
 		"moderation_events",
+		"directory_policy",
+		"enrollment_events",
 	} {
 		assertTableExists(t, database, table)
 	}
@@ -143,8 +147,8 @@ func TestMigrateUpgradesVersionOneWithoutChangingExistingState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 2 {
-		t.Fatalf("migration count = %d, want 2", len(migrations))
+	if len(migrations) != 3 {
+		t.Fatalf("migration count = %d, want 3", len(migrations))
 	}
 	if _, err := database.Exec(migrationTableSQL); err != nil {
 		t.Fatalf("create migration table: %v", err)
@@ -235,6 +239,66 @@ func TestMigrateUpgradesVersionOneWithoutChangingExistingState(t *testing.T) {
 	if replayCount != 1 || moderationCount != 0 {
 		t.Fatalf("upgraded counts = replay:%d moderation:%d", replayCount, moderationCount)
 	}
+	var enrollmentOpen, enrollmentEvents int
+	if err := database.QueryRow(
+		`SELECT enrollment_open FROM directory_policy WHERE singleton = 1`,
+	).Scan(&enrollmentOpen); err != nil {
+		t.Fatalf("read upgraded enrollment policy: %v", err)
+	}
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM enrollment_events`,
+	).Scan(&enrollmentEvents); err != nil {
+		t.Fatalf("count enrollment events: %v", err)
+	}
+	if enrollmentOpen != 0 || enrollmentEvents != 0 {
+		t.Fatalf("upgraded enrollment = open:%d events:%d", enrollmentOpen, enrollmentEvents)
+	}
+}
+
+func TestMigrateVersionTwoAddsClosedEnrollmentWithoutChangingRelay(t *testing.T) {
+	database := openTestDatabase(t)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations() error = %v", err)
+	}
+	if _, err := database.Exec(migrationTableSQL); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	for _, migration := range migrations[:2] {
+		if _, err := database.Exec(migration.sql); err != nil {
+			t.Fatalf("apply version %d schema: %v", migration.version, err)
+		}
+		if _, err := database.Exec(
+			`INSERT INTO schema_migrations
+			    (version, name, sha256, applied_at_unix)
+			 VALUES (?, ?, ?, 0)`,
+			migration.version,
+			migration.name,
+			migration.sha256,
+		); err != nil {
+			t.Fatalf("record version %d migration: %v", migration.version, err)
+		}
+	}
+	insertRelay(
+		t, database, testRelayActor, lifecycleRegistered, administrativeActive,
+		100, 100, nil, nil, nil, true,
+	)
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatalf("Migrate(version 2) error = %v", err)
+	}
+	relay := readTestRelay(t, database, testRelayActor)
+	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 100 {
+		t.Fatalf("upgraded relay = %#v", relay)
+	}
+	var open int
+	if err := database.QueryRow(
+		`SELECT enrollment_open FROM directory_policy WHERE singleton = 1`,
+	).Scan(&open); err != nil {
+		t.Fatalf("read enrollment policy: %v", err)
+	}
+	if open != 0 {
+		t.Fatalf("enrollment_open = %d, want 0", open)
+	}
 }
 
 func TestModerationSchemaEnforcesBoundedAppendOnlyEvents(t *testing.T) {
@@ -270,7 +334,7 @@ func TestModerationSchemaEnforcesBoundedAppendOnlyEvents(t *testing.T) {
 		{action: moderationSuspendApplied, moderatorID: "operator/role", reasonCode: "security", recordedAt: 101},
 		{action: moderationSuspendApplied, moderatorID: "op\x00erator", reasonCode: "security", recordedAt: 101},
 		{action: moderationSuspendApplied, moderatorID: "opérator", reasonCode: "security", recordedAt: 101},
-		{action: moderationSuspendApplied, moderatorID: strings.Repeat("x", maximumModeratorIDBytes+1), reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: strings.Repeat("x", storage.MaximumOperatorIDBytes+1), reasonCode: "security", recordedAt: 101},
 		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "", recordedAt: 101},
 		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "Security", recordedAt: 101},
 		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "security note", recordedAt: 101},
@@ -303,6 +367,64 @@ func TestModerationSchemaEnforcesBoundedAppendOnlyEvents(t *testing.T) {
 		eventID,
 	); err == nil {
 		t.Fatal("moderation event deletion was accepted")
+	}
+}
+
+func TestEnrollmentSchemaIsSingletonBoundedAndAppendOnly(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	result, err := database.Exec(
+		`INSERT INTO enrollment_events (action, operator_id, recorded_at_unix)
+		 VALUES (?, ?, ?)`,
+		enrollmentOpened,
+		"operator@example.org",
+		100,
+	)
+	if err != nil {
+		t.Fatalf("insert enrollment event: %v", err)
+	}
+	eventID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("enrollment event ID: %v", err)
+	}
+	for _, test := range []struct {
+		action     string
+		operatorID string
+		recordedAt int64
+	}{
+		{action: "other", operatorID: "operator", recordedAt: 101},
+		{action: enrollmentOpened, operatorID: "", recordedAt: 101},
+		{action: enrollmentOpened, operatorID: "bad operator", recordedAt: 101},
+		{action: enrollmentOpened, operatorID: strings.Repeat("x", storage.MaximumOperatorIDBytes+1), recordedAt: 101},
+		{action: enrollmentOpened, operatorID: "operator", recordedAt: -1},
+	} {
+		if _, err := database.Exec(
+			`INSERT INTO enrollment_events (action, operator_id, recorded_at_unix)
+			 VALUES (?, ?, ?)`,
+			test.action,
+			test.operatorID,
+			test.recordedAt,
+		); err == nil {
+			t.Fatalf("invalid enrollment event was accepted: %#v", test)
+		}
+	}
+	if _, err := database.Exec(
+		`UPDATE enrollment_events SET operator_id = 'changed'
+		 WHERE enrollment_event_id = ?`,
+		eventID,
+	); err == nil {
+		t.Fatal("enrollment event update was accepted")
+	}
+	if _, err := database.Exec(
+		`DELETE FROM enrollment_events WHERE enrollment_event_id = ?`,
+		eventID,
+	); err == nil {
+		t.Fatal("enrollment event deletion was accepted")
+	}
+	if _, err := database.Exec(
+		`INSERT INTO directory_policy (singleton, enrollment_open, updated_at_unix)
+		 VALUES (2, 0, 0)`,
+	); err == nil {
+		t.Fatal("second directory policy row was accepted")
 	}
 }
 

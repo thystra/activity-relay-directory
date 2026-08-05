@@ -537,6 +537,11 @@ type testRelayRecord struct {
 
 func newTestRelayRepository(t *testing.T, database *sql.DB) *RelayRepository {
 	t.Helper()
+	if _, err := database.Exec(
+		`UPDATE directory_policy SET enrollment_open = 1 WHERE singleton = 1`,
+	); err != nil {
+		t.Fatalf("open test enrollment: %v", err)
+	}
 	repository, err := NewRelayRepository(database)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)

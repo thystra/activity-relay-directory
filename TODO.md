@@ -79,6 +79,11 @@ is short-lived housekeeping and is not this proposed hard-retention feature.
 
 ## Tranche 8: Cross-repository client contract
 
+Completed (2026-08-05): the cross-repository contract is implemented in both
+repositories. It remains undeployed and inactive. The pre-release lifecycle
+graph setting is now `DIRECTORY_LIFECYCLE_ENABLED`; the retired ambiguous name
+is rejected.
+
 Repositories: both projects.
 
 Freeze the server/client recovery and operational-control contract before adding
@@ -107,10 +112,9 @@ Deliverables:
 - add a stable machine-readable `relay_not_registered` heartbeat result so a
   client may perform one bounded register reconciliation instead of guessing
   from the generic `invalid_request` class;
-- decide the pre-release transition from the current ambiguous
-  `DIRECTORY_REGISTRATION_ENABLED` name so it describes lifecycle graph
-  construction rather than enrollment policy, and update configuration fixtures
-  as one reviewed compatibility change;
+- use `DIRECTORY_LIFECYCLE_ENABLED` for lifecycle graph construction, reject
+  the retired pre-release `DIRECTORY_REGISTRATION_ENABLED` name, and update
+  configuration fixtures as one reviewed compatibility change;
 - strict models for the version 1 register, heartbeat, unregister, success, and
   error documents;
 - canonical HTTPS directory-origin validation with no credentials, path,

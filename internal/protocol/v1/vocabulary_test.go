@@ -56,7 +56,9 @@ func TestClosedVocabulary(t *testing.T) {
 		ErrorUnsupportedProtocolVersion,
 		ErrorAuthenticationFailed,
 		ErrorReplayDetected,
-		ErrorRegistrationUnavailable,
+		ErrorLifecycleUnavailable,
+		ErrorEnrollmentClosed,
+		ErrorRelayNotRegistered,
 		ErrorRelaySuspended,
 		ErrorRateLimited,
 		ErrorInternal,
@@ -72,8 +74,11 @@ func TestClosedVocabulary(t *testing.T) {
 
 func TestFixtureManifest(t *testing.T) {
 	expected := []string{
+		"activity-relay-register.valid.json",
 		"content-digest.valid.json",
-		"error-response.registration-unavailable.json",
+		"error-response.enrollment-closed.json",
+		"error-response.lifecycle-unavailable.json",
+		"error-response.relay-not-registered.json",
 		"heartbeat-request.valid.json",
 		"heartbeat-response.recorded.json",
 		"register-request.valid.json",
@@ -160,19 +165,22 @@ func TestResponseFixtures(t *testing.T) {
 	}
 }
 
-func TestErrorFixture(t *testing.T) {
-	response := decodeFixture[ErrorResponse](
-		t,
-		"error-response.registration-unavailable.json",
-	)
-	if response.ProtocolVersion != Version {
-		t.Fatalf("protocol_version = %d", response.ProtocolVersion)
-	}
-	if response.Error.Code != ErrorRegistrationUnavailable {
-		t.Fatalf("error code = %q", response.Error.Code)
-	}
-	if !response.Error.Code.Valid() || response.Error.Message == "" {
-		t.Fatalf("error document = %#v", response.Error)
+func TestErrorFixtures(t *testing.T) {
+	for name, code := range map[string]ErrorCode{
+		"error-response.enrollment-closed.json":     ErrorEnrollmentClosed,
+		"error-response.lifecycle-unavailable.json": ErrorLifecycleUnavailable,
+		"error-response.relay-not-registered.json":  ErrorRelayNotRegistered,
+	} {
+		response := decodeFixture[ErrorResponse](t, name)
+		if response.ProtocolVersion != Version {
+			t.Fatalf("%s protocol_version = %d", name, response.ProtocolVersion)
+		}
+		if response.Error.Code != code {
+			t.Fatalf("%s error code = %q", name, response.Error.Code)
+		}
+		if !response.Error.Code.Valid() || response.Error.Message == "" {
+			t.Fatalf("%s error document = %#v", name, response.Error)
+		}
 	}
 }
 

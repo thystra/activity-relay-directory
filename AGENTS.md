@@ -156,10 +156,11 @@ and redacted decisions. Admission construction does not authorize handler
 wiring, registration availability, or deployment.
 
 Lifecycle HTTP code must use `httpapi.LifecycleHandler` and remain disabled by
-default. `DIRECTORY_REGISTRATION_ENABLED=true` currently gates register,
-heartbeat, and unregister together and requires an HTTPS public base URL. A
+default. `DIRECTORY_LIFECYCLE_ENABLED=true` gates register, heartbeat, and
+unregister together and requires an HTTPS public base URL. Durable enrollment
+defaults closed and gates only first-time relay rows. A
 disabled or incomplete graph must not construct the resolver or mutate state
-and must report registration unavailable. Preserve this exact order: method and
+and must report lifecycle unavailable. Preserve this exact order: method and
 route, trusted direct-peer source identity, source admission, bounded body read,
 operation-specific combined verification and durable replay reservation,
 actor admission exactly once, server acceptance time, then repository mutation.

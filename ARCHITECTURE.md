@@ -78,9 +78,10 @@ concurrency ceiling run before a cache miss can initiate retrieval.
 The lifecycle HTTP composition is one fail-closed graph: exact routes and body
 bounds, source admission, strict decoding, signature/digest/actor verification,
 durable replay reservation, actor admission, and transactional persistence.
-The registration flag currently gates register, heartbeat, and unregister
-together. A disabled or incomplete graph reports registration unavailable and
-does not construct the resolver. See `docs/HANDLERS.md`.
+The lifecycle flag gates register, heartbeat, and unregister together. A
+disabled or incomplete graph reports lifecycle unavailable and does not
+construct the resolver. The separate durable enrollment policy controls only
+first-time retained actors and defaults closed. See `docs/HANDLERS.md`.
 
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-

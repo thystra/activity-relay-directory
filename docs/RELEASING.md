@@ -21,8 +21,9 @@ backup restoration, and refusal of drifted or future schemas. Release notes
 must identify the resulting schema version and state that downgrade requires
 restoration of the matching pre-upgrade backup.
 
-Schema version 2 adds private append-only moderation events. Before releasing
-it, verify version 1-to-2 upgrade preservation, atomic state/event rollback,
+Schema version 3 adds default-closed enrollment policy and private append-only
+enrollment audit events after schema version 2's moderation events. Before
+releasing it, verify supported upgrade preservation, atomic state/event rollback,
 idempotent suspend and restore concurrency, audit backup restoration, and that
 moderator and reason tokens are absent from public output. An operator CLI or
 administrative transport requires its own authorization and audit review.
@@ -34,7 +35,7 @@ under sustained unique traffic.
 
 Signed lifecycle handlers are present but disabled by default. Before their
 first deployment, validate both disabled and explicitly enabled startup,
-`registration_available`, exact proxy peer derivation, all HTTP mappings in
+`lifecycle_available`, `enrollment_open`, exact proxy peer derivation, all HTTP mappings in
 `docs/HANDLERS.md`, real Activity-Relay signatures for all three operations,
 nonce rejection across restart, suspension behavior, fixed admission bounds,
 maintenance cancellation, database backup/restore, and logs for data leakage.

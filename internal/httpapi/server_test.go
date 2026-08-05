@@ -6,9 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
+	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 )
 
 func testHandler() http.Handler {
@@ -16,7 +18,7 @@ func testHandler() http.Handler {
 		ListenAddress:       "127.0.0.1:8080",
 		PublicBaseURL:       "https://directory.example",
 		DatabasePath:        "/var/lib/activity-relay-directory/directory.sqlite",
-		RegistrationEnabled: false,
+		LifecycleEnabled:    false,
 		MaxRequestBodyBytes: 64 * 1024,
 	}, "test-version", func(context.Context) error { return nil })
 }
@@ -47,7 +49,7 @@ func TestReadyFailsClosedWithoutDisclosingDependencyError(t *testing.T) {
 			ListenAddress:       "127.0.0.1:8080",
 			PublicBaseURL:       "https://directory.example",
 			DatabasePath:        "/var/lib/activity-relay-directory/directory.sqlite",
-			RegistrationEnabled: false,
+			LifecycleEnabled:    false,
 			MaxRequestBodyBytes: 64 * 1024,
 		}, "test-version", check)
 		request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -96,7 +98,7 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-func TestStatusReportsRegistrationUnavailable(t *testing.T) {
+func TestStatusReportsLifecycleAndEnrollmentUnavailable(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
 	response := httptest.NewRecorder()
 
@@ -115,16 +117,62 @@ func TestStatusReportsRegistrationUnavailable(t *testing.T) {
 		t.Fatalf("schema_version = %#v", body["schema_version"])
 	}
 
-	if body["registration_enabled"] != false {
-		t.Fatalf("registration_enabled = %#v", body["registration_enabled"])
+	if body["lifecycle_enabled"] != false {
+		t.Fatalf("lifecycle_enabled = %#v", body["lifecycle_enabled"])
 	}
 
-	if body["registration_available"] != false {
-		t.Fatalf("registration_available = %#v", body["registration_available"])
+	if body["lifecycle_available"] != false {
+		t.Fatalf("lifecycle_available = %#v", body["lifecycle_available"])
+	}
+	if body["enrollment_open"] != false {
+		t.Fatalf("enrollment_open = %#v", body["enrollment_open"])
 	}
 
 	if body["version"] != "test-version" {
 		t.Fatalf("version = %#v", body["version"])
+	}
+}
+
+func TestStatusReportsEnrollmentIndependentlyOfLifecycleGraph(t *testing.T) {
+	handler := NewHandlerWithLifecycle(
+		config.Config{
+			PublicBaseURL:    "https://directory.example",
+			LifecycleEnabled: false,
+		},
+		"test-version",
+		func(context.Context) error { return nil },
+		nil,
+		func(context.Context) (bool, error) { return true, nil },
+	)
+	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if body["lifecycle_available"] != false || body["enrollment_open"] != true {
+		t.Fatalf("status body = %#v", body)
+	}
+}
+
+func TestStatusFailsClosedWhenEnrollmentStateCannotBeRead(t *testing.T) {
+	handler := NewHandlerWithLifecycle(
+		config.Config{PublicBaseURL: "https://directory.example"},
+		"test-version",
+		func(context.Context) error { return nil },
+		nil,
+		func(context.Context) (bool, error) { return false, errors.New("private database detail") },
+	)
+	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertProtocolError(t, response, http.StatusServiceUnavailable, v1.ErrorInternal)
+	if strings.Contains(response.Body.String(), "private") {
+		t.Fatalf("status disclosed backend error: %q", response.Body.String())
 	}
 }
 

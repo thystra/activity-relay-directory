@@ -55,7 +55,7 @@ type LifecycleDependencies struct {
 }
 
 // LifecycleHandler composes authenticated lifecycle operations. Construction
-// alone does not enable routes; Config.RegistrationEnabled remains the fail-
+// alone does not enable routes; Config.LifecycleEnabled remains the fail-
 // closed runtime gate used by NewHandlerWithLifecycle.
 type LifecycleHandler struct {
 	verifier         LifecycleVerifier
@@ -109,7 +109,7 @@ func (handler *LifecycleHandler) serve(
 			response,
 			request,
 			http.StatusServiceUnavailable,
-			v1.ErrorRegistrationUnavailable,
+			v1.ErrorLifecycleUnavailable,
 		)
 		return
 	}
@@ -331,8 +331,11 @@ func writeLifecycleError(
 		writeProtocolError(response, request, http.StatusUnauthorized, v1.ErrorAuthenticationFailed)
 	case errors.Is(err, storage.ErrRelaySuspended):
 		writeProtocolError(response, request, http.StatusForbidden, v1.ErrorRelaySuspended)
-	case errors.Is(err, storage.ErrRelayAbsent),
-		errors.Is(err, v1.ErrRegisterRequest),
+	case errors.Is(err, storage.ErrEnrollmentClosed):
+		writeProtocolError(response, request, http.StatusForbidden, v1.ErrorEnrollmentClosed)
+	case errors.Is(err, storage.ErrRelayAbsent):
+		writeProtocolError(response, request, http.StatusConflict, v1.ErrorRelayNotRegistered)
+	case errors.Is(err, v1.ErrRegisterRequest),
 		errors.Is(err, v1.ErrHeartbeatRequest),
 		errors.Is(err, v1.ErrUnregisterRequest),
 		errors.Is(err, v1.ErrRegisterTarget),
@@ -405,8 +408,12 @@ func protocolErrorMessage(code v1.ErrorCode) string {
 		return "authentication failed"
 	case v1.ErrorReplayDetected:
 		return "request has already been received"
-	case v1.ErrorRegistrationUnavailable:
-		return "registration is unavailable"
+	case v1.ErrorLifecycleUnavailable:
+		return "lifecycle service is unavailable"
+	case v1.ErrorEnrollmentClosed:
+		return "directory enrollment is closed"
+	case v1.ErrorRelayNotRegistered:
+		return "relay is not registered"
 	case v1.ErrorRelaySuspended:
 		return "relay is suspended"
 	case v1.ErrorRateLimited:

@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema version 2
+## Schema version 3
 
 The initial migration creates four owned tables:
 
@@ -59,6 +59,13 @@ The initial migration creates four owned tables:
 Migration 2 adds `moderation_events`, a private append-only audit trail for
 bounded suspend and restore decisions. It upgrades a version 1 database without
 changing retained relay, lifecycle-event, or replay-reservation rows.
+
+Migration 3 adds the singleton `directory_policy` row, initialized with
+enrollment closed, and private append-only `enrollment_events`. Upgrading does
+not alter any retained relay or earlier audit row. Each local open or close
+decision records its bounded operator token and server acceptance time, even
+when the requested state is already current; policy and event commit in one
+immediate transaction. Regressing decision time is rejected.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -83,7 +90,10 @@ implementation validates canonical bounded identities again at the storage
 boundary and applies each state change plus its append-only event within one
 immediate transaction.
 
-Register has these outcomes:
+Register first reads enrollment within the same immediate transaction used to
+create state. A never-seen actor is rejected while enrollment is closed, so a
+concurrent close cannot race a first insert. Retained actors are independent of
+the current enrollment setting. Register has these outcomes:
 
 - a never-registered canonical actor becomes `created` and administratively
   active;
@@ -112,6 +122,25 @@ The repository does not authenticate, resolve, rate-limit, or authorize an
 intent. Enabled handlers call it only after strict body and target parsing,
 safe actor/key resolution, signature and actor binding, durable replay
 reservation, actor admission, and server acceptance-time capture.
+
+## Enrollment administration
+
+`internal/storage.EnrollmentRepository` exposes durable status and one
+transactional open/close operation. The local binary surface is:
+
+```text
+activity-relay-directory admin enrollment status
+activity-relay-directory admin enrollment open --operator ID
+activity-relay-directory admin enrollment close --operator ID
+```
+
+Only `DIRECTORY_DATABASE_PATH` is required for these commands. Filesystem and
+host access to the owner-only local database form the authorization boundary;
+there is no HTTP endpoint. Operator IDs use the same bounded private token
+grammar as moderator IDs. Command errors and public status never reveal the
+operator token or database detail. SQLite immediate transactions and the
+configured busy timeout permit this local command to serialize safely with the
+running single-host service.
 
 ## Administrative moderation transitions
 

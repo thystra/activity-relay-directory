@@ -21,7 +21,7 @@ service itself with:
 ```text
 DIRECTORY_LISTEN_ADDRESS=127.0.0.1:8080
 DIRECTORY_PUBLIC_BASE_URL=https://directory.example.org
-DIRECTORY_REGISTRATION_ENABLED=false
+DIRECTORY_LIFECYCLE_ENABLED=false
 DIRECTORY_TRUSTED_PROXY_PREFIXES=127.0.0.1/32
 ```
 
@@ -136,6 +136,7 @@ curl --fail --silent --show-error https://directory.example.org/v1/status |
 ```
 
 Registration paths remain unavailable until their security and storage gates
-are constructed and `DIRECTORY_REGISTRATION_ENABLED=true`. Proxy installation
-alone must not enable registration. Before changing that flag, verify the
+are constructed and `DIRECTORY_LIFECYCLE_ENABLED=true`. Proxy installation
+alone must not enable lifecycle routes or open enrollment. Before changing
+that flag, verify the
 trusted direct-peer prefix and follow `docs/HANDLERS.md`.

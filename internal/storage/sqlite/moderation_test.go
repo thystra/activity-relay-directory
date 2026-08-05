@@ -158,7 +158,7 @@ func TestModerationRepositoryRejectsAbsentInvalidAndRegressingIntents(t *testing
 		{RelayActor: testRelayActor, ModeratorID: "operator/role", ReasonCode: "security"},
 		{RelayActor: testRelayActor, ModeratorID: "op\x00erator", ReasonCode: "security"},
 		{RelayActor: testRelayActor, ModeratorID: "opérator", ReasonCode: "security"},
-		{RelayActor: testRelayActor, ModeratorID: strings.Repeat("x", maximumModeratorIDBytes+1), ReasonCode: "security"},
+		{RelayActor: testRelayActor, ModeratorID: strings.Repeat("x", storage.MaximumOperatorIDBytes+1), ReasonCode: "security"},
 		{RelayActor: testRelayActor, ModeratorID: "operator", ReasonCode: ""},
 		{RelayActor: testRelayActor, ModeratorID: "operator", ReasonCode: "Security"},
 		{RelayActor: testRelayActor, ModeratorID: "operator", ReasonCode: "security note"},
@@ -181,7 +181,7 @@ func TestModerationRepositoryRejectsAbsentInvalidAndRegressingIntents(t *testing
 		ctx,
 		storage.ModerationIntent{
 			RelayActor:  testRelayActor,
-			ModeratorID: strings.Repeat("x", maximumModeratorIDBytes),
+			ModeratorID: strings.Repeat("x", storage.MaximumOperatorIDBytes),
 			ReasonCode:  strings.Repeat("x", maximumReasonCodeBytes),
 		},
 		time.Unix(110, 0),

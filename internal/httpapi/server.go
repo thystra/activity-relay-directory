@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	statusSchemaVersion = 1
+	statusSchemaVersion = 2
 	readinessTimeout    = 2 * time.Second
 )
 
@@ -19,13 +19,17 @@ const (
 // requests. Its error is deliberately not exposed to public clients.
 type ReadinessCheck func(context.Context) error
 
+// EnrollmentStatus reads the current durable admission policy. Errors fail the
+// public status request closed without exposing backend details.
+type EnrollmentStatus func(context.Context) (bool, error)
+
 // NewHandler returns the initial public HTTP surface.
 func NewHandler(
 	cfg config.Config,
 	version string,
 	checkReadiness ReadinessCheck,
 ) http.Handler {
-	return NewHandlerWithLifecycle(cfg, version, checkReadiness, nil)
+	return NewHandlerWithLifecycle(cfg, version, checkReadiness, nil, nil)
 }
 
 // NewHandlerWithLifecycle returns the public HTTP surface and conditionally
@@ -36,9 +40,10 @@ func NewHandlerWithLifecycle(
 	version string,
 	checkReadiness ReadinessCheck,
 	lifecycle *LifecycleHandler,
+	enrollmentStatus EnrollmentStatus,
 ) http.Handler {
 	mux := http.NewServeMux()
-	registrationAvailable := cfg.RegistrationEnabled && lifecycle != nil
+	lifecycleAvailable := cfg.LifecycleEnabled && lifecycle != nil
 
 	mux.HandleFunc("/healthz", func(response http.ResponseWriter, request *http.Request) {
 		if !allowReadMethod(response, request) {
@@ -79,18 +84,30 @@ func NewHandlerWithLifecycle(
 			return
 		}
 
+		enrollmentOpen := false
+		if enrollmentStatus != nil {
+			ctx, cancel := context.WithTimeout(request.Context(), readinessTimeout)
+			defer cancel()
+			var err error
+			enrollmentOpen, err = enrollmentStatus(ctx)
+			if err != nil {
+				writeProtocolError(response, request, http.StatusServiceUnavailable, v1.ErrorInternal)
+				return
+			}
+		}
 		writeJSON(response, request, http.StatusOK, map[string]any{
-			"schema_version":         statusSchemaVersion,
-			"service":                "activity-relay-directory",
-			"version":                version,
-			"public_base_url":        cfg.PublicBaseURL,
-			"registration_enabled":   cfg.RegistrationEnabled,
-			"registration_available": registrationAvailable,
+			"schema_version":      statusSchemaVersion,
+			"service":             "activity-relay-directory",
+			"version":             version,
+			"public_base_url":     cfg.PublicBaseURL,
+			"lifecycle_enabled":   cfg.LifecycleEnabled,
+			"lifecycle_available": lifecycleAvailable,
+			"enrollment_open":     enrollmentOpen,
 		})
 	})
 
 	active := lifecycle
-	if !registrationAvailable {
+	if !lifecycleAvailable {
 		active = nil
 	}
 	registerLifecycleRoute := func(path string, operation v1.Operation) {

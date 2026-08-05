@@ -14,7 +14,6 @@ import (
 const (
 	maximumRelayActorBytes     = 4096
 	maximumPublicBaseBytes     = 2048
-	maximumModeratorIDBytes    = 128
 	maximumReasonCodeBytes     = 64
 	lifecycleRegistered        = "registered"
 	lifecycleUnregistered      = "unregistered"
@@ -30,6 +29,10 @@ const (
 	moderationSuspendUnchanged = "suspend_unchanged"
 	moderationRestoreApplied   = "restore_applied"
 	moderationRestoreUnchanged = "restore_unchanged"
+	enrollmentOpened           = "enrollment_opened"
+	enrollmentOpenUnchanged    = "enrollment_open_unchanged"
+	enrollmentClosed           = "enrollment_closed"
+	enrollmentClosedUnchanged  = "enrollment_closed_unchanged"
 )
 
 // RelayRepository applies authenticated relay lifecycle intents to SQLite.
@@ -40,6 +43,7 @@ type RelayRepository struct {
 
 var _ storage.RelayRepository = (*RelayRepository)(nil)
 var _ storage.ModerationRepository = (*RelayRepository)(nil)
+var _ storage.EnrollmentRepository = (*RelayRepository)(nil)
 
 // NewRelayRepository binds relay state transitions to a migrated database.
 func NewRelayRepository(database *sql.DB) (*RelayRepository, error) {
@@ -76,6 +80,15 @@ func (repository *RelayRepository) Register(
 	}
 	if relay != nil && relay.administrativeState == administrativeSuspended {
 		return "", storage.ErrRelaySuspended
+	}
+	if relay == nil {
+		enrollmentOpen, err := selectEnrollmentOpen(ctx, transaction)
+		if err != nil {
+			return "", storageFailure("read enrollment policy", err)
+		}
+		if !enrollmentOpen {
+			return "", storage.ErrEnrollmentClosed
+		}
 	}
 	if err := requireMonotonicTime(
 		ctx,
@@ -433,33 +446,13 @@ func validateModerationIntent(intent storage.ModerationIntent) error {
 	}); err != nil {
 		return err
 	}
-	if len(intent.ModeratorID) == 0 ||
-		len(intent.ModeratorID) > maximumModeratorIDBytes ||
-		!validModeratorID(intent.ModeratorID) ||
+	if !storage.ValidOperatorID(intent.ModeratorID) ||
 		len(intent.ReasonCode) == 0 ||
 		len(intent.ReasonCode) > maximumReasonCodeBytes ||
 		!validReasonCode(intent.ReasonCode) {
 		return storage.ErrTransitionInput
 	}
 	return nil
-}
-
-func validModeratorID(value string) bool {
-	for index := 0; index < len(value); index++ {
-		character := value[index]
-		if (character >= 'A' && character <= 'Z') ||
-			(character >= 'a' && character <= 'z') ||
-			(character >= '0' && character <= '9') {
-			continue
-		}
-		if index > 0 && (character == '@' || character == '.' ||
-			character == '_' || character == ':' || character == '+' ||
-			character == '-') {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 func validReasonCode(value string) bool {

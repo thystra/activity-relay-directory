@@ -247,7 +247,7 @@ func lifecycleTestHTTPHandler(
 	}
 	cfg := config.Config{
 		PublicBaseURL:       "https://directory.example",
-		RegistrationEnabled: true,
+		LifecycleEnabled:    true,
 		MaxRequestBodyBytes: maximum,
 	}
 	return NewHandlerWithLifecycle(
@@ -255,6 +255,7 @@ func lifecycleTestHTTPHandler(
 		"test-version",
 		func(context.Context) error { return nil },
 		lifecycle,
+		func(context.Context) (bool, error) { return true, nil },
 	), replayStore
 }
 
@@ -329,14 +330,14 @@ func TestLifecycleRoutesComposeVerificationAdmissionAndPersistence(t *testing.T)
 	}
 }
 
-func TestLifecycleRegisterRouteAcceptsNormativeSignatureFixture(t *testing.T) {
+func TestLifecycleRegisterRouteAcceptsActivityRelayClientFixture(t *testing.T) {
 	fixtureBytes, err := os.ReadFile(filepath.Join(
 		"..",
 		"..",
 		"testdata",
 		"directory",
 		"v1",
-		"rfc9421-register.valid.json",
+		"activity-relay-register.valid.json",
 	))
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
@@ -359,6 +360,10 @@ func TestLifecycleRegisterRouteAcceptsNormativeSignatureFixture(t *testing.T) {
 	}
 	if err := json.Unmarshal(fixtureBytes, &fixture); err != nil {
 		t.Fatalf("decode fixture: %v", err)
+	}
+	fixtureNow, err := http.ParseTime(fixture.Date)
+	if err != nil {
+		t.Fatalf("parse fixture date: %v", err)
 	}
 	block, trailing := pem.Decode([]byte(fixture.PublicKeyPEM))
 	if block == nil || len(trailing) != 0 || block.Type != "PUBLIC KEY" {
@@ -386,7 +391,7 @@ func TestLifecycleRegisterRouteAcceptsNormativeSignatureFixture(t *testing.T) {
 	verifier, err := v1.NewRFC9421Verifier(v1.RFC9421VerifierOptions{
 		Authority:   fixture.Authority,
 		KeyResolver: resolver,
-		Now:         func() time.Time { return lifecycleTestNow },
+		Now:         func() time.Time { return fixtureNow },
 	})
 	if err != nil {
 		t.Fatalf("NewRFC9421Verifier() error = %v", err)
@@ -438,14 +443,14 @@ func TestLifecycleRoutesFailClosedWhenUnavailable(t *testing.T) {
 	for _, handler := range []http.Handler{
 		testHandler(),
 		NewHandlerWithLifecycle(config.Config{
-			PublicBaseURL:       "https://directory.example",
-			RegistrationEnabled: true,
-		}, "test-version", func(context.Context) error { return nil }, nil),
+			PublicBaseURL:    "https://directory.example",
+			LifecycleEnabled: true,
+		}, "test-version", func(context.Context) error { return nil }, nil, nil),
 	} {
 		request := httptest.NewRequest(http.MethodPost, v1.RegisterEndpointPath, bytes.NewBufferString("private-body"))
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		assertProtocolError(t, response, http.StatusServiceUnavailable, v1.ErrorRegistrationUnavailable)
+		assertProtocolError(t, response, http.StatusServiceUnavailable, v1.ErrorLifecycleUnavailable)
 		if bytes.Contains(response.Body.Bytes(), []byte("private-body")) {
 			t.Fatalf("unavailable response disclosed body: %q", response.Body.String())
 		}
@@ -644,7 +649,8 @@ func TestLifecycleStorageErrorsAndOutcomes(t *testing.T) {
 		status  int
 		code    v1.ErrorCode
 	}{
-		{"absent", storage.ErrRelayAbsent, "", http.StatusBadRequest, v1.ErrorInvalidRequest},
+		{"absent", storage.ErrRelayAbsent, "", http.StatusConflict, v1.ErrorRelayNotRegistered},
+		{"enrollment closed", storage.ErrEnrollmentClosed, "", http.StatusForbidden, v1.ErrorEnrollmentClosed},
 		{"suspended", storage.ErrRelaySuspended, "", http.StatusForbidden, v1.ErrorRelaySuspended},
 		{"storage", storage.ErrStorageFailure, "", http.StatusInternalServerError, v1.ErrorInternal},
 		{"invalid outcome", nil, v1.OutcomeRecorded, http.StatusInternalServerError, v1.ErrorInternal},
@@ -683,8 +689,11 @@ func TestLifecycleStatusReportsAvailabilityOnlyWithCompleteEnabledGraph(t *testi
 	if err := json.Unmarshal(response.Body.Bytes(), &document); err != nil {
 		t.Fatalf("decode status: %v", err)
 	}
-	if document["registration_available"] != true {
-		t.Fatalf("registration_available = %#v", document["registration_available"])
+	if document["lifecycle_available"] != true {
+		t.Fatalf("lifecycle_available = %#v", document["lifecycle_available"])
+	}
+	if document["enrollment_open"] != true {
+		t.Fatalf("enrollment_open = %#v", document["enrollment_open"])
 	}
 }
 

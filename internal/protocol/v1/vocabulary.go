@@ -99,7 +99,9 @@ const (
 	ErrorUnsupportedProtocolVersion ErrorCode = "unsupported_protocol_version"
 	ErrorAuthenticationFailed       ErrorCode = "authentication_failed"
 	ErrorReplayDetected             ErrorCode = "replay_detected"
-	ErrorRegistrationUnavailable    ErrorCode = "registration_unavailable"
+	ErrorLifecycleUnavailable       ErrorCode = "lifecycle_unavailable"
+	ErrorEnrollmentClosed           ErrorCode = "enrollment_closed"
+	ErrorRelayNotRegistered         ErrorCode = "relay_not_registered"
 	ErrorRelaySuspended             ErrorCode = "relay_suspended"
 	ErrorRateLimited                ErrorCode = "rate_limited"
 	ErrorInternal                   ErrorCode = "internal_error"
@@ -112,7 +114,9 @@ func (code ErrorCode) Valid() bool {
 		ErrorUnsupportedProtocolVersion,
 		ErrorAuthenticationFailed,
 		ErrorReplayDetected,
-		ErrorRegistrationUnavailable,
+		ErrorLifecycleUnavailable,
+		ErrorEnrollmentClosed,
+		ErrorRelayNotRegistered,
 		ErrorRelaySuspended,
 		ErrorRateLimited,
 		ErrorInternal:

@@ -1,16 +1,97 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
 	storage "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
+
+func TestAdminEnrollmentCLIStatusOpenCloseAndAudit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+	now := func() time.Time { return time.Unix(100, 0) }
+	run := func(arguments ...string) (int, string, string) {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		code := runAdmin(arguments, &stdout, &stderr, now)
+		return code, stdout.String(), stderr.String()
+	}
+
+	code, stdout, stderr := run(
+		"activity-relay-directory", "admin", "enrollment", "status",
+	)
+	if code != 0 || stdout != "closed\n" || stderr != "" {
+		t.Fatalf("status = (%d, %q, %q)", code, stdout, stderr)
+	}
+	code, stdout, stderr = run(
+		"activity-relay-directory", "admin", "enrollment", "open",
+		"--operator", "operator@example.org",
+	)
+	if code != 0 || stdout != "opened\n" || stderr != "" {
+		t.Fatalf("open = (%d, %q, %q)", code, stdout, stderr)
+	}
+	code, stdout, stderr = run(
+		"activity-relay-directory", "admin", "enrollment", "open",
+		"--operator", "operator@example.org",
+	)
+	if code != 0 || stdout != "already_open\n" || stderr != "" {
+		t.Fatalf("idempotent open = (%d, %q, %q)", code, stdout, stderr)
+	}
+	code, stdout, stderr = run(
+		"activity-relay-directory", "admin", "enrollment", "close",
+		"--operator", "operator@example.org",
+	)
+	if code != 0 || stdout != "closed\n" || stderr != "" {
+		t.Fatalf("close = (%d, %q, %q)", code, stdout, stderr)
+	}
+
+	database, err := initializeDatabase(context.Background(), path)
+	if err != nil {
+		t.Fatalf("initializeDatabase() error = %v", err)
+	}
+	defer database.Close()
+	var eventCount, open int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM enrollment_events`).Scan(&eventCount); err != nil {
+		t.Fatalf("count enrollment events: %v", err)
+	}
+	if err := database.QueryRow(
+		`SELECT enrollment_open FROM directory_policy WHERE singleton = 1`,
+	).Scan(&open); err != nil {
+		t.Fatalf("read enrollment policy: %v", err)
+	}
+	if eventCount != 3 || open != 0 {
+		t.Fatalf("enrollment state = events:%d open:%d", eventCount, open)
+	}
+}
+
+func TestAdminEnrollmentCLIRejectsInvalidInvocationWithoutOpeningDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+	for _, arguments := range [][]string{
+		{"activity-relay-directory", "admin"},
+		{"activity-relay-directory", "admin", "enrollment", "open"},
+		{"activity-relay-directory", "admin", "enrollment", "open", "--operator", "bad operator"},
+		{"activity-relay-directory", "admin", "enrollment", "status", "--operator", "operator"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := runAdmin(arguments, &stdout, &stderr, func() time.Time { return time.Unix(100, 0) })
+		if code != 2 || stdout.Len() != 0 || strings.TrimSpace(stderr.String()) == "" {
+			t.Fatalf("runAdmin(%q) = (%d, %q, %q)", arguments, code, stdout.String(), stderr.String())
+		}
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid invocation created database: %v", err)
+	}
+}
 
 func TestInitializeDatabaseCreatesCurrentSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "directory.sqlite")
@@ -76,7 +157,7 @@ func TestInitializeDatabaseHonorsCanceledContext(t *testing.T) {
 
 func TestInitializeLifecycleIsDisabledWithoutConstructingDependencies(t *testing.T) {
 	runtime, err := initializeLifecycle(config.Config{
-		RegistrationEnabled: false,
+		LifecycleEnabled: false,
 	}, nil)
 	if err != nil || runtime != nil {
 		t.Fatalf("initializeLifecycle(disabled) = (%#v, %v)", runtime, err)
@@ -86,7 +167,7 @@ func TestInitializeLifecycleIsDisabledWithoutConstructingDependencies(t *testing
 func TestInitializeLifecycleFailsClosedWithoutEnabledStorage(t *testing.T) {
 	runtime, err := initializeLifecycle(config.Config{
 		PublicBaseURL:       "https://directory.example",
-		RegistrationEnabled: true,
+		LifecycleEnabled:    true,
 		MaxRequestBodyBytes: 64 * 1024,
 	}, nil)
 	if runtime != nil || err == nil {
@@ -106,7 +187,7 @@ func TestInitializeLifecycleBuildsCompleteEnabledGraph(t *testing.T) {
 
 	runtime, err := initializeLifecycle(config.Config{
 		PublicBaseURL:        "https://directory.example",
-		RegistrationEnabled:  true,
+		LifecycleEnabled:     true,
 		MaxRequestBodyBytes:  64 * 1024,
 		TrustedProxyPrefixes: nil,
 	}, database)

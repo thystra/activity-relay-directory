@@ -24,7 +24,7 @@ type Config struct {
 	ListenAddress        string
 	PublicBaseURL        string
 	DatabasePath         string
-	RegistrationEnabled  bool
+	LifecycleEnabled     bool
 	MaxRequestBodyBytes  int64
 	TrustedProxyPrefixes []netip.Prefix
 }
@@ -35,19 +35,24 @@ func Load() (Config, error) {
 		ListenAddress:       envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
 		PublicBaseURL:       strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
 		DatabasePath:        strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
-		RegistrationEnabled: false,
+		LifecycleEnabled:    false,
 		MaxRequestBodyBytes: defaultMaxRequestBodyBytes,
 	}
 
-	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_REGISTRATION_ENABLED")); raw != "" {
+	if strings.TrimSpace(os.Getenv("DIRECTORY_REGISTRATION_ENABLED")) != "" {
+		return Config{}, errors.New(
+			"DIRECTORY_REGISTRATION_ENABLED was renamed to DIRECTORY_LIFECYCLE_ENABLED",
+		)
+	}
+	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_LIFECYCLE_ENABLED")); raw != "" {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, fmt.Errorf(
-				"DIRECTORY_REGISTRATION_ENABLED must be a boolean: %w",
+				"DIRECTORY_LIFECYCLE_ENABLED must be a boolean: %w",
 				err,
 			)
 		}
-		cfg.RegistrationEnabled = value
+		cfg.LifecycleEnabled = value
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_MAX_REQUEST_BODY_BYTES")); raw != "" {
@@ -76,6 +81,32 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
+// LoadDatabasePath reads and validates the only process setting required by
+// local administrative commands. It deliberately does not require a public
+// URL or listener configuration.
+func LoadDatabasePath() (string, error) {
+	path := strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH"))
+	if err := ValidateDatabasePath(path); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// ValidateDatabasePath applies the shared local SQLite path policy.
+func ValidateDatabasePath(path string) error {
+	if path == "" {
+		return errors.New("DIRECTORY_DATABASE_PATH is required")
+	}
+	if !filepath.IsAbs(path) ||
+		filepath.Clean(path) != path ||
+		strings.ContainsRune(path, '\x00') {
+		return errors.New(
+			"DIRECTORY_DATABASE_PATH must be a clean absolute path",
+		)
+	}
+	return nil
+}
+
 // Validate checks security-sensitive and operational configuration.
 func (cfg Config) Validate() error {
 	if _, err := net.ResolveTCPAddr("tcp", cfg.ListenAddress); err != nil {
@@ -85,15 +116,8 @@ func (cfg Config) Validate() error {
 	if cfg.PublicBaseURL == "" {
 		return errors.New("DIRECTORY_PUBLIC_BASE_URL is required")
 	}
-	if cfg.DatabasePath == "" {
-		return errors.New("DIRECTORY_DATABASE_PATH is required")
-	}
-	if !filepath.IsAbs(cfg.DatabasePath) ||
-		filepath.Clean(cfg.DatabasePath) != cfg.DatabasePath ||
-		strings.ContainsRune(cfg.DatabasePath, '\x00') {
-		return errors.New(
-			"DIRECTORY_DATABASE_PATH must be a clean absolute path",
-		)
+	if err := ValidateDatabasePath(cfg.DatabasePath); err != nil {
+		return err
 	}
 
 	parsed, err := url.Parse(cfg.PublicBaseURL)
@@ -122,9 +146,9 @@ func (cfg Config) Validate() error {
 	default:
 		return errors.New("DIRECTORY_PUBLIC_BASE_URL must use HTTP or HTTPS")
 	}
-	if cfg.RegistrationEnabled && parsed.Scheme != "https" {
+	if cfg.LifecycleEnabled && parsed.Scheme != "https" {
 		return errors.New(
-			"DIRECTORY_REGISTRATION_ENABLED requires an HTTPS public base URL",
+			"DIRECTORY_LIFECYCLE_ENABLED requires an HTTPS public base URL",
 		)
 	}
 

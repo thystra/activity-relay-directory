@@ -62,6 +62,9 @@ func run(arguments []string) int {
 		fmt.Println(buildinfo.Version)
 		return 0
 	}
+	if len(arguments) >= 2 && arguments[1] == "admin" {
+		return runAdmin(arguments, os.Stdout, os.Stderr, time.Now)
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	slog.SetDefault(logger)
@@ -121,6 +124,13 @@ func run(arguments []string) int {
 				return storage.CheckReady(ctx, database)
 			},
 			lifecycleHandler,
+			func(ctx context.Context) (bool, error) {
+				repository, err := storage.NewRelayRepository(database)
+				if err != nil {
+					return false, err
+				}
+				return repository.EnrollmentOpen(ctx)
+			},
 		),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -144,8 +154,8 @@ func run(arguments []string) int {
 		"directory service starting",
 		"address", cfg.ListenAddress,
 		"public_base_url", cfg.PublicBaseURL,
-		"registration_enabled", cfg.RegistrationEnabled,
-		"registration_available", lifecycleHandler != nil,
+		"lifecycle_enabled", cfg.LifecycleEnabled,
+		"lifecycle_available", lifecycleHandler != nil,
 		"database_schema_version", storage.CurrentSchemaVersion,
 		"version", buildinfo.Version,
 	)
@@ -169,7 +179,7 @@ func initializeLifecycle(
 	cfg config.Config,
 	database *sql.DB,
 ) (*lifecycleRuntime, error) {
-	if !cfg.RegistrationEnabled {
+	if !cfg.LifecycleEnabled {
 		return nil, nil
 	}
 	if database == nil {
