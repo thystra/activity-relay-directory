@@ -94,3 +94,6 @@ Remaining components will be added behind explicit contracts:
 3. public JSON and human-readable directory views;
 4. bounded retention policy;
 5. Activity-Relay client integration and soak testing.
+
+`TODO.md` defines the dependency order, cross-repository ownership, review
+tranches, and acceptance gates for these components.

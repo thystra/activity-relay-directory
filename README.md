@@ -19,11 +19,11 @@ This repository currently provides a conservative service scaffold only:
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
 - stateless RFC 9421 directory-request verification contracts and fixture
 - atomic opaque-key replay-store contract and concurrency-tested reference
-- strict authenticated registration-request contract without a public handler
-- strict authenticated heartbeat-request contract without liveness storage
+- strict authenticated registration requests with audited handler persistence
+- strict authenticated heartbeat requests with server-owned liveness storage
 - strict authenticated unregister-request contract without state deletion
 - startup SQLite migration and database-backed readiness checks
-- atomic register, heartbeat, and unregister state transitions without handlers
+- atomic register, heartbeat, and unregister state transitions behind handlers
 - atomic administrative suspend and restore transitions with private bounded
   audit records, without an operator surface
 - durable opaque replay reservations with bounded expiry cleanup
@@ -46,7 +46,8 @@ checks, and audited SQLite transitions. See `docs/HANDLERS.md`,
 `docs/PERSISTENCE.md`, `docs/MODERATION.md`, `docs/RESOLUTION.md`, and
 `docs/ADMISSION.md`. Public listings, operator moderation transport, health
 classification, pruning, and Activity-Relay client integration remain later
-work.
+work. Their dependency order, review tranches, and completion gates are tracked
+in `TODO.md`.
 
 ## Privacy boundary
 
