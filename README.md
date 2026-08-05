@@ -26,18 +26,21 @@ This repository currently provides a conservative service scaffold only:
 - durable opaque replay reservations with bounded expiry cleanup
 - bounded SSRF-resistant ActivityPub actor and signing-key resolution without
   handler wiring
+- bounded two-stage source, authenticated-actor, and concurrency admission
+  without handler wiring
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until resolver
-composition, moderation, rate limits, handler composition, and the remaining
+composition, moderation, admission wiring, handler composition, and the remaining
 request gates are implemented. The process opens and migrates a single-node
 SQLite database before listening; dormant repositories can apply audited
 lifecycle transitions and durable opaque replay reservations, but no public
 request handler calls them. The actor resolver is also dormant and no runtime
 component initiates actor retrieval. See `docs/PERSISTENCE.md` and
-`docs/RESOLUTION.md`.
+`docs/RESOLUTION.md`. The dormant in-memory admission policy is documented in
+`docs/ADMISSION.md`.
 
 ## Privacy boundary
 

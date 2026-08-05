@@ -22,8 +22,8 @@ that downgrade requires restoration of the matching pre-upgrade backup.
 
 Before replay-protected handlers are released, validate duplicate suppression
 across restart and supported service topology, expiry-boundary replacement,
-bounded cleanup scheduling, failure rollback, and rate policy under sustained
-unique traffic.
+bounded cleanup scheduling, failure rollback, and the reviewed admission policy
+under sustained unique traffic.
 
 Before actor resolution is wired or released, compare the prohibited-address
 policy with the current IANA IPv4 and IPv6 special-purpose registries. Validate

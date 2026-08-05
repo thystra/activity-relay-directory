@@ -33,6 +33,9 @@
 
     RequestHeader set X-Forwarded-Proto "https"
     RequestHeader set X-Forwarded-Port "443"
+    # Overwrite any client-supplied value with the connection peer. The
+    # directory may trust this only when Apache's own peer address is trusted.
+    RequestHeader set X-Real-IP "expr=%{CONN_REMOTE_ADDR}"
 
     Header always set X-Content-Type-Options "nosniff"
     Header always set Referrer-Policy "no-referrer"

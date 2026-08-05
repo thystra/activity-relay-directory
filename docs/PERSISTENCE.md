@@ -129,10 +129,11 @@ Cleanup and insertion share one transaction, so an insertion failure restores
 any rows selected for cleanup.
 
 Expired rows may remain harmlessly when no requests or maintenance calls occur;
-they never become valid again. Before handlers are enabled, rate policy and a
-bounded maintenance schedule must be reviewed so sustained unique traffic
-cannot create an operational storage backlog. The store remains dormant and is
-not passed to the request verifier in this tranche.
+they never become valid again. Before handlers are enabled, the dormant
+admission policy must be composed with a bounded maintenance schedule so
+sustained unique traffic cannot create an operational storage backlog. The
+store remains dormant and is not passed to the request verifier in this
+tranche.
 
 ## Migrations
 

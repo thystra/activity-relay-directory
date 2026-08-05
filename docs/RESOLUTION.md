@@ -85,7 +85,9 @@ and parser failures are not exposed to request clients.
 
 ## Remaining gates
 
-Before handler composition, the project still requires reviewed source and
-actor rate policy, concurrency admission, bounded cache behavior, moderation,
-durable replay scheduling, public error/status mapping, and complete handler
-tests. The resolver by itself does not authorize registration or deployment.
+The dormant policy in `docs/ADMISSION.md` now provides bounded source and
+authenticated-actor buckets plus global concurrency admission. Before handler
+composition, the project still requires their runtime configuration and exact
+ordering with this resolver, bounded cache behavior, moderation, durable replay
+scheduling, public error/status mapping, and complete handler tests. Neither
+component authorizes registration or deployment.

@@ -39,8 +39,17 @@ authority used for verification.
 The examples preserve the incoming host and forward the original request path.
 Do not add a path suffix to Nginx `proxy_pass`, change Apache's mapping, or
 override Caddy's upstream `Host` without repeating signature compatibility
-tests. Forwarded headers are not an authentication boundary and must not be
-trusted from arbitrary clients.
+tests.
+
+The examples also overwrite `X-Real-IP` from their connection metadata. The
+dormant source resolver accepts that field only when the direct socket peer is
+an explicitly trusted proxy; otherwise it ignores all forwarding fields. It
+does not use appendable `Forwarded` or `X-Forwarded-For` chains as a security
+identity. Prefer trusting only the exact local proxy addresses
+`127.0.0.1/32` and, when used, `::1/128`. Do not trust a whole LAN merely to
+permit LAN clients: private client addresses are already valid sources. Nested
+proxies or CDNs require a separately reviewed trust chain. See
+`docs/ADMISSION.md`.
 
 ## Nginx
 

@@ -123,6 +123,18 @@ Review the IANA special-purpose address registries before changing or releasing
 the address policy. Resolver construction and tests do not authorize verifier
 wiring, request handlers, registration availability, or deployment.
 
+Request admission must derive direct peers through
+`internal/admission.SourceResolver`; forwarding fields are never trusted from
+an unconfigured peer. Trusted prefixes identify exact proxies rather than
+allowed clients, and trusted proxies must overwrite one `X-Real-IP` value.
+Apply `Limiter.AdmitSource` before expensive resolution or signature work and
+`Permit.AdmitActor` exactly once, only after authenticated actor binding, and
+only for the same exact-route operation. Preserve closed operation-specific buckets, fixed
+source/actor capacity, bounded oldest-idle
+cleanup, nondecreasing time, global concurrency permits, idempotent release,
+and redacted decisions. Admission construction does not authorize handler
+wiring, registration availability, or deployment.
+
 When changing a reverse-proxy example, validate it with the corresponding
 Nginx, Apache HTTP Server, or Caddy release. Examples must preserve the public
 host and request target, remain optional, and must not install, enable, reload,

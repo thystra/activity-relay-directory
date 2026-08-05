@@ -5,8 +5,8 @@
 Version 1 vocabulary and JSON message shapes are defined here and in
 `testdata/directory/v1/`. They are contract fixtures, not active HTTP APIs.
 Registration remains unavailable until the implemented URL, signature, replay,
-persistence, and resolver components are composed with reviewed transport,
-moderation, and rate-limit gates.
+persistence, resolver, and admission components are composed with reviewed
+transport, moderation, and handler gates.
 
 ## Versioning and encoding
 
@@ -186,7 +186,7 @@ that the actor is registered or administratively active, record liveness, or
 produce the `recorded` outcome. The dormant state repository now enforces an
 existing active registration, rejects suspension, and records server-side
 acceptance time atomically with a `heartbeat_recorded` event. Handler wiring,
-moderation operations, durable replay composition, and rate policy remain later
+moderation operations, durable replay composition, and admission wiring remain later
 gates.
 Liveness recency must never use a client-supplied signature timestamp.
 
@@ -217,6 +217,27 @@ No unregister handler is connected to the HTTP server.
 Replay rejection and state-based idempotence are distinct. Reusing a nonce is
 an error. Repeating an already completed operation with a fresh valid signature
 returns the current state without duplicating it.
+
+## Request admission contract
+
+The dormant in-memory admission component derives the client source from the
+direct socket peer and accepts an overwritten `X-Real-IP` only from an
+explicitly trusted proxy. Trusted prefixes name proxies rather than permitted
+clients, so private and LAN client addresses are valid sources. Appendable
+forwarding chains are ignored for the version 1 security identity.
+
+Operation-specific source buckets and a global concurrency ceiling are applied
+before expensive actor resolution or signature work. Only after successful
+signature verification and canonical actor binding may the active source
+permit allocate and consume an operation-specific actor bucket. Source state,
+authenticated-actor state, cleanup work, and concurrent work are all bounded;
+capacity and limit exhaustion fail closed with fixed decisions and retry
+guidance. See `docs/ADMISSION.md`.
+
+The component is not wired to HTTP. Future handlers will map policy rejection
+to the closed `rate_limited` code and HTTP 429, with bounded response text and
+an optional `Retry-After`. Exact HTTP mapping remains unavailable until that
+handler tranche is reviewed.
 
 ## Outcomes
 
