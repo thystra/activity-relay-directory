@@ -23,6 +23,8 @@ This repository currently provides a conservative service scaffold only:
 - strict authenticated unregister-request contract without state deletion
 - startup SQLite migration and database-backed readiness checks
 - atomic register, heartbeat, and unregister state transitions without handlers
+- atomic administrative suspend and restore transitions with private bounded
+  audit records, without an operator surface
 - durable opaque replay reservations with bounded expiry cleanup
 - bounded SSRF-resistant ActivityPub actor and signing-key resolution with a
   success-only key cache, without handler wiring
@@ -33,14 +35,14 @@ The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until resolver
-composition, moderation, admission wiring, handler composition, and the remaining
-request gates are implemented. The process opens and migrates a single-node
+composition, operator moderation wiring, admission wiring, handler composition,
+and the remaining request gates are implemented. The process opens and migrates a single-node
 SQLite database before listening; dormant repositories can apply audited
-lifecycle transitions and durable opaque replay reservations, but no public
-request handler calls them. The actor resolver is also dormant and no runtime
-component initiates actor retrieval. See `docs/PERSISTENCE.md` and
-`docs/RESOLUTION.md`. The dormant in-memory admission policy is documented in
-`docs/ADMISSION.md`.
+lifecycle and moderation transitions and durable opaque replay reservations,
+but no public or operator request handler calls them. The actor resolver is
+also dormant and no runtime component initiates actor retrieval. See
+`docs/PERSISTENCE.md`, `docs/MODERATION.md`, and `docs/RESOLUTION.md`. The
+dormant in-memory admission policy is documented in `docs/ADMISSION.md`.
 
 ## Privacy boundary
 

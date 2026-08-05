@@ -20,6 +20,12 @@ supported schema version, backup restoration, and refusal of drifted or future
 schemas. Release notes must identify the resulting schema version and state
 that downgrade requires restoration of the matching pre-upgrade backup.
 
+Schema version 2 adds private append-only moderation events. Before releasing
+it, verify version 1-to-2 upgrade preservation, atomic state/event rollback,
+idempotent suspend and restore concurrency, audit backup restoration, and that
+moderator and reason tokens are absent from public output. An operator CLI or
+administrative transport requires its own authorization and audit review.
+
 Before replay-protected handlers are released, validate duplicate suppression
 across restart and supported service topology, expiry-boundary replacement,
 bounded cleanup scheduling, failure rollback, and the reviewed admission policy

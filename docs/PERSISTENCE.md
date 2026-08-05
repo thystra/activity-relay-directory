@@ -44,7 +44,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Version 1 schema
+## Schema version 2
 
 The initial migration creates four owned tables:
 
@@ -55,6 +55,10 @@ The initial migration creates four owned tables:
   their reservation window; and
 - `relay_events` records a minimal append-only lifecycle audit trail.
 
+Migration 2 adds `moderation_events`, a private append-only audit trail for
+bounded suspend and restore decisions. It upgrades a version 1 database without
+changing retained relay, lifecycle-event, or replay-reservation rows.
+
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
 independent of lifecycle state. Database constraints reject contradictory
@@ -62,9 +66,10 @@ state and timestamp combinations.
 
 Audit events intentionally have no foreign key to the current relay row. This
 permits an idempotent `unregister_absent` event and preserves history across
-later state transitions. Updates and deletes are rejected by database
-triggers. A future retention policy must use a reviewed migration rather than
-bypassing those triggers.
+later state transitions. Moderation events likewise remain independently
+retained. Updates and deletes are rejected by database triggers. A future
+retention policy must use a reviewed migration rather than bypassing those
+triggers.
 
 The schema contains no connected-site identities, followers, user identities,
 raw request bodies, raw nonces, or signing key IDs.
@@ -96,15 +101,47 @@ may each receive an audit event but never create or duplicate relay state.
 Unregister remains permitted for a suspended relay and preserves its suspension
 timestamp and audit history.
 
-Acceptance time must be at or after both the actor's current state time and its
-latest event time. This prevents a clock regression from silently moving state
-or audit history backward. Backend failures remain wrapped in a stable internal
-class; public handlers must map that class without exposing database details.
+Acceptance time must be at or after the actor's current state time and its
+latest lifecycle or moderation event time. This prevents a clock regression
+from silently moving state or audit history backward. Backend failures remain
+wrapped in a stable internal class; public handlers must map that class without
+exposing database details.
 
 The repository does not authenticate, resolve, rate-limit, or authorize an
 intent. A future handler may call it only after strict body and target parsing,
 safe actor/key resolution, signature and actor binding, durable replay
 reservation, moderation gates, and server acceptance-time capture.
+
+## Administrative moderation transitions
+
+`internal/storage.ModerationRepository` defines dormant operator-owned
+`Suspend` and `Restore` transitions. Both require an existing retained relay
+row. An unknown relay returns the internal absent class and creates no state or
+audit record; this deliberately does not implement a preemptive blocklist.
+
+Suspend changes only administrative state, suspension time, and state-update
+time. It does not alter lifecycle state, registration metadata, or heartbeat
+recency. Restore clears suspension without registering an unregistered relay.
+Unregister remains permitted while suspended and continues to preserve the
+administrative decision.
+
+Each accepted operator decision records one private event, including a repeated
+decision that leaves state unchanged. Applied and unchanged outcomes are closed
+internal vocabulary rather than version 1 public protocol outcomes. A changed
+state and its event commit in one immediate transaction; an event failure rolls
+the state change back.
+
+The audit record stores the canonical relay actor, action, server acceptance
+time, a 128-byte maximum moderator identifier, and a 64-byte maximum reason
+code. Moderator identifiers start with an ASCII alphanumeric character and
+otherwise permit only ASCII alphanumerics plus `@._:+-`. Reason codes start
+with a lowercase ASCII letter and otherwise permit lowercase letters, digits,
+underscore, and hyphen. They are classification tokens, not free-form notes.
+Neither value may appear in public responses or listings.
+
+There is no moderation HTTP endpoint, operator CLI, or runtime wiring in this
+tranche. See `docs/MODERATION.md` for the reviewed boundary and the remaining
+operator-surface work.
 
 ## Durable replay reservations
 

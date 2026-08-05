@@ -12,18 +12,24 @@ import (
 )
 
 const (
-	maximumRelayActorBytes  = 4096
-	maximumPublicBaseBytes  = 2048
-	lifecycleRegistered     = "registered"
-	lifecycleUnregistered   = "unregistered"
-	administrativeActive    = "active"
-	administrativeSuspended = "suspended"
-	eventRegisterCreated    = "register_created"
-	eventRegisterUpdated    = "register_updated"
-	eventRegisterUnchanged  = "register_unchanged"
-	eventHeartbeatRecorded  = "heartbeat_recorded"
-	eventUnregisterRemoved  = "unregister_removed"
-	eventUnregisterAbsent   = "unregister_absent"
+	maximumRelayActorBytes     = 4096
+	maximumPublicBaseBytes     = 2048
+	maximumModeratorIDBytes    = 128
+	maximumReasonCodeBytes     = 64
+	lifecycleRegistered        = "registered"
+	lifecycleUnregistered      = "unregistered"
+	administrativeActive       = "active"
+	administrativeSuspended    = "suspended"
+	eventRegisterCreated       = "register_created"
+	eventRegisterUpdated       = "register_updated"
+	eventRegisterUnchanged     = "register_unchanged"
+	eventHeartbeatRecorded     = "heartbeat_recorded"
+	eventUnregisterRemoved     = "unregister_removed"
+	eventUnregisterAbsent      = "unregister_absent"
+	moderationSuspendApplied   = "suspend_applied"
+	moderationSuspendUnchanged = "suspend_unchanged"
+	moderationRestoreApplied   = "restore_applied"
+	moderationRestoreUnchanged = "restore_unchanged"
 )
 
 // RelayRepository applies authenticated relay lifecycle intents to SQLite.
@@ -33,6 +39,7 @@ type RelayRepository struct {
 }
 
 var _ storage.RelayRepository = (*RelayRepository)(nil)
+var _ storage.ModerationRepository = (*RelayRepository)(nil)
 
 // NewRelayRepository binds relay state transitions to a migrated database.
 func NewRelayRepository(database *sql.DB) (*RelayRepository, error) {
@@ -351,6 +358,19 @@ func requireMonotonicTime(
 	if latestEvent.Valid && latestEvent.Int64 > latest {
 		latest = latestEvent.Int64
 	}
+	var latestModeration sql.NullInt64
+	if err := transaction.QueryRowContext(
+		ctx,
+		`SELECT MAX(recorded_at_unix)
+		 FROM moderation_events
+		 WHERE relay_actor = ?`,
+		relayActor,
+	).Scan(&latestModeration); err != nil {
+		return storageFailure("read moderation event time", err)
+	}
+	if latestModeration.Valid && latestModeration.Int64 > latest {
+		latest = latestModeration.Int64
+	}
 	if acceptedUnix < latest {
 		return storage.ErrTransitionTime
 	}
@@ -405,6 +425,60 @@ func validateIdentityIntent(intent storage.IdentityIntent) error {
 		return storage.ErrTransitionInput
 	}
 	return nil
+}
+
+func validateModerationIntent(intent storage.ModerationIntent) error {
+	if err := validateIdentityIntent(storage.IdentityIntent{
+		RelayActor: intent.RelayActor,
+	}); err != nil {
+		return err
+	}
+	if len(intent.ModeratorID) == 0 ||
+		len(intent.ModeratorID) > maximumModeratorIDBytes ||
+		!validModeratorID(intent.ModeratorID) ||
+		len(intent.ReasonCode) == 0 ||
+		len(intent.ReasonCode) > maximumReasonCodeBytes ||
+		!validReasonCode(intent.ReasonCode) {
+		return storage.ErrTransitionInput
+	}
+	return nil
+}
+
+func validModeratorID(value string) bool {
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if (character >= 'A' && character <= 'Z') ||
+			(character >= 'a' && character <= 'z') ||
+			(character >= '0' && character <= '9') {
+			continue
+		}
+		if index > 0 && (character == '@' || character == '.' ||
+			character == '_' || character == ':' || character == '+' ||
+			character == '-') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validReasonCode(value string) bool {
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if index == 0 {
+			if character < 'a' || character > 'z' {
+				return false
+			}
+			continue
+		}
+		if (character >= 'a' && character <= 'z') ||
+			(character >= '0' && character <= '9') ||
+			character == '_' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func transitionUnix(acceptedAt time.Time) (int64, error) {

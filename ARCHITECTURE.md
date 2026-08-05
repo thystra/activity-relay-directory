@@ -34,8 +34,9 @@ gate.
 
 The first persistence foundation is an embedded SQLite migration set for one
 active directory process on one host. It defines strict relay lifecycle and
-administrative state, opaque replay reservations, and append-only lifecycle
-events. Migration history is transactional and content-hashed so drift,
+administrative state, opaque replay reservations, and separate append-only
+lifecycle and private moderation events. Migration history is transactional
+and content-hashed so drift,
 missing history, and databases newer than the binary fail closed. Process
 startup requires an absolute database path, applies migrations before opening
 the HTTP listener, and keeps readiness dependent on the current reachable
@@ -45,9 +46,13 @@ mutates storage. A backend-neutral repository contract and SQLite implementation
 now provide transactional register, heartbeat, and unregister outcomes with an
 append-only event in the same commit. They reject noncanonical input, regressing
 server time, absent heartbeat targets, and suspended register or heartbeat
-intents. SQLite files must remain local; multi-host service topology requires a
-later database backend rather than shared SQLite storage. See
-`docs/PERSISTENCE.md`.
+intents. A separate dormant moderation contract applies idempotent suspend and
+restore decisions only to existing retained relays, preserving lifecycle and
+registration metadata while committing private bounded audit tokens with any
+state change. It does not provide preemptive blocking, an operator CLI, or an
+HTTP endpoint. SQLite files must remain local; multi-host service topology
+requires a later database backend rather than shared SQLite storage. See
+`docs/PERSISTENCE.md` and `docs/MODERATION.md`.
 
 The SQLite replay store implements the existing RFC 9421 opaque-key interface.
 It uses the schema's 32-byte primary key for atomic duplicate suppression across
@@ -83,11 +88,11 @@ Runtime components will be added behind those explicit contracts:
 1. signed relay registration and replacement;
 2. signed daily heartbeat with bounded jitter;
 3. signed unregister;
-4. replay and duplicate suppression;
-5. moderation and suspension state;
+4. durable replay, admission, and verifier composition;
+5. authenticated operator access to moderation state;
 6. health-state calculation and pruning;
 7. public JSON and human-readable directory views;
-8. operator CLI and bounded administrative actions.
+8. bounded maintenance and retention policy.
 
 Resolver/replay/verifier wiring, transport handlers, and public registration
 remain out of scope for the initial scaffold.

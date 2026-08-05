@@ -185,9 +185,10 @@ Success establishes only an authenticated heartbeat intent. It does not prove
 that the actor is registered or administratively active, record liveness, or
 produce the `recorded` outcome. The dormant state repository now enforces an
 existing active registration, rejects suspension, and records server-side
-acceptance time atomically with a `heartbeat_recorded` event. Handler wiring,
-moderation operations, durable replay composition, and admission wiring remain later
-gates.
+acceptance time atomically with a `heartbeat_recorded` event. Dormant
+administrative transitions can apply or clear suspension for an existing
+retained relay. Handler wiring, operator transport, durable replay composition,
+and admission wiring remain later gates.
 Liveness recency must never use a client-supplied signature timestamp.
 
 No heartbeat handler is connected to the HTTP server.
@@ -283,6 +284,9 @@ Threshold durations remain operator configuration and are not encoded in these
 names. Administrative state is separately `active` or `suspended`.
 `suspended` overrides automatic health and listing decisions. Reaching `prune`
 does not erase moderation or audit history without a separate explicit policy.
+Administrative transition outcomes and their moderator and reason tokens are
+private storage vocabulary. They are not version 1 operations, outcomes, or
+public response fields; no moderation HTTP target is defined in this document.
 
 ## Fixtures
 

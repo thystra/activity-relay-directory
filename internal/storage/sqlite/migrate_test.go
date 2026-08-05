@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -42,14 +43,32 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
 	var count int
-	var name, digest string
 	if err := database.QueryRow(
-		`SELECT COUNT(*), MIN(name), MIN(sha256) FROM schema_migrations`,
-	).Scan(&count, &name, &digest); err != nil {
-		t.Fatalf("read migration row: %v", err)
+		`SELECT COUNT(*) FROM schema_migrations`,
+	).Scan(&count); err != nil {
+		t.Fatalf("count migration rows: %v", err)
 	}
-	if count != 1 || name != migrations[0].name || digest != migrations[0].sha256 {
-		t.Fatalf("migration row = (%d, %q, %q), want embedded migration", count, name, digest)
+	if count != len(migrations) {
+		t.Fatalf("migration count = %d, want %d", count, len(migrations))
+	}
+	for _, migration := range migrations {
+		var name, digest string
+		if err := database.QueryRow(
+			`SELECT name, sha256 FROM schema_migrations WHERE version = ?`,
+			migration.version,
+		).Scan(&name, &digest); err != nil {
+			t.Fatalf("read migration %d: %v", migration.version, err)
+		}
+		if name != migration.name || digest != migration.sha256 {
+			t.Fatalf(
+				"migration %d = (%q, %q), want (%q, %q)",
+				migration.version,
+				name,
+				digest,
+				migration.name,
+				migration.sha256,
+			)
+		}
 	}
 
 	for _, table := range []string{
@@ -57,6 +76,7 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 		"relays",
 		"replay_reservations",
 		"relay_events",
+		"moderation_events",
 	} {
 		assertTableExists(t, database, table)
 	}
@@ -114,6 +134,175 @@ func TestMigrateSerializesConcurrentCallers(t *testing.T) {
 	}
 	if count != CurrentSchemaVersion {
 		t.Fatalf("migration count = %d, want %d", count, CurrentSchemaVersion)
+	}
+}
+
+func TestMigrateUpgradesVersionOneWithoutChangingExistingState(t *testing.T) {
+	database := openTestDatabase(t)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations() error = %v", err)
+	}
+	if len(migrations) != 2 {
+		t.Fatalf("migration count = %d, want 2", len(migrations))
+	}
+	if _, err := database.Exec(migrationTableSQL); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	if _, err := database.Exec(migrations[0].sql); err != nil {
+		t.Fatalf("apply version 1 schema: %v", err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO schema_migrations
+		    (version, name, sha256, applied_at_unix)
+		 VALUES (?, ?, ?, ?)`,
+		migrations[0].version,
+		migrations[0].name,
+		migrations[0].sha256,
+		0,
+	); err != nil {
+		t.Fatalf("record version 1 migration: %v", err)
+	}
+	insertRelay(
+		t,
+		database,
+		testRelayActor,
+		lifecycleRegistered,
+		administrativeActive,
+		100,
+		110,
+		int64Pointer(110),
+		nil,
+		nil,
+		true,
+	)
+	if _, err := database.Exec(
+		`INSERT INTO relay_events
+		    (relay_actor, event_kind, recorded_at_unix)
+		 VALUES (?, ?, ?)`,
+		testRelayActor,
+		eventRegisterCreated,
+		100,
+	); err != nil {
+		t.Fatalf("insert version 1 relay event: %v", err)
+	}
+	replayKey := make([]byte, 32)
+	if _, err := database.Exec(
+		`INSERT INTO replay_reservations
+		    (replay_key, reserved_at_unix, expires_at_unix)
+		 VALUES (?, ?, ?)`,
+		replayKey,
+		100,
+		200,
+	); err != nil {
+		t.Fatalf("insert version 1 replay reservation: %v", err)
+	}
+	if err := CheckReady(context.Background(), database); !errors.Is(err, ErrDatabaseNotReady) {
+		t.Fatalf("CheckReady(version 1) error = %v, want ErrDatabaseNotReady", err)
+	}
+
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatalf("Migrate(version 1) error = %v", err)
+	}
+	if err := CheckReady(context.Background(), database); err != nil {
+		t.Fatalf("CheckReady(upgraded) error = %v", err)
+	}
+	relay := readTestRelay(t, database, testRelayActor)
+	if relay.lifecycleState != lifecycleRegistered ||
+		relay.administrativeState != administrativeActive ||
+		relay.updatedAtUnix != 110 || !relay.lastHeartbeat.Valid ||
+		relay.lastHeartbeat.Int64 != 110 {
+		t.Fatalf("upgraded relay = %#v", relay)
+	}
+	if got := readTestEventKinds(t, database, testRelayActor); !equalStrings(
+		got,
+		[]string{eventRegisterCreated},
+	) {
+		t.Fatalf("upgraded relay events = %#v", got)
+	}
+	var replayCount, moderationCount int
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM replay_reservations WHERE replay_key = ?`,
+		replayKey,
+	).Scan(&replayCount); err != nil {
+		t.Fatalf("count upgraded replay reservation: %v", err)
+	}
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM moderation_events`,
+	).Scan(&moderationCount); err != nil {
+		t.Fatalf("count moderation events: %v", err)
+	}
+	if replayCount != 1 || moderationCount != 0 {
+		t.Fatalf("upgraded counts = replay:%d moderation:%d", replayCount, moderationCount)
+	}
+}
+
+func TestModerationSchemaEnforcesBoundedAppendOnlyEvents(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	result, err := database.Exec(
+		`INSERT INTO moderation_events
+		    (relay_actor, action, moderator_id, reason_code, recorded_at_unix)
+		 VALUES (?, ?, ?, ?, ?)`,
+		testRelayActor,
+		moderationSuspendApplied,
+		"operator@example.org",
+		"security_review",
+		100,
+	)
+	if err != nil {
+		t.Fatalf("insert moderation event: %v", err)
+	}
+	eventID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("moderation event ID: %v", err)
+	}
+
+	invalid := []struct {
+		action      string
+		moderatorID string
+		reasonCode  string
+		recordedAt  int64
+	}{
+		{action: "other", moderatorID: "operator", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "-operator", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator name", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator/role", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "op\x00erator", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "opérator", reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: strings.Repeat("x", maximumModeratorIDBytes+1), reasonCode: "security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "Security", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "security note", recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: strings.Repeat("x", maximumReasonCodeBytes+1), recordedAt: 101},
+		{action: moderationSuspendApplied, moderatorID: "operator", reasonCode: "security", recordedAt: -1},
+	}
+	for _, test := range invalid {
+		if _, err := database.Exec(
+			`INSERT INTO moderation_events
+			    (relay_actor, action, moderator_id, reason_code, recorded_at_unix)
+			 VALUES (?, ?, ?, ?, ?)`,
+			testRelayActor,
+			test.action,
+			test.moderatorID,
+			test.reasonCode,
+			test.recordedAt,
+		); err == nil {
+			t.Fatalf("invalid moderation event was accepted: %#v", test)
+		}
+	}
+	if _, err := database.Exec(
+		`UPDATE moderation_events SET reason_code = 'changed'
+		 WHERE moderation_event_id = ?`,
+		eventID,
+	); err == nil {
+		t.Fatal("moderation event update was accepted")
+	}
+	if _, err := database.Exec(
+		`DELETE FROM moderation_events WHERE moderation_event_id = ?`,
+		eventID,
+	); err == nil {
+		t.Fatal("moderation event deletion was accepted")
 	}
 }
 
