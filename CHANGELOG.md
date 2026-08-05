@@ -31,6 +31,11 @@
   targets, redirect revalidation, bounded documents, and strict actor ownership.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
+- Local audited enrollment-policy administration commands.
+- Local `admin suspend`, `restore`, `show`, and bounded `audit` moderation
+  commands with exact confirmation, JSON output, and fixed exit classes.
+- Backend-neutral private moderation state and audit-read contracts with indexed
+  SQLite keyset pagination.
 
 ### Security
 

@@ -63,7 +63,7 @@ func run(arguments []string) int {
 		return 0
 	}
 	if len(arguments) >= 2 && arguments[1] == "admin" {
-		return runAdmin(arguments, os.Stdout, os.Stderr, time.Now)
+		return runAdminWithInput(arguments, os.Stdin, os.Stdout, os.Stderr, time.Now)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))

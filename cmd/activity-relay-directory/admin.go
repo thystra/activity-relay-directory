@@ -6,8 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/admincommand"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
@@ -16,9 +18,65 @@ import (
 const adminCommandTimeout = 30 * time.Second
 
 func runAdmin(arguments []string, stdout, stderr io.Writer, now func() time.Time) int {
-	if len(arguments) < 4 || arguments[1] != "admin" ||
-		arguments[2] != "enrollment" {
-		fmt.Fprintln(stderr, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
+	return runAdminWithInput(arguments, os.Stdin, stdout, stderr, now)
+}
+
+func runAdminWithInput(
+	arguments []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	if len(arguments) < 3 || arguments[1] != "admin" {
+		writeAdminUsage(stderr)
+		return admincommand.ExitUsage
+	}
+	if arguments[2] == "enrollment" {
+		return runEnrollmentAdmin(arguments, stdout, stderr, now)
+	}
+
+	request, err := admincommand.Parse(arguments[2:])
+	if err != nil {
+		writeAdminUsage(stderr)
+		return admincommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return admincommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return admincommand.ExitUsage
+	}
+	if err := admincommand.Confirm(request, stdin, stderr); err != nil {
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "moderation confirmation failed")
+		return admincommand.ExitUsage
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+	defer cancel()
+	database, err := initializeDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return admincommand.ExitOperational
+	}
+	defer database.Close()
+	repository, err := storageSQLite.NewRelayRepository(database)
+	if err != nil {
+		fmt.Fprintln(stderr, "moderation repository initialization failed")
+		return admincommand.ExitOperational
+	}
+	return admincommand.Execute(ctx, request, repository, stdout, stderr, now)
+}
+
+func runEnrollmentAdmin(
+	arguments []string,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	if len(arguments) < 4 {
+		writeEnrollmentUsage(stderr)
 		return 2
 	}
 	action := arguments[3]
@@ -29,7 +87,7 @@ func runAdmin(arguments []string, stdout, stderr io.Writer, now func() time.Time
 		return 2
 	}
 	if action != "status" && action != "open" && action != "close" {
-		fmt.Fprintln(stderr, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
+		writeEnrollmentUsage(stderr)
 		return 2
 	}
 	if action == "status" && *operatorID != "" {
@@ -103,4 +161,16 @@ func runAdmin(arguments []string, stdout, stderr io.Writer, now func() time.Time
 	}
 	fmt.Fprintln(stdout, outcome)
 	return 0
+}
+
+func writeAdminUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
+	fmt.Fprintln(output, "       activity-relay-directory admin suspend --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin restore --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin show --actor URL [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
+}
+
+func writeEnrollmentUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
 }

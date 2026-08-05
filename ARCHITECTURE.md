@@ -45,13 +45,17 @@ repository contract and SQLite implementation provide transactional register,
 heartbeat, and unregister outcomes with an
 append-only event in the same commit. They reject noncanonical input, regressing
 server time, absent heartbeat targets, and suspended register or heartbeat
-intents. A separate dormant moderation contract applies idempotent suspend and
-restore decisions only to existing retained relays, preserving lifecycle and
-registration metadata while committing private bounded audit tokens with any
-state change. It does not provide preemptive blocking, an operator CLI, or an
-HTTP endpoint. SQLite files must remain local; multi-host service topology
-requires a later database backend rather than shared SQLite storage. See
-`docs/PERSISTENCE.md` and `docs/MODERATION.md`.
+intents. A separate moderation contract and local command adapter apply
+idempotent suspend and restore decisions only to existing retained relays,
+preserving lifecycle and registration metadata while committing private
+bounded audit tokens with every accepted decision. Local `show` and `audit`
+reads use backend-neutral contracts and bounded SQLite keyset queries. Initial
+authorization is operating-system access to the executable and owner-only local
+database; there is no preemptive blocklist, moderation HTTP endpoint, bearer
+token, or automatically granted administrative group. SQLite files must remain
+local; multi-host service topology requires a later database backend rather
+than shared SQLite storage. See `docs/PERSISTENCE.md` and
+`docs/MODERATION.md`.
 
 The SQLite replay store implements the RFC 9421 opaque-key interface.
 It uses the schema's 32-byte primary key for atomic duplicate suppression across
@@ -90,11 +94,10 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. authenticated operator access to moderation state;
-2. health-state calculation and pruning;
-3. public JSON and human-readable directory views;
-4. bounded retention policy;
-5. Activity-Relay client integration and soak testing.
+1. health-state calculation and pruning;
+2. public JSON and human-readable directory views;
+3. bounded retention policy;
+4. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review
 tranches, and acceptance gates for these components.
