@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,9 +15,70 @@ func testHandler() http.Handler {
 	return NewHandler(config.Config{
 		ListenAddress:       "127.0.0.1:8080",
 		PublicBaseURL:       "https://directory.example",
+		DatabasePath:        "/var/lib/activity-relay-directory/directory.sqlite",
 		RegistrationEnabled: false,
 		MaxRequestBodyBytes: 64 * 1024,
-	}, "test-version")
+	}, "test-version", func(context.Context) error { return nil })
+}
+
+func TestReady(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if response.Body.String() != "ready\n" {
+		t.Fatalf("body = %q", response.Body.String())
+	}
+	if response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+	}
+}
+
+func TestReadyFailsClosedWithoutDisclosingDependencyError(t *testing.T) {
+	for _, check := range []ReadinessCheck{
+		nil,
+		func(context.Context) error { return errors.New("sensitive database detail") },
+	} {
+		handler := NewHandler(config.Config{
+			ListenAddress:       "127.0.0.1:8080",
+			PublicBaseURL:       "https://directory.example",
+			DatabasePath:        "/var/lib/activity-relay-directory/directory.sqlite",
+			RegistrationEnabled: false,
+			MaxRequestBodyBytes: 64 * 1024,
+		}, "test-version", check)
+		request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		response := httptest.NewRecorder()
+
+		handler.ServeHTTP(response, request)
+
+		if response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d", response.Code)
+		}
+		if response.Body.String() != "not ready\n" {
+			t.Fatalf("body = %q", response.Body.String())
+		}
+		if response.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
+		}
+	}
+}
+
+func TestReadyHeadSuppressesBody(t *testing.T) {
+	request := httptest.NewRequest(http.MethodHead, "/readyz", nil)
+	response := httptest.NewRecorder()
+
+	testHandler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	if response.Body.Len() != 0 {
+		t.Fatalf("body = %q", response.Body.String())
+	}
 }
 
 func TestHealth(t *testing.T) {

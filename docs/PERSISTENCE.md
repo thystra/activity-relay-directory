@@ -6,10 +6,16 @@ providing transactions, uniqueness, and crash-safe migration bookkeeping. It
 is not a multi-host database and the database must not be placed on NFS or
 other network storage.
 
-This tranche defines and tests the storage package only. The HTTP server does
-not open the database, run migrations, persist requests, or report persistence
-readiness yet. No configuration variable or container volume is active until
-that wiring receives a separate review.
+The process requires `DIRECTORY_DATABASE_PATH` to be a clean absolute path. It
+opens the database and applies all embedded migrations before opening the HTTP
+listener. Startup fails closed on file-safety errors, migration failure, drift,
+or a schema newer than the binary. The `/readyz` endpoint checks that the
+database remains reachable at the current schema version and returns only a
+redacted `503 not ready` when that check fails.
+
+No registration, heartbeat, unregister, moderation, or replay handler writes
+to this database yet. Runtime wiring makes the schema operational; it does not
+make the directory protocol available.
 
 ## Database opening
 
@@ -30,6 +36,13 @@ Those settings favor a single service process with a small bounded connection
 pool. A future multi-process or multi-host deployment requires a reviewed
 database backend designed for that topology, expected to be PostgreSQL. It
 must not share this SQLite file between hosts.
+
+The Compose service uses
+`/var/lib/activity-relay-directory/directory.sqlite` in a named local volume.
+The image creates the containing directory as owner-only for its non-root
+service account. The root filesystem remains read-only, and the volume is the
+only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
+Compose volume name without changing the in-container database path.
 
 ## Version 1 schema
 
@@ -59,8 +72,8 @@ raw request bodies, raw nonces, or signing key IDs.
 ## Migrations
 
 Migrations are embedded into the binary and applied in version order within an
-immediate transaction. Startup wiring will be required to migrate before the
-service becomes ready. A failed migration rolls back as a unit.
+immediate transaction before the HTTP listener starts. A failed migration
+rolls back as a unit and aborts startup.
 
 The migration table records a SHA-256 digest of each embedded SQL file. The
 migrator fails closed when an applied migration has changed, history has a gap,
@@ -70,7 +83,7 @@ upgrade tests from every supported version.
 
 ## Backup and recovery boundary
 
-Before persistence is activated, the deployment runbook must specify a local,
+Before production deployment, the deployment runbook must specify a local,
 encrypted backup target, retention, restore testing, and acceptable recovery
 point. A backup must use SQLite's online backup API from a compatible tool, or
 stop all writers and copy the database together with any `-wal` and `-shm`
@@ -79,5 +92,6 @@ backup.
 
 Before upgrading, take and verify a backup. Schema downgrades are not automatic:
 rollback after a migration requires restoring the pre-upgrade backup with the
-matching binary. Health and readiness must remain unavailable when database
-opening or migration fails.
+matching binary. Database opening or migration failure prevents the listener
+from starting. After startup, `/healthz` remains a process-liveness signal and
+`/readyz` fails when the database dependency is unavailable.

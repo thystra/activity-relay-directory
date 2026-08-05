@@ -21,6 +21,8 @@
 - Single-node SQLite opener with secure file checks and bounded connection settings.
 - Transactional, content-hashed initial persistence migration for relay state,
   opaque replay reservations, and append-only lifecycle events.
+- Required SQLite startup migration, database-backed readiness, graceful close,
+  and persistent owner-only Compose data volume.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 
@@ -29,3 +31,5 @@
 - Registration is disabled and unavailable in the initial scaffold.
 - Non-loopback public URLs require HTTPS.
 - Request-body limits are bounded even before request endpoints exist.
+- Database initialization and schema mismatch fail before the HTTP listener starts.
+- Readiness failures do not disclose database errors or filesystem paths.

@@ -10,10 +10,15 @@ ENV GOMAXPROCS=${GOMAXPROCS}
 
 WORKDIR /src
 
-COPY go.mod ./
+COPY go.mod go.sum ./
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
 COPY . .
 
 RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
     mkdir -p /rootfs/usr/bin && \
     go build \
       -p "${GO_BUILD_PARALLELISM}" \
@@ -26,7 +31,10 @@ FROM public.ecr.aws/docker/library/alpine:3.22.1
 
 RUN apk add --no-cache ca-certificates && \
     addgroup -S directory && \
-    adduser -S -G directory -h /nonexistent -s /sbin/nologin directory
+    adduser -S -G directory -h /nonexistent -s /sbin/nologin directory && \
+    mkdir -p /var/lib/activity-relay-directory && \
+    chown directory:directory /var/lib/activity-relay-directory && \
+    chmod 0700 /var/lib/activity-relay-directory
 
 COPY --from=build \
   /rootfs/usr/bin/activity-relay-directory \
@@ -43,6 +51,6 @@ HEALTHCHECK \
   --timeout=5s \
   --start-period=5s \
   --retries=5 \
-  CMD wget --quiet --output-document=/dev/null http://127.0.0.1:8080/healthz || exit 1
+  CMD wget --quiet --output-document=/dev/null http://127.0.0.1:8080/readyz || exit 1
 
 ENTRYPOINT ["/usr/bin/activity-relay-directory"]

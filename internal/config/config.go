@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -20,6 +21,7 @@ const (
 type Config struct {
 	ListenAddress       string
 	PublicBaseURL       string
+	DatabasePath        string
 	RegistrationEnabled bool
 	MaxRequestBodyBytes int64
 }
@@ -29,6 +31,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		ListenAddress:       envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
 		PublicBaseURL:       strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
+		DatabasePath:        strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
 		RegistrationEnabled: false,
 		MaxRequestBodyBytes: defaultMaxRequestBodyBytes,
 	}
@@ -70,6 +73,16 @@ func (cfg Config) Validate() error {
 
 	if cfg.PublicBaseURL == "" {
 		return errors.New("DIRECTORY_PUBLIC_BASE_URL is required")
+	}
+	if cfg.DatabasePath == "" {
+		return errors.New("DIRECTORY_DATABASE_PATH is required")
+	}
+	if !filepath.IsAbs(cfg.DatabasePath) ||
+		filepath.Clean(cfg.DatabasePath) != cfg.DatabasePath ||
+		strings.ContainsRune(cfg.DatabasePath, '\x00') {
+		return errors.New(
+			"DIRECTORY_DATABASE_PATH must be a clean absolute path",
+		)
 	}
 
 	parsed, err := url.Parse(cfg.PublicBaseURL)

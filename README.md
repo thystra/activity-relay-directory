@@ -21,16 +21,16 @@ This repository currently provides a conservative service scaffold only:
 - strict authenticated registration-request contract without a public handler
 - strict authenticated heartbeat-request contract without liveness storage
 - strict authenticated unregister-request contract without state deletion
-- embedded, transactional SQLite schema migrations without server wiring
+- startup SQLite migration and database-backed readiness checks
 
 The directory protocol is being introduced in reviewed contract-first tranches.
 The current vocabulary and fixtures do not activate request handlers. No live
 directory endpoint is built into Activity-Relay by default. The signature
 and replay contracts are not sufficient to enable registration until safe key
-resolution, runtime persistence wiring, moderation, rate limits, and the
-remaining request gates are implemented. The SQLite schema is a reviewed
-single-node foundation, not an active database or public API; see
-`docs/PERSISTENCE.md`.
+resolution, storage state transitions, moderation, rate limits, and the
+remaining request gates are implemented. The process now opens and migrates a
+single-node SQLite database before listening, but no public request handler
+writes to it; see `docs/PERSISTENCE.md`.
 
 ## Privacy boundary
 
@@ -41,7 +41,10 @@ not include connected-site identities, relay followers, or user information.
 ## Development
 
 ```sh
+mkdir -p data
+chmod 0700 data
 export DIRECTORY_PUBLIC_BASE_URL=http://127.0.0.1:8080
+export DIRECTORY_DATABASE_PATH="$PWD/data/directory.sqlite"
 go test -count=1 ./...
 go run ./cmd/activity-relay-directory
 ```

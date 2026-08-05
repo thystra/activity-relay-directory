@@ -18,6 +18,7 @@ var (
 	ErrMigrationConfiguration = errors.New("SQLite migration configuration is invalid")
 	ErrMigrationDrift         = errors.New("SQLite migration history does not match embedded migrations")
 	ErrMigrationTooNew        = errors.New("SQLite database schema is newer than this binary")
+	ErrDatabaseNotReady       = errors.New("SQLite database is not ready")
 )
 
 //go:embed migrations/*.sql
@@ -28,6 +29,26 @@ type migration struct {
 	name    string
 	sql     string
 	sha256  string
+}
+
+// CheckReady verifies that the database is reachable and records exactly the
+// schema version supported by this binary. Detailed database errors remain
+// internal and must not be returned by public readiness handlers.
+func CheckReady(ctx context.Context, database *sql.DB) error {
+	if ctx == nil || database == nil {
+		return ErrDatabaseNotReady
+	}
+	if err := database.PingContext(ctx); err != nil {
+		return fmt.Errorf("%w: ping", ErrDatabaseNotReady)
+	}
+	version, err := SchemaVersion(ctx, database)
+	if err != nil {
+		return fmt.Errorf("%w: schema", ErrDatabaseNotReady)
+	}
+	if version != CurrentSchemaVersion {
+		return ErrDatabaseNotReady
+	}
+	return nil
 }
 
 type appliedMigration struct {

@@ -1,16 +1,29 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
 )
 
-const statusSchemaVersion = 1
+const (
+	statusSchemaVersion = 1
+	readinessTimeout    = 2 * time.Second
+)
+
+// ReadinessCheck reports whether required runtime dependencies can serve
+// requests. Its error is deliberately not exposed to public clients.
+type ReadinessCheck func(context.Context) error
 
 // NewHandler returns the initial public HTTP surface.
-func NewHandler(cfg config.Config, version string) http.Handler {
+func NewHandler(
+	cfg config.Config,
+	version string,
+	checkReadiness ReadinessCheck,
+) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/healthz", func(response http.ResponseWriter, request *http.Request) {
@@ -28,7 +41,19 @@ func NewHandler(cfg config.Config, version string) http.Handler {
 		if !allowReadMethod(response, request) {
 			return
 		}
+		ctx, cancel := context.WithTimeout(request.Context(), readinessTimeout)
+		defer cancel()
+		if checkReadiness == nil || checkReadiness(ctx) != nil {
+			response.Header().Set("Cache-Control", "no-store")
+			response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			response.WriteHeader(http.StatusServiceUnavailable)
+			if request.Method != http.MethodHead {
+				_, _ = response.Write([]byte("not ready\n"))
+			}
+			return
+		}
 		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		response.Header().Set("Cache-Control", "no-store")
 		response.WriteHeader(http.StatusOK)
 		if request.Method != http.MethodHead {
 			_, _ = response.Write([]byte("ready\n"))

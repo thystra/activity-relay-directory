@@ -89,9 +89,11 @@ hosts. Once a migration has been released, do not edit it: add a consecutive
 numbered migration, update `CurrentSchemaVersion`, preserve content-hash drift
 checks, and test fresh, idempotent, concurrent, rollback, and supported-upgrade
 paths. Schema fields must not admit connected-site or user identities, raw
-request bodies, raw nonces, or signing key IDs. Persistence remains inactive
-until startup, readiness, configuration, backup, and container-volume wiring
-are separately reviewed.
+request bodies, raw nonces, or signing key IDs. Startup must migrate before
+listening, `/readyz` must fail closed without disclosing database details, and
+the container must preserve its read-only root filesystem with only the local
+data volume writable. Runtime storage wiring does not authorize state-mutating
+handlers or deployment.
 
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as

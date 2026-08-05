@@ -13,8 +13,9 @@ Before the first release:
 7. verify that registration remains disabled unless explicitly configured;
 8. publish release notes and rollback instructions.
 
-The embedded SQLite schema is not runtime-active yet. Before a release that
-activates it, test fresh creation, idempotent startup, upgrade from every
+SQLite is active during process startup and readiness checks, but no request
+handler writes directory state yet. Before the first release, test fresh
+creation, idempotent restart, named-volume persistence, upgrade from every
 supported schema version, backup restoration, and refusal of drifted or future
 schemas. Release notes must identify the resulting schema version and state
 that downgrade requires restoration of the matching pre-upgrade backup.

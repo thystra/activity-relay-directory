@@ -138,7 +138,12 @@ audit events are append-only. Replay storage receives only opaque 32-byte
 digests, never raw key IDs or nonces. The schema does not admit connected-site,
 follower, user, or raw request-body data.
 
-This storage package is not wired into the server. Before activation, startup
-must migrate before readiness, database errors must fail closed, replay expiry
-must be bounded and tested, backup/restore must be exercised, and sensitive
-filesystem paths or database errors must not be returned to clients.
+Startup now requires a secure database path, migrates before listening, and
+keeps readiness dependent on the current reachable schema. Public readiness
+errors are fixed and do not expose filesystem paths or database details. The
+container confines persistent writes to an owner-only named volume while its
+root filesystem remains read-only.
+
+Before production deployment, backup/restore must be exercised. Before request
+handlers are enabled, replay expiry and state transitions must be bounded and
+tested; database errors must continue to fail closed without reaching clients.

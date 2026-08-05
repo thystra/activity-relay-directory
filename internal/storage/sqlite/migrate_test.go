@@ -62,6 +62,30 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestCheckReadyRequiresCurrentReachableSchema(t *testing.T) {
+	ctx := context.Background()
+
+	if err := CheckReady(ctx, nil); !errors.Is(err, ErrDatabaseNotReady) {
+		t.Fatalf("CheckReady(nil database) error = %v", err)
+	}
+	database := openTestDatabase(t)
+	if err := CheckReady(ctx, database); !errors.Is(err, ErrDatabaseNotReady) {
+		t.Fatalf("CheckReady(unmigrated) error = %v", err)
+	}
+	if err := Migrate(ctx, database); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	if err := CheckReady(ctx, database); err != nil {
+		t.Fatalf("CheckReady(migrated) error = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if err := CheckReady(ctx, database); !errors.Is(err, ErrDatabaseNotReady) {
+		t.Fatalf("CheckReady(closed) error = %v", err)
+	}
+}
+
 func TestMigrateSerializesConcurrentCallers(t *testing.T) {
 	database := openTestDatabase(t)
 	ctx := context.Background()
