@@ -209,3 +209,23 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Fatal("missing Content-Security-Policy")
 	}
 }
+
+func TestPublicStatusOmitsPrivateModerationFields(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/v1/status", nil)
+	response := httptest.NewRecorder()
+	testHandler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	for _, private := range []string{
+		"moderator_id",
+		"reason_code",
+		"moderation_event_id",
+		"suspended_at_unix",
+	} {
+		if strings.Contains(body, private) {
+			t.Fatalf("public status disclosed %q: %s", private, body)
+		}
+	}
+}

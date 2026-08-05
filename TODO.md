@@ -230,6 +230,10 @@ Acceptance gates:
 
 ## Tranche 11: Local operator moderation access
 
+Completed (2026-08-05): the local moderation command surface, private state
+reads, and bounded audit pagination are implemented in source. They remain
+undeployed and provide no network administrative endpoint.
+
 Repository: `thystra/activity-relay-directory`.
 
 Expose the existing moderation repository through a local administrative CLI,

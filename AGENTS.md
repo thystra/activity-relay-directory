@@ -111,15 +111,19 @@ never be exposed to clients. The repository is not authorization to add a
 handler or report registration as available.
 
 Administrative state changes must use `storage.ModerationRepository` and apply
-only to an existing retained canonical relay; the current contract is not a
-preemptive blocklist. Moderator identifiers and reason codes are bounded
-private tokens, never free-form notes or public response data. Suspend and
-restore are idempotent, but every accepted decision receives an append-only
-private event. Commit state and its event in one transaction, preserve
-lifecycle and registration metadata, never let restore register a relay, and
-enforce nonregressing time across lifecycle and moderation events. Moderation
-storage does not authorize an HTTP endpoint, operator CLI, registration
-availability, or deployment.
+only to an existing retained canonical relay; the contract is not a preemptive
+blocklist. Moderator identifiers and reason codes are bounded private tokens,
+never free-form notes or public response data. Suspend and restore are
+idempotent, but every accepted decision receives an append-only private event.
+Commit state and its event in one transaction, preserve lifecycle and
+registration metadata, never let restore register a relay, and enforce
+nonregressing time across lifecycle and moderation events. Local operator
+commands must remain in `internal/admincommand`, require exact actor
+confirmation or explicit `--yes`, use the fixed exit classes, and expose audit
+records only through bounded keyset pages. Operating-system access to the
+binary and owner-only SQLite data is the initial authorization boundary. Do not
+add moderation HTTP routes, bearer tokens, an administrative group, or wider
+container-volume permissions without a separate review.
 
 Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as

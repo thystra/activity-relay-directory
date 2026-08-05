@@ -228,3 +228,17 @@ rollback after a migration requires restoring the pre-upgrade backup with the
 matching binary. Database opening or migration failure prevents the listener
 from starting. After startup, `/healthz` remains a process-liveness signal and
 `/readyz` fails when the database dependency is unavailable.
+
+## Local moderation reads
+
+The local moderation CLI uses the same owner-only database and does not create a
+second persistence service. `show` performs one exact actor lookup. `audit`
+uses a maximum page size of 100, queries at most one additional row, and follows
+`moderation_events_actor_time_idx` with a `(recorded_at_unix,
+moderation_event_id)` keyset cursor. These reads perform no cleanup or mutation.
+
+State-changing local commands continue to use the existing immediate
+transaction, five-second busy timeout, and atomic state-plus-event commit. The
+CLI may run beside the one active same-host service, but SQLite must not be
+shared across hosts and database/WAL permissions must not be broadened to create
+an administrative group.

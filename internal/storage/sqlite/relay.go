@@ -14,7 +14,7 @@ import (
 const (
 	maximumRelayActorBytes     = 4096
 	maximumPublicBaseBytes     = 2048
-	maximumReasonCodeBytes     = 64
+	maximumReasonCodeBytes     = storage.MaximumModerationReasonCodeBytes
 	lifecycleRegistered        = "registered"
 	lifecycleUnregistered      = "unregistered"
 	administrativeActive       = "active"
@@ -447,31 +447,10 @@ func validateModerationIntent(intent storage.ModerationIntent) error {
 		return err
 	}
 	if !storage.ValidOperatorID(intent.ModeratorID) ||
-		len(intent.ReasonCode) == 0 ||
-		len(intent.ReasonCode) > maximumReasonCodeBytes ||
-		!validReasonCode(intent.ReasonCode) {
+		!storage.ValidModerationReasonCode(intent.ReasonCode) {
 		return storage.ErrTransitionInput
 	}
 	return nil
-}
-
-func validReasonCode(value string) bool {
-	for index := 0; index < len(value); index++ {
-		character := value[index]
-		if index == 0 {
-			if character < 'a' || character > 'z' {
-				return false
-			}
-			continue
-		}
-		if (character >= 'a' && character <= 'z') ||
-			(character >= '0' && character <= '9') ||
-			character == '_' || character == '-' {
-			continue
-		}
-		return false
-	}
-	return true
 }
 
 func transitionUnix(acceptedAt time.Time) (int64, error) {
