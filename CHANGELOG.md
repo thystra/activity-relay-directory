@@ -27,6 +27,8 @@
   heartbeat, unregister, and append-only audit transitions.
 - Durable SQLite RFC 9421 replay reservations with atomic conflict handling,
   restart persistence, ten-minute retention enforcement, and bounded cleanup.
+- Dormant ActivityPub actor and RSA signing-key resolver with pinned public DNS
+  targets, redirect revalidation, bounded documents, and strict actor ownership.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 
@@ -41,3 +43,5 @@
   absent or suspended heartbeat targets, and suspended registration.
 - State mutation rolls back when its corresponding audit event cannot commit.
 - Replay cleanup rolls back when the associated reservation cannot commit.
+- Actor resolution rejects prohibited mixed DNS answers, proxy routing,
+  excessive redirects, ambiguous JSON, key substitution, and unsafe key forms.

@@ -30,12 +30,12 @@ performing network access. It rejects ambiguous authorities and paths and
 requires both URLs to share one origin. Validation errors do not echo the
 supplied URL.
 
-Canonical syntax is not an SSRF decision. Before any actor fetch exists, the
-runtime must separately resolve all addresses, reject prohibited local,
-private, link-local, documentation, multicast, and otherwise non-public
-targets, pin each connection to an approved address, and repeat the checks on
-every redirect. It must then bind the resolved actor and signing key to the
-canonical registered identity.
+Canonical syntax is not an SSRF decision. The dormant actor resolver separately
+resolves all addresses, rejects prohibited local, private, link-local,
+documentation, multicast, and otherwise non-public targets, pins each
+connection to an approved address, and repeats the checks on every bounded
+redirect. It then binds the resolved actor and signing key to the canonical
+identity. Runtime composition remains unavailable; see `docs/RESOLUTION.md`.
 
 ## Content digest
 
@@ -79,9 +79,9 @@ durable single-host store: it accepts only opaque 32-byte keys, persists across
 restart, uses exact inclusive expiry, and prunes a bounded number of expired
 rows in the reservation transaction. It is not suitable for a multi-host
 service. Rate policy, bounded maintenance, operational failure handling, and
-explicit verifier wiring remain mandatory before handler wiring. Runtime key
-retrieval must separately enforce DNS, address, redirect, response-size, media-
-type, and actor-document safety before returning resolved key material.
+explicit verifier wiring remain mandatory before handler wiring. The dormant
+resolver now enforces DNS, address, redirect, response-size, media-type, actor-
+document, and RSA-key safety before returning resolved key material.
 
 ## Register request boundary
 
@@ -95,9 +95,9 @@ These semantic and target gates run before key resolution and replay
 reservation. The complete composition then authenticates the exact body, binds
 the signing actor, and atomically reserves the nonce. It returns an intent and
 does not write registration state. The dormant repository revalidates canonical
-bounded identity and can commit an audited state transition, but safe network
-actor resolution, durable replay wiring, moderation, rate limiting, and
-explicit handler review remain required before registration can be enabled.
+bounded identity and can commit an audited state transition, but safe resolver
+composition, durable replay wiring, moderation, rate limiting, and explicit
+handler review remain required before registration can be enabled.
 
 ## Heartbeat request boundary
 

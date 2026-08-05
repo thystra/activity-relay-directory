@@ -4,8 +4,9 @@
 
 Version 1 vocabulary and JSON message shapes are defined here and in
 `testdata/directory/v1/`. They are contract fixtures, not active HTTP APIs.
-Registration remains unavailable until transport, URL, signature, replay,
-persistence, moderation, and rate-limit gates are implemented and reviewed.
+Registration remains unavailable until the implemented URL, signature, replay,
+persistence, and resolver components are composed with reviewed transport,
+moderation, and rate-limit gates.
 
 ## Versioning and encoding
 
@@ -109,6 +110,14 @@ canonical identical public-key-owner and actor identities. After successful
 cryptographic verification, `BindRelayActor` requires that identity to equal
 the canonical `relay_actor` in the request body.
 
+The dormant production resolver accepts a canonical fragment-bearing key ID
+whose fragment-free form is the actor URL. It retrieves only that HTTPS actor
+document through the bounded network policy in `docs/RESOLUTION.md`. The actor
+must be an `Application` or `Service`, its `id` must equal the requested actor
+URL, and exactly one embedded public key must have the requested key ID and the
+actor as owner. This is authenticated key discovery for signature verification;
+it is not registration authorization and is not connected to runtime code.
+
 The stateless verifier returns the validated nonce for composition and testing.
 `VerifyPOSTAndReserve` is the handler-safe contract: it completes signature,
 digest, key, and canonical relay-actor binding before atomically reserving an
@@ -155,9 +164,9 @@ recency. Administrative suspension blocks register and is never silently
 cleared.
 
 Future register handlers must use the complete authenticated composition with
-a safely resolved actor key and the dormant durable replay store before calling
-the state repository at a server-owned acceptance time. None of those layers
-makes registration available or connects it to the HTTP server.
+the dormant safe actor resolver and durable replay store before calling the
+state repository at a server-owned acceptance time. None of those layers makes
+registration available or connects it to the HTTP server.
 
 ## Heartbeat request contract
 

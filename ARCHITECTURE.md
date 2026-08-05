@@ -28,8 +28,9 @@ and target primitives while accepting only canonical actor identity and its own
 operation path; it produces no liveness update. Unregister applies the same
 identity-only boundary to a distinct removal target and produces no deletion.
 These contracts have no handler or persistence dependency; network-target
-enforcement and runtime composition with the dormant durable replay adapter
-remain later gates.
+enforcement now exists behind a dormant actor resolver, while runtime
+composition with that resolver and the durable replay adapter remains a later
+gate.
 
 The first persistence foundation is an embedded SQLite migration set for one
 active directory process on one host. It defines strict relay lifecycle and
@@ -56,6 +57,15 @@ protocol's ten-minute maximum retention. A separate bounded cleanup method is
 available for later maintenance scheduling. The store is not constructed by
 runtime code or passed to a verifier yet.
 
+The ActivityPub actor resolver implements the verifier's existing key-resolver
+interface without joining the runtime graph. It derives one fragment-free actor
+URL from a canonical fragment-bearing key ID, performs proxy-free bounded HTTPS
+retrieval through DNS and redirect SSRF checks, and pins each connection to an
+approved address. The actor document must identify the requested `Application`
+or `Service`, publish the exact requested key, and bind its canonical owner to
+the actor. Both SubjectPublicKeyInfo and legacy PKCS#1 RSA public keys are
+accepted within reviewed size and strength limits. See `docs/RESOLUTION.md`.
+
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request
@@ -72,5 +82,5 @@ Runtime components will be added behind those explicit contracts:
 7. public JSON and human-readable directory views;
 8. operator CLI and bounded administrative actions.
 
-Safe actor resolution, replay/verifier wiring, transport handlers, and public
-registration remain out of scope for the initial scaffold.
+Resolver/replay/verifier wiring, transport handlers, and public registration
+remain out of scope for the initial scaffold.

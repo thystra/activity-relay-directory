@@ -24,3 +24,10 @@ Before replay-protected handlers are released, validate duplicate suppression
 across restart and supported service topology, expiry-boundary replacement,
 bounded cleanup scheduling, failure rollback, and rate policy under sustained
 unique traffic.
+
+Before actor resolution is wired or released, compare the prohibited-address
+policy with the current IANA IPv4 and IPv6 special-purpose registries. Validate
+mixed public/private DNS answers, direct literals, connection pinning, custom
+HTTPS ports, redirects, proxy exclusion, timeouts, header/body limits,
+ActivityStreams media types, duplicate/deep JSON, actor/key ownership, both RSA
+PEM forms, cancellation, and public error redaction.

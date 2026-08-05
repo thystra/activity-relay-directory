@@ -114,6 +114,15 @@ Canonical URL syntax validation is not network-target validation. Keep DNS,
 SSRF controls, redirect checks, actor retrieval, and actor-key binding as
 separate explicit gates, and never echo an untrusted supplied URL in an error.
 
+Runtime key resolution must use `internal/actorresolver.Resolver`, never the
+default HTTP client or an environment proxy. Preserve all-answer DNS rejection,
+public-address connection pinning, redirect revalidation, request and response
+bounds, canonical fragment-bearing key IDs, exact `Application` or `Service`
+actor identity, exact key ID/owner binding, and the 2048-to-8192-bit RSA limit.
+Review the IANA special-purpose address registries before changing or releasing
+the address policy. Resolver construction and tests do not authorize verifier
+wiring, request handlers, registration availability, or deployment.
+
 When changing a reverse-proxy example, validate it with the corresponding
 Nginx, Apache HTTP Server, or Caddy release. Examples must preserve the public
 host and request target, remain optional, and must not install, enable, reload,
