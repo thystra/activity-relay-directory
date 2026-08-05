@@ -83,11 +83,35 @@ parsed RSA public key. The RFC 9421 verifier maps every resolver failure to its
 fixed public key error, so supplied hosts, key IDs, network details, documents,
 and parser failures are not exposed to request clients.
 
+## Successful-key cache
+
+`internal/actorresolver.CachedResolver` is a dormant wrapper around the exact
+production `Resolver`; it cannot wrap an arbitrary network resolver. It
+revalidates canonical key-ID and network-target syntax before every lookup and
+caches only a successful result whose key ID, owner, actor ID, RSA size, and
+exponent remain fully bound. Failures are never cached.
+
+The cache has a caller-selected positive entry limit no greater than 100,000
+and a fixed non-sliding TTL no greater than five minutes. TTL begins only after
+retrieval completes. An entry is unavailable at its exact expiry boundary;
+expired data and fetch errors are never served stale. Full capacity evicts one
+least-recently-used entry, which can only force another safe retrieval and does
+not relax verification. The cache performs no background refresh or network
+work of its own.
+
+Every returned RSA key has an independent modulus copy so a caller cannot
+mutate cached cryptographic state. Cache time cannot move backwards. Concurrent
+hits are synchronized; concurrent cold misses may each perform a retrieval,
+and the separate global admission limit must bound that work when runtime
+composition occurs. Same-key-ID rotation can cause temporary signature
+rejection only until the fixed TTL expires; this tranche does not add an
+attacker-triggerable stale fallback or refresh retry.
+
 ## Remaining gates
 
 The dormant policy in `docs/ADMISSION.md` now provides bounded source and
 authenticated-actor buckets plus global concurrency admission. Before handler
 composition, the project still requires their runtime configuration and exact
-ordering with this resolver, bounded cache behavior, moderation, durable replay
-scheduling, public error/status mapping, and complete handler tests. Neither
-component authorizes registration or deployment.
+ordering with the cached resolver, moderation, durable replay scheduling,
+public error/status mapping, and complete handler tests. None of these dormant
+components authorizes registration or deployment.

@@ -123,6 +123,15 @@ Review the IANA special-purpose address registries before changing or releasing
 the address policy. Resolver construction and tests do not authorize verifier
 wiring, request handlers, registration availability, or deployment.
 
+Actor-key caching must use `internal/actorresolver.CachedResolver` around the
+production resolver only. Preserve canonical key-ID checks on hits, complete
+key/owner/actor and RSA revalidation before insertion, a fixed positive entry
+limit, a non-sliding TTL no greater than five minutes, exact expiry, LRU
+eviction, nondecreasing time, isolated RSA-key copies, and success-only storage.
+Never cache failures, serve stale entries, or initiate background refresh.
+Cache construction does not authorize verifier wiring, handlers, registration,
+or deployment.
+
 Request admission must derive direct peers through
 `internal/admission.SourceResolver`; forwarding fields are never trusted from
 an unconfigured peer. Trusted prefixes identify exact proxies rather than

@@ -66,6 +66,13 @@ or `Service`, publish the exact requested key, and bind its canonical owner to
 the actor. Both SubjectPublicKeyInfo and legacy PKCS#1 RSA public keys are
 accepted within reviewed size and strength limits. See `docs/RESOLUTION.md`.
 
+A dormant wrapper adds a fixed-capacity, non-sliding, success-only cache around
+that exact resolver. It revalidates the fully bound result, never caches
+failures or serves expired data, and returns isolated RSA-key copies. Cache
+eviction can only cause another safe retrieval. It remains outside the runtime
+graph and relies on the separate admission ceiling to bound concurrent cold
+misses.
+
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request

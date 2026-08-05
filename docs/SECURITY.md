@@ -37,6 +37,13 @@ connection to an approved address, and repeats the checks on every bounded
 redirect. It then binds the resolved actor and signing key to the canonical
 identity. Runtime composition remains unavailable; see `docs/RESOLUTION.md`.
 
+The dormant successful-key cache wraps only that production resolver. It
+revalidates complete actor/key binding, keeps a fixed entry ceiling and
+non-sliding five-minute maximum TTL, returns copied RSA material, never caches
+errors, and never serves expired data. Eviction triggers another safe fetch
+rather than bypassing resolution. Concurrent cold misses remain subject to the
+separate admission ceiling once composed.
+
 ## Content digest
 
 Version 1 requires an RFC 9530 `sha-256` Content-Digest over the exact bounded

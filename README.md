@@ -24,8 +24,8 @@ This repository currently provides a conservative service scaffold only:
 - startup SQLite migration and database-backed readiness checks
 - atomic register, heartbeat, and unregister state transitions without handlers
 - durable opaque replay reservations with bounded expiry cleanup
-- bounded SSRF-resistant ActivityPub actor and signing-key resolution without
-  handler wiring
+- bounded SSRF-resistant ActivityPub actor and signing-key resolution with a
+  success-only key cache, without handler wiring
 - bounded two-stage source, authenticated-actor, and concurrency admission
   without handler wiring
 
