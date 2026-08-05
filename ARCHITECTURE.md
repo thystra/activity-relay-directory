@@ -28,7 +28,8 @@ and target primitives while accepting only canonical actor identity and its own
 operation path; it produces no liveness update. Unregister applies the same
 identity-only boundary to a distinct removal target and produces no deletion.
 These contracts have no handler or persistence dependency; network-target
-enforcement and the durable replay adapter remain later gates.
+enforcement and runtime composition with the dormant durable replay adapter
+remain later gates.
 
 The first persistence foundation is an embedded SQLite migration set for one
 active directory process on one host. It defines strict relay lifecycle and
@@ -47,6 +48,14 @@ intents. SQLite files must remain local; multi-host service topology requires a
 later database backend rather than shared SQLite storage. See
 `docs/PERSISTENCE.md`.
 
+The SQLite replay store implements the existing RFC 9421 opaque-key interface.
+It uses the schema's 32-byte primary key for atomic duplicate suppression across
+connections and process restart. Each reservation removes an expired copy of
+its exact key, prunes only a fixed batch of other expired rows, and enforces the
+protocol's ten-minute maximum retention. A separate bounded cleanup method is
+available for later maintenance scheduling. The store is not constructed by
+runtime code or passed to a verifier yet.
+
 An optional Nginx, Apache, or Caddy reverse proxy may terminate public HTTPS
 and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request
@@ -63,5 +72,5 @@ Runtime components will be added behind those explicit contracts:
 7. public JSON and human-readable directory views;
 8. operator CLI and bounded administrative actions.
 
-Durable replay wiring, safe actor resolution, transport handlers, and public
+Safe actor resolution, replay/verifier wiring, transport handlers, and public
 registration remain out of scope for the initial scaffold.

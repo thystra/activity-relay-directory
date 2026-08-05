@@ -74,8 +74,12 @@ failures. Storage failures fail closed and their details are not returned.
 
 The bounded memory implementation is package-private test infrastructure. It
 proves atomicity and expiry behavior but cannot protect against process restart
-or multiple service instances. A shared durable implementation and its
-operational failure policy remain mandatory before handler wiring. Runtime key
+or multiple service instances. The dormant SQLite implementation is the
+durable single-host store: it accepts only opaque 32-byte keys, persists across
+restart, uses exact inclusive expiry, and prunes a bounded number of expired
+rows in the reservation transaction. It is not suitable for a multi-host
+service. Rate policy, bounded maintenance, operational failure handling, and
+explicit verifier wiring remain mandatory before handler wiring. Runtime key
 retrieval must separately enforce DNS, address, redirect, response-size, media-
 type, and actor-document safety before returning resolved key material.
 
@@ -92,7 +96,7 @@ reservation. The complete composition then authenticates the exact body, binds
 the signing actor, and atomically reserves the nonce. It returns an intent and
 does not write registration state. The dormant repository revalidates canonical
 bounded identity and can commit an audited state transition, but safe network
-actor resolution, durable replay storage, moderation, rate limiting, and
+actor resolution, durable replay wiring, moderation, rate limiting, and
 explicit handler review remain required before registration can be enabled.
 
 ## Heartbeat request boundary
@@ -107,9 +111,10 @@ After those gates, the complete composition verifies the exact body and signing
 actor and reserves the nonce atomically. This result is an intent, not a
 liveness write. The dormant repository requires an existing nonsuspended
 registration and atomically records server-side acceptance time with its audit
-event. A future handler must still enforce safe resolution, durable replay, and
-rate policy before calling it. It must not trust the client's `Date`, `created`,
-or `expires` values as the heartbeat-recency timestamp.
+event. A future handler must still enforce safe resolution, use the durable
+replay store, and apply rate policy before calling it. It must not trust the
+client's `Date`, `created`, or `expires` values as the heartbeat-recency
+timestamp.
 
 ## Unregister request boundary
 
@@ -155,6 +160,6 @@ outcome and event commit in one immediate transaction, and forced event failure
 rolls the state mutation back.
 
 Before production deployment, backup/restore must be exercised. Before request
-handlers are enabled, durable replay expiry and all remaining request gates must
-be bounded and tested; database errors must continue to fail closed without
-reaching clients.
+handlers are enabled, durable replay composition, cleanup scheduling, rate
+policy, and all remaining request gates must be bounded and tested; database
+errors must continue to fail closed without reaching clients.

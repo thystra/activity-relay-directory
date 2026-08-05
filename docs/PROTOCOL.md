@@ -120,9 +120,16 @@ nonce. Stores therefore never need the raw key ID or nonce. A successful
 reservation is retained for ten minutes, beyond the complete signature
 acceptance window. Atomic reserve returns false for a duplicate; backend
 errors and exhausted capacity fail closed without being classified as a
-replay. The package-private bounded memory implementation exists only to prove
-these semantics under concurrency. A shared durable backend remains mandatory
-before any public handler or multi-process deployment can use the contract.
+replay.
+
+The package-private bounded memory implementation remains contract test
+infrastructure. A dormant SQLite implementation now persists the same opaque
+key across process restart and atomically suppresses conflicts across
+independent local connections. It rejects expired or overlong retention,
+replaces a key exactly at expiry, and performs fixed-size expired-row cleanup
+in the reservation transaction. It is neither constructed by runtime code nor
+passed to a verifier. Safe request handlers and multi-host storage therefore
+remain unavailable.
 
 ## Register request contract
 
@@ -148,9 +155,9 @@ recency. Administrative suspension blocks register and is never silently
 cleared.
 
 Future register handlers must use the complete authenticated composition with
-a safely resolved actor key and durable replay store before calling that
-repository at a server-owned acceptance time. Neither layer makes registration
-available or connects it to the HTTP server.
+a safely resolved actor key and the dormant durable replay store before calling
+the state repository at a server-owned acceptance time. None of those layers
+makes registration available or connects it to the HTTP server.
 
 ## Heartbeat request contract
 
@@ -170,7 +177,8 @@ that the actor is registered or administratively active, record liveness, or
 produce the `recorded` outcome. The dormant state repository now enforces an
 existing active registration, rejects suspension, and records server-side
 acceptance time atomically with a `heartbeat_recorded` event. Handler wiring,
-moderation operations, durable replay, and rate policy remain later gates.
+moderation operations, durable replay composition, and rate policy remain later
+gates.
 Liveness recency must never use a client-supplied signature timestamp.
 
 No heartbeat handler is connected to the HTTP server.

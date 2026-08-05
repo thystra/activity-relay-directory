@@ -106,6 +106,34 @@ intent. A future handler may call it only after strict body and target parsing,
 safe actor/key resolution, signature and actor binding, durable replay
 reservation, moderation gates, and server acceptance-time capture.
 
+## Durable replay reservations
+
+`internal/storage/sqlite.RFC9421ReplayStore` implements the existing version 1
+replay interface without changing its cryptographic contract. It accepts only
+the opaque 32-byte SHA-256 replay key derived by the verifier and never receives
+or stores a raw key ID, nonce, signature, actor, or request body.
+
+Reservation uses an immediate transaction. An expired copy of the same key is
+deleted first, a fixed batch of other expired rows is pruned, and the new row
+is inserted with primary-key conflict suppression. Exactly one concurrent
+caller can reserve an available key; other callers receive a duplicate result.
+The reservation survives process restart and independent connections to the
+same local database.
+
+The store records its own current Unix time and requires expiry to be later
+than that time but no more than the version 1 ten-minute replay TTL. Expiry is
+inclusive for cleanup: a row whose expiry equals current time may be replaced.
+Each reservation prunes at most 256 unrelated expired rows. The explicit
+cleanup method requires a positive caller-selected bound no greater than 4096.
+Cleanup and insertion share one transaction, so an insertion failure restores
+any rows selected for cleanup.
+
+Expired rows may remain harmlessly when no requests or maintenance calls occur;
+they never become valid again. Before handlers are enabled, rate policy and a
+bounded maintenance schedule must be reviewed so sustained unique traffic
+cannot create an operational storage backlog. The store remains dormant and is
+not passed to the request verifier in this tranche.
+
 ## Migrations
 
 Migrations are embedded into the binary and applied in version order within an

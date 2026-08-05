@@ -25,6 +25,8 @@
   and persistent owner-only Compose data volume.
 - Backend-neutral relay repository contract and atomic SQLite register,
   heartbeat, unregister, and append-only audit transitions.
+- Durable SQLite RFC 9421 replay reservations with atomic conflict handling,
+  restart persistence, ten-minute retention enforcement, and bounded cleanup.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 
@@ -38,3 +40,4 @@
 - Relay transitions reject noncanonical identities, backward acceptance time,
   absent or suspended heartbeat targets, and suspended registration.
 - State mutation rolls back when its corresponding audit event cannot commit.
+- Replay cleanup rolls back when the associated reservation cannot commit.

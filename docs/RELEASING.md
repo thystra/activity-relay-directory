@@ -19,3 +19,8 @@ creation, idempotent restart, named-volume persistence, upgrade from every
 supported schema version, backup restoration, and refusal of drifted or future
 schemas. Release notes must identify the resulting schema version and state
 that downgrade requires restoration of the matching pre-upgrade backup.
+
+Before replay-protected handlers are released, validate duplicate suppression
+across restart and supported service topology, expiry-boundary replacement,
+bounded cleanup scheduling, failure rollback, and rate policy under sustained
+unique traffic.

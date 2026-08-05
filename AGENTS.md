@@ -60,7 +60,12 @@ errors must remain bounded and redact supplied fields, key IDs, nonces, bodies,
 resolver details, and replay-backend errors. Handler code must use the combined
 verification, actor-binding, and atomic-reservation path, never the stateless
 verifier alone. The package-private memory replay store is test infrastructure,
-not a production or multi-instance backend.
+not a production or multi-instance backend. The SQLite replay store is the
+durable implementation for one active directory process on one host. It must
+receive only opaque replay keys, enforce the version 1 ten-minute maximum
+retention, retain inclusive expiry semantics, and keep automatic cleanup
+bounded. Explicit cleanup bounds must remain positive and no greater than 4096.
+Its existence does not authorize verifier wiring, handlers, or deployment.
 
 Register request code must use `DecodeRegisterRequest` and
 `VerifyRegisterAndReserve`. Keep the JSON body bounded, reject duplicate and
