@@ -274,6 +274,11 @@ Acceptance gates:
 
 ## Tranche 12: Health-state projection
 
+Completed (2026-08-06): the indexed server-owned last-seen value, deterministic
+migration backfill, fixed version 1 classifier, and bounded private projection
+read are implemented in source. They remain undeployed and expose no public
+listing or pruning transition.
+
 Repository: `thystra/activity-relay-directory`.
 
 Add a read model with one indexed server-owned `last_seen_at` value maintained

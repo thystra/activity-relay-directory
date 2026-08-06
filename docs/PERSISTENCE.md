@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema version 3
+## Schema version 4
 
 The initial migration creates four owned tables:
 
@@ -66,6 +66,14 @@ not alter any retained relay or earlier audit row. Each local open or close
 decision records its bounded operator token and server acceptance time, even
 when the requested state is already current; policy and event commit in one
 immediate transaction. Regressing decision time is rejected.
+
+Migration 4 rebuilds `relays` with a required `last_seen_at_unix` column and the
+composite health-projection index `(lifecycle_state, administrative_state,
+last_seen_at_unix, relay_actor)`. Backfill is deterministic: it takes the
+maximum of first registration, retained heartbeat time, and accepted register
+or heartbeat lifecycle-event time. Unregister and moderation events do not make
+a relay appear more recently seen. The migration is transactional and leaves
+the prior schema and data intact on failure.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -98,13 +106,16 @@ the current enrollment setting. Register has these outcomes:
 - a never-registered canonical actor becomes `created` and administratively
   active;
 - an already registered actor with identical metadata is `unchanged`, leaving
-  its state timestamp untouched while recording the accepted intent; and
+  its state-change timestamp untouched while refreshing `last_seen_at_unix`
+  and recording the accepted intent; and
 - a retained unregistered actor becomes `updated`, preserving its original
   registration timestamp while clearing unregister and old-heartbeat recency.
 
 Administrative suspension blocks register without clearing suspension.
 Heartbeat requires a registered, administratively active relay and records the
-server acceptance time as both current liveness and state update time.
+server acceptance time as `last_seen_at_unix`, last heartbeat, and state update
+time. New and restored registrations also set last seen to their acceptance
+time. Unregister leaves the last accepted register-or-heartbeat time retained.
 
 Unregister is idempotent. A registered relay becomes `removed`; an unknown or
 already unregistered relay is `absent`. Repeated authenticated absent intents
@@ -122,6 +133,28 @@ The repository does not authenticate, resolve, rate-limit, or authorize an
 intent. Enabled handlers call it only after strict body and target parsing,
 safe actor/key resolution, signature and actor binding, durable replay
 reservation, actor admission, and server acceptance-time capture.
+
+## Health projection
+
+`internal/storage.HealthProjectionRepository` exposes a read-only bounded page
+for later maintenance and public adapters. A query supplies one captured server
+observation time and a keyset cursor ordered by `last_seen_at_unix` and canonical
+relay actor. The SQLite query uses the complete health-projection index, limits
+each page to at most 100 relays plus one lookahead row, filters to active
+registered relays before decoding, and performs no writes.
+
+`storage.ClassifyHealth` applies the fixed version 1 windows:
+
+- zero through exactly 36 hours: `healthy`;
+- after 36 hours but before 7 days: `stale`;
+- exactly 7 days through before 30 days: `dead`; and
+- exactly 30 days or more: `prune`.
+
+A `last_seen_at_unix` later than the captured observation time fails the whole
+read closed instead of producing a younger state. Administrative suspension and
+explicit unregister therefore win before health classification. The internal
+projection may return `prune` candidates for later maintenance, but this tranche
+does not change lifecycle state, expose a public listing, or delete rows.
 
 ## Enrollment administration
 

@@ -36,6 +36,10 @@
   commands with exact confirmation, JSON output, and fixed exit classes.
 - Backend-neutral private moderation state and audit-read contracts with indexed
   SQLite keyset pagination.
+- Transactional schema version 4 with deterministic `last_seen_at_unix`
+  backfill and an indexed bounded health-projection read model.
+- Fixed version 1 health classification at 36 hours, 7 days, and 30 days with
+  fail-closed future-time handling and suspended/unregistered exclusion.
 
 ### Security
 
