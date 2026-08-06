@@ -333,6 +333,7 @@ func executeShow(
 			UpdatedUnix:         state.UpdatedUnix,
 			LastHeartbeatUnix:   state.LastHeartbeatUnix,
 			UnregisteredUnix:    state.UnregisteredUnix,
+			PrunedUnix:          state.PrunedUnix,
 			SuspendedUnix:       state.SuspendedUnix,
 		})
 	}
@@ -348,6 +349,7 @@ func executeShow(
 		{"updated_at_unix", strconv.FormatInt(state.UpdatedUnix, 10)},
 		{"last_heartbeat_at_unix", optionalUnix(state.LastHeartbeatUnix)},
 		{"unregistered_at_unix", optionalUnix(state.UnregisteredUnix)},
+		{"pruned_at_unix", optionalUnix(state.PrunedUnix)},
 		{"suspended_at_unix", optionalUnix(state.SuspendedUnix)},
 	}
 	for _, line := range lines {
@@ -482,6 +484,7 @@ type stateDocument struct {
 	UpdatedUnix         int64                            `json:"updated_at_unix"`
 	LastHeartbeatUnix   *int64                           `json:"last_heartbeat_at_unix"`
 	UnregisteredUnix    *int64                           `json:"unregistered_at_unix"`
+	PrunedUnix          *int64                           `json:"pruned_at_unix"`
 	SuspendedUnix       *int64                           `json:"suspended_at_unix"`
 }
 

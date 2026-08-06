@@ -72,3 +72,21 @@ func TestHealthProjectionCursorValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestHealthProjectionPublicEligibilityFailsClosedAtPruneBoundary(t *testing.T) {
+	for _, test := range []struct {
+		state v1.HealthState
+		want  bool
+	}{
+		{state: v1.HealthHealthy, want: true},
+		{state: v1.HealthStale, want: true},
+		{state: v1.HealthDead, want: true},
+		{state: v1.HealthPrune, want: false},
+		{state: v1.HealthState("unknown"), want: false},
+	} {
+		relay := HealthProjectionRelay{HealthState: test.state}
+		if got := relay.PublicEligible(); got != test.want {
+			t.Fatalf("PublicEligible(%q) = %t, want %t", test.state, got, test.want)
+		}
+	}
+}

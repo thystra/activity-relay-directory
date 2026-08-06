@@ -33,9 +33,9 @@ state repository only when lifecycle service is explicitly enabled.
 
 The persistence foundation is an embedded SQLite migration set for one active
 directory process on one host. It defines strict relay lifecycle and
-administrative state, one indexed server-owned `last_seen_at_unix`, opaque
-replay reservations, and separate append-only lifecycle and private moderation
-events. Migration history is transactional
+administrative state, indexed server-owned `last_seen_at_unix`, reversible
+`pruned_at_unix`, opaque replay reservations, and separate append-only lifecycle
+and private moderation events. Migration history is transactional
 and content-hashed so drift,
 missing history, and databases newer than the binary fail closed. Process
 startup requires an absolute database path, applies migrations before opening
@@ -67,7 +67,13 @@ page against one captured server time. Version 1 boundaries are fixed: through
 before 30 days is dead, and 30 days or more requires pruning. Suspended and
 unregistered rows are excluded at the query boundary, future timestamps fail
 closed, and ordinary projection reads never mutate state. This tranche adds no
-public listing or pruning transition. See `docs/PERSISTENCE.md` and
+public listing. Migration 5 adds the reversible `pruned` state and
+`relay_pruned` event. A private coordinator scans indexed keyset pages against
+one captured time, revalidates each transition inside its immediate transaction,
+and caps every run at 1,000 candidates. Suspension is preserved, repeated runs
+are idempotent, re-registration clears only the prune state, and no row or audit
+event is deleted. The scheduler is default-off, enforces a one-hour minimum
+interval, and is not reachable through HTTP. See `docs/PERSISTENCE.md` and
 `docs/MODERATION.md`.
 
 The SQLite replay store implements the RFC 9421 opaque-key interface.
@@ -107,10 +113,9 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. bounded reversible soft pruning;
-2. public JSON and human-readable directory views;
-3. bounded retention policy;
-4. Activity-Relay client integration and soak testing.
+1. public JSON and human-readable directory views;
+2. bounded retention policy;
+3. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review
 tranches, and acceptance gates for these components.

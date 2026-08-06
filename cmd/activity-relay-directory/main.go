@@ -19,6 +19,8 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	"github.com/thystra/activity-relay-directory/internal/pruning"
+	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
 	storage "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
 
@@ -110,6 +112,34 @@ func run(arguments []string) int {
 		)
 	}
 
+	if cfg.SoftPruningEnabled {
+		pruningRepository, err := storage.NewRelayRepository(database)
+		if err != nil {
+			logger.Error("soft-pruning initialization failed", "error", err)
+			return 1
+		}
+		go runSoftPruningMaintenance(
+			signals,
+			pruningRepository,
+			cfg.SoftPruningInterval,
+			storageContract.MinimumSoftPruningInterval,
+			time.Now,
+			func(result pruning.Result) {
+				logger.Info(
+					"soft-pruning maintenance completed",
+					"observed_at_unix", result.ObservedUnix,
+					"scanned", result.Scanned,
+					"pruned", result.Pruned,
+					"skipped", result.Skipped,
+					"truncated", result.Truncated,
+				)
+			},
+			func(err error) {
+				logger.Error("soft-pruning maintenance failed", "error", err)
+			},
+		)
+	}
+
 	var lifecycleHandler *httpapi.LifecycleHandler
 	if lifecycle != nil {
 		lifecycleHandler = lifecycle.handler
@@ -156,6 +186,8 @@ func run(arguments []string) int {
 		"public_base_url", cfg.PublicBaseURL,
 		"lifecycle_enabled", cfg.LifecycleEnabled,
 		"lifecycle_available", lifecycleHandler != nil,
+		"soft_pruning_enabled", cfg.SoftPruningEnabled,
+		"soft_pruning_interval", cfg.SoftPruningInterval,
 		"database_schema_version", storage.CurrentSchemaVersion,
 		"version", buildinfo.Version,
 	)
@@ -269,6 +301,66 @@ func runReplayMaintenance(
 			}
 		}
 	}
+}
+
+func runSoftPruningMaintenance(
+	ctx context.Context,
+	repository storageContract.PruningRepository,
+	interval time.Duration,
+	minimumInterval time.Duration,
+	now func() time.Time,
+	onResult func(pruning.Result),
+	onError func(error),
+) {
+	if ctx == nil || repository == nil || now == nil || minimumInterval <= 0 ||
+		interval < minimumInterval {
+		if onError != nil {
+			onError(errors.New("soft-pruning maintenance configuration is invalid"))
+		}
+		return
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return
+		}
+		result, err := pruning.Run(ctx, repository, now())
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			if onError != nil {
+				onError(err)
+			}
+		} else if onResult != nil {
+			onResult(result)
+		}
+
+		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func initializeReadOnlyDatabase(ctx context.Context, path string) (*sql.DB, error) {
+	database, err := storage.OpenReadOnly(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if err := storage.CheckReady(ctx, database); err != nil {
+		_ = database.Close()
+		return nil, err
+	}
+	return database, nil
 }
 
 func initializeDatabase(ctx context.Context, path string) (*sql.DB, error) {

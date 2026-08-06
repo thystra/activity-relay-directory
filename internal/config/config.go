@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 const (
@@ -25,6 +28,8 @@ type Config struct {
 	PublicBaseURL        string
 	DatabasePath         string
 	LifecycleEnabled     bool
+	SoftPruningEnabled   bool
+	SoftPruningInterval  time.Duration
 	MaxRequestBodyBytes  int64
 	TrustedProxyPrefixes []netip.Prefix
 }
@@ -36,6 +41,8 @@ func Load() (Config, error) {
 		PublicBaseURL:       strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
 		DatabasePath:        strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
 		LifecycleEnabled:    false,
+		SoftPruningEnabled:  false,
+		SoftPruningInterval: storage.DefaultSoftPruningInterval,
 		MaxRequestBodyBytes: defaultMaxRequestBodyBytes,
 	}
 
@@ -53,6 +60,27 @@ func Load() (Config, error) {
 			)
 		}
 		cfg.LifecycleEnabled = value
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_SOFT_PRUNING_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"DIRECTORY_SOFT_PRUNING_ENABLED must be a boolean: %w",
+				err,
+			)
+		}
+		cfg.SoftPruningEnabled = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_SOFT_PRUNING_INTERVAL")); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"DIRECTORY_SOFT_PRUNING_INTERVAL must be a duration: %w",
+				err,
+			)
+		}
+		cfg.SoftPruningInterval = value
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_MAX_REQUEST_BODY_BYTES")); raw != "" {
@@ -156,6 +184,17 @@ func (cfg Config) Validate() error {
 		return errors.New(
 			"DIRECTORY_PUBLIC_BASE_URL must not include a path",
 		)
+	}
+
+	if cfg.SoftPruningInterval != 0 &&
+		cfg.SoftPruningInterval < storage.MinimumSoftPruningInterval {
+		return fmt.Errorf(
+			"DIRECTORY_SOFT_PRUNING_INTERVAL must be at least %s",
+			storage.MinimumSoftPruningInterval,
+		)
+	}
+	if cfg.SoftPruningEnabled && cfg.SoftPruningInterval == 0 {
+		return errors.New("DIRECTORY_SOFT_PRUNING_INTERVAL is required when soft pruning is enabled")
 	}
 
 	if cfg.MaxRequestBodyBytes < 1024 ||

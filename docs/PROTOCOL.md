@@ -163,10 +163,10 @@ operation as created, updated, or unchanged.
 
 The state repository atomically classifies and audits a verified
 intent: a new actor is `created`, an identical registered actor is `unchanged`,
-and a retained unregistered actor restored to registered state is `updated`.
-Restoration keeps the first registration time and clears obsolete heartbeat
-recency. Administrative suspension blocks register and is never silently
-cleared.
+and a retained unregistered or pruned actor restored to registered state is
+`updated`. Restoration keeps the first registration time and clears the prior
+lifecycle timestamp plus obsolete heartbeat recency. Administrative suspension
+blocks register and is never silently cleared.
 
 Creating the first retained row also requires the durable enrollment policy to
 be open. Closing enrollment never changes an existing row. Any actor with a
@@ -223,8 +223,8 @@ The contract function establishes only an authenticated removal intent. It
 neither decides whether the actor is present nor produces the `removed` or
 `absent` outcome.
 The repository implements the idempotent transition: a registered
-entry becomes `removed`, while an unknown or already unregistered entry remains
-`absent`. It records the outcome atomically and preserves suspension,
+entry becomes `removed`, while an unknown, already unregistered, or pruned entry
+remains `absent`. It records the outcome atomically and preserves suspension,
 moderation, and audit history. The enabled unregister handler calls it only
 after the complete authenticated and admitted request path.
 
@@ -301,7 +301,10 @@ hours but before 7 days is `stale`; exactly 7 days through before 30 days is
 `dead`; and exactly 30 days or more is `prune`. They are not runtime
 configuration. Administrative state is separately `active` or `suspended`.
 `suspended` overrides automatic health and listing decisions. Reaching `prune`
-does not erase moderation or audit history without a separate explicit policy.
+excludes a relay from future public projection independently of scheduler lag.
+The private reversible transition stores lifecycle `pruned`, a server-owned
+pruning time, and one append-only event; it does not erase moderation or audit
+history. A later register may restore the lifecycle state, subject to suspension.
 Administrative transition outcomes and their moderator and reason tokens are
 private storage vocabulary. They are not version 1 operations, outcomes, or
 public response fields; no moderation HTTP target is defined in this document.

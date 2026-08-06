@@ -535,6 +535,7 @@ type testRelayRecord struct {
 	lastSeenAtUnix      int64
 	lastHeartbeat       sql.NullInt64
 	unregisteredAt      sql.NullInt64
+	prunedAt            sql.NullInt64
 	suspendedAt         sql.NullInt64
 }
 
@@ -580,6 +581,7 @@ func readTestRelay(t *testing.T, database *sql.DB, relayActor string) testRelayR
 		        last_seen_at_unix,
 		        last_heartbeat_at_unix,
 		        unregistered_at_unix,
+		        pruned_at_unix,
 		        suspended_at_unix
 		 FROM relays
 		 WHERE relay_actor = ?`,
@@ -593,6 +595,7 @@ func readTestRelay(t *testing.T, database *sql.DB, relayActor string) testRelayR
 		&relay.lastSeenAtUnix,
 		&relay.lastHeartbeat,
 		&relay.unregisteredAt,
+		&relay.prunedAt,
 		&relay.suspendedAt,
 	); err != nil {
 		t.Fatalf("read relay: %v", err)

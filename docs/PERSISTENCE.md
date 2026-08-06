@@ -15,8 +15,8 @@ redacted `503 not ready` when that check fails.
 
 Explicitly enabled lifecycle handlers use this database for durable replay and
 audited register, heartbeat, and unregister transitions. They remain disabled
-together by default. No public listing, operator moderation, or pruning handler
-writes to the database.
+together by default. No public listing or operator HTTP handler writes to the
+database, and no public request can trigger pruning maintenance.
 
 ## Database opening
 
@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema version 4
+## Schema version 5
 
 The initial migration creates four owned tables:
 
@@ -74,6 +74,15 @@ maximum of first registration, retained heartbeat time, and accepted register
 or heartbeat lifecycle-event time. Unregister and moderation events do not make
 a relay appear more recently seen. The migration is transactional and leaves
 the prior schema and data intact on failure.
+
+Migration 5 adds the explicit `pruned` lifecycle state, nullable
+`pruned_at_unix`, and append-only `relay_pruned` event. It transactionally
+rebuilds relay and lifecycle-event tables while preserving relay rows, event IDs,
+moderation history, enrollment state, and replay reservations. Constraints bind
+pruned state to its timestamp and require pruning time to be at or after the
+retained last-seen value. The migration recreates the health index and adds
+`(lifecycle_state, last_seen_at_unix, relay_actor)` for bounded candidate scans;
+a late index-creation failure rolls the entire migration back to version 4.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -108,8 +117,9 @@ the current enrollment setting. Register has these outcomes:
 - an already registered actor with identical metadata is `unchanged`, leaving
   its state-change timestamp untouched while refreshing `last_seen_at_unix`
   and recording the accepted intent; and
-- a retained unregistered actor becomes `updated`, preserving its original
-  registration timestamp while clearing unregister and old-heartbeat recency.
+- a retained unregistered or pruned actor becomes `updated`, preserving its
+  original registration timestamp while clearing the prior lifecycle timestamp
+  and old-heartbeat recency.
 
 Administrative suspension blocks register without clearing suspension.
 Heartbeat requires a registered, administratively active relay and records the
@@ -153,8 +163,45 @@ registered relays before decoding, and performs no writes.
 A `last_seen_at_unix` later than the captured observation time fails the whole
 read closed instead of producing a younger state. Administrative suspension and
 explicit unregister therefore win before health classification. The internal
-projection may return `prune` candidates for later maintenance, but this tranche
-does not change lifecycle state, expose a public listing, or delete rows.
+projection returns `prune` state to private maintenance. Public adapters must
+apply `HealthProjectionRelay.PublicEligible` or equivalent indexed query
+filtering before presentation, excluding `prune` independently of whether the
+asynchronous lifecycle transition has committed. Projection reads do not expose
+a public listing or delete rows.
+
+## Reversible soft pruning
+
+`internal/storage.PruningRepository` exposes a bounded private candidate read and
+one transactionally revalidated transition. Candidate pages use the pruning
+index, include both active and suspended registered rows, start at the exact
+30-day health boundary, and contain at most 100 rows plus one lookahead. The
+coordinator captures one observation time and processes at most 1,000 candidates
+per run. It validates forward cursor progress, honors cancellation between
+transitions, and never issues SQL deletion.
+
+`SoftPrune` begins an immediate transaction, rereads the retained relay, and
+confirms that it is still registered with `last_seen_at_unix` at or before the
+captured cutoff. A heartbeat, register, unregister, or later moderation decision
+accepted before that check makes the captured attempt ineligible rather than
+allowing a time-regressing transition. A successful transition writes lifecycle
+`pruned`, `pruned_at_unix`, and one `relay_pruned` event atomically. Event failure
+rolls the row change back. Repeated attempts return `already_pruned` without
+another event.
+
+Suspension is independent and remains stored on a pruned relay. A suspended
+pruned relay cannot register until an operator restores it. Re-registration then
+returns it to `registered`, clears `pruned_at_unix` and obsolete heartbeat
+recency, and preserves first registration plus all lifecycle and moderation
+audit rows.
+
+The process scheduler is disabled unless
+`DIRECTORY_SOFT_PRUNING_ENABLED=true`. Its interval defaults to `24h`, must be at
+least `1h`, runs immediately after enabled startup and then waits one interval
+after each completed run, so runs cannot overlap. The local command
+`activity-relay-directory admin pruning dry-run` requires an existing
+current-schema database, opens it through a single query-only connection, and
+reads only one bounded page without creating the file or applying migrations. It
+supports the same keyset cursor. Neither capability is exposed through HTTP.
 
 ## Enrollment administration
 
