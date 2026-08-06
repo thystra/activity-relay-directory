@@ -14,6 +14,7 @@ const (
 
 	LifecycleRegistered   RelayLifecycleState = "registered"
 	LifecycleUnregistered RelayLifecycleState = "unregistered"
+	LifecyclePruned       RelayLifecycleState = "pruned"
 
 	AdministrativeActive    RelayAdministrativeState = "active"
 	AdministrativeSuspended RelayAdministrativeState = "suspended"
@@ -38,7 +39,7 @@ type RelayLifecycleState string
 // contract.
 func (state RelayLifecycleState) Valid() bool {
 	switch state {
-	case LifecycleRegistered, LifecycleUnregistered:
+	case LifecycleRegistered, LifecycleUnregistered, LifecyclePruned:
 		return true
 	default:
 		return false
@@ -111,6 +112,7 @@ type ModerationState struct {
 	UpdatedUnix         int64
 	LastHeartbeatUnix   *int64
 	UnregisteredUnix    *int64
+	PrunedUnix          *int64
 	SuspendedUnix       *int64
 }
 

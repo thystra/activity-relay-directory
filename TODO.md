@@ -320,6 +320,11 @@ Acceptance gates:
 
 ## Tranche 13: Bounded soft pruning
 
+Completed in source (2026-08-06): bounded reversible soft pruning, default-off
+scheduled maintenance, local dry-run inspection, and Node-24-compatible Docker
+build actions are implemented. The feature remains undeployed and inactive by
+default.
+
 Repository: `thystra/activity-relay-directory`.
 
 Pruning is a reversible system-owned lifecycle transition. It removes an

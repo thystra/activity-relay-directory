@@ -36,8 +36,11 @@ back. Acceptance time cannot precede the relay state or its latest lifecycle or
 moderation event.
 
 Suspension is independent of lifecycle state. It blocks register and heartbeat
-but not unregister. Suspend leaves public-base and heartbeat metadata intact;
-restore clears only suspension and does not register an unregistered relay.
+but not unregister or system-owned soft pruning. A suspended relay may become
+`pruned` while retaining its suspension and private audit history; it cannot
+re-register until explicitly restored. Suspend leaves public-base and heartbeat
+metadata intact. Restore clears only suspension and does not register an
+unregistered or pruned relay.
 
 ## Local commands
 
@@ -46,14 +49,17 @@ activity-relay-directory admin suspend --actor URL --moderator ID --reason CODE 
 activity-relay-directory admin restore --actor URL --moderator ID --reason CODE [--yes] [--format human|json]
 activity-relay-directory admin show --actor URL [--format human|json]
 activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]
+activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]
 ```
 
 Suspend and restore require the operator to type the exact canonical actor. The
 `--yes` flag is the explicit noninteractive acknowledgement for reviewed
 automation; it must not be added implicitly by packaging or service wrappers.
 
-Human output is stable `name=value` text. JSON output uses schema
-`activity-relay-directory.admin.v1`. Exit classes are fixed:
+Human output is stable `name=value` text. Moderation decisions, state, and
+audit JSON use schema `activity-relay-directory.admin.v1`; pruning dry-run JSON
+uses the separate read-only schema `activity-relay-directory.pruning-admin.v1`.
+Exit classes are fixed:
 
 | Exit | Meaning |
 | ---: | --- |
@@ -81,6 +87,14 @@ next cursor exists. Audit reads do not write or trigger cleanup.
 Audit output contains moderator and reason tokens and is therefore private.
 Do not publish it, attach it to public incident reports without redaction, or
 pipe it into public logging systems.
+
+The pruning dry-run is also local and bounded, but contains no moderator or
+reason tokens. It requires an existing current-schema database and uses a
+single query-only connection, so it cannot create the database, apply
+migrations, change lifecycle state, or add events. It reads only candidate
+identity, administrative state, and server-owned last-seen time. Its cursor
+fields must be supplied together. Automatic pruning is a separate process
+scheduler and has no administrative or public HTTP endpoint.
 
 ## Native and container operation
 

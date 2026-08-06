@@ -30,6 +30,7 @@ func (repository *RelayRepository) ModerationState(
 		administrative string
 		lastHeartbeat  sql.NullInt64
 		unregistered   sql.NullInt64
+		pruned         sql.NullInt64
 		suspended      sql.NullInt64
 	)
 	err := repository.database.QueryRowContext(
@@ -42,6 +43,7 @@ func (repository *RelayRepository) ModerationState(
 		        updated_at_unix,
 		        last_heartbeat_at_unix,
 		        unregistered_at_unix,
+		        pruned_at_unix,
 		        suspended_at_unix
 		 FROM relays
 		 WHERE relay_actor = ?`,
@@ -55,6 +57,7 @@ func (repository *RelayRepository) ModerationState(
 		&state.UpdatedUnix,
 		&lastHeartbeat,
 		&unregistered,
+		&pruned,
 		&suspended,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -74,6 +77,7 @@ func (repository *RelayRepository) ModerationState(
 	}
 	state.LastHeartbeatUnix = nullableInt64(lastHeartbeat)
 	state.UnregisteredUnix = nullableInt64(unregistered)
+	state.PrunedUnix = nullableInt64(pruned)
 	state.SuspendedUnix = nullableInt64(suspended)
 	return state, nil
 }

@@ -169,6 +169,24 @@ unregistered rows before decoding, perform no writes, and reject future
 last-seen values. Do not add a public listing route or pruning transition in the
 health-projection tranche.
 
+Soft-pruning code must use `storage.PruningRepository` and remain reversible.
+Candidate reads use the `(lifecycle_state, last_seen_at_unix, relay_actor)` index,
+include suspension without clearing it, and are bounded to 100 rows. One run may
+inspect at most 1,000 candidates against one captured server time. Revalidate
+registered state and the exact 30-day cutoff inside the same immediate
+transaction that writes `pruned_at_unix` and `relay_pruned`; heartbeat or
+register races must prevent pruning. Preserve first registration, moderation,
+and all audit events, support cancellation, require at least a one-hour enabled
+interval, and never hard-delete. Public adapters must exclude health `prune`
+independently of scheduler completion. Keep the scheduler default-off and out of
+all HTTP handlers; the local dry-run command must use an existing current-schema
+query-only connection and perform no database creation, migration, or writes.
+
+The container workflow must use the reviewed Node-24-compatible Docker action
+majors `docker/setup-buildx-action@v4` and `docker/build-push-action@v7`. Keep the
+static workflow regression test when copying or updating CI scaffolding so the
+retired Node-20 majors are not reintroduced.
+
 Lifecycle HTTP code must use `httpapi.LifecycleHandler` and remain disabled by
 default. `DIRECTORY_LIFECYCLE_ENABLED=true` gates register, heartbeat, and
 unregister together and requires an HTTPS public base URL. Durable enrollment
