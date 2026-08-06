@@ -287,15 +287,19 @@ authentication challenge.
 
 ## Lifecycle vocabulary
 
-Automatic health state is named only by heartbeat recency:
+Automatic health state is named by server-owned last-seen recency. Accepted
+register and heartbeat operations refresh the same nondecreasing value, so a
+new registration is healthy before its first heartbeat:
 
 - `healthy`
 - `stale`
 - `dead`
 - `prune`
 
-Threshold durations remain operator configuration and are not encoded in these
-names. Administrative state is separately `active` or `suspended`.
+Version 1 boundaries are fixed: age through 36 hours is `healthy`; over 36
+hours but before 7 days is `stale`; exactly 7 days through before 30 days is
+`dead`; and exactly 30 days or more is `prune`. They are not runtime
+configuration. Administrative state is separately `active` or `suspended`.
 `suspended` overrides automatic health and listing decisions. Reaching `prune`
 does not erase moderation or audit history without a separate explicit policy.
 Administrative transition outcomes and their moderator and reason tokens are

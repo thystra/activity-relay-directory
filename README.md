@@ -13,7 +13,8 @@ This repository currently provides a conservative service scaffold only:
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
 - signed register, heartbeat, and unregister APIs, disabled together by default
-- no public listing, network moderation, or pruning API
+- no public listing, network moderation, or pruning API; the health projection
+  remains an internal read model
 - version 1 protocol vocabulary and JSON compatibility fixtures
 - network-free canonical relay identity and URL validation
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
@@ -21,6 +22,8 @@ This repository currently provides a conservative service scaffold only:
 - atomic opaque-key replay-store contract and concurrency-tested reference
 - strict authenticated registration requests with audited handler persistence
 - strict authenticated heartbeat requests with server-owned liveness storage
+- deterministic bounded health projection with fixed 36-hour, 7-day, and
+  30-day version 1 boundaries
 - strict authenticated unregister-request contract without state deletion
 - startup SQLite migration and database-backed readiness checks
 - atomic register, heartbeat, and unregister state transitions behind handlers

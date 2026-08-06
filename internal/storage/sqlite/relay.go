@@ -112,12 +112,14 @@ func (repository *RelayRepository) Register(
 			    lifecycle_state,
 			    administrative_state,
 			    first_registered_at_unix,
-			    updated_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?)`,
+			    updated_at_unix,
+			    last_seen_at_unix
+			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			intent.RelayActor,
 			intent.PublicBaseURL,
 			lifecycleRegistered,
 			administrativeActive,
+			acceptedUnix,
 			acceptedUnix,
 			acceptedUnix,
 		)
@@ -125,6 +127,14 @@ func (repository *RelayRepository) Register(
 		relay.publicBaseURL == intent.PublicBaseURL:
 		outcome = v1.OutcomeUnchanged
 		eventKind = eventRegisterUnchanged
+		_, err = transaction.ExecContext(
+			ctx,
+			`UPDATE relays
+			 SET last_seen_at_unix = ?
+			 WHERE relay_actor = ?`,
+			acceptedUnix,
+			intent.RelayActor,
+		)
 	case relay.lifecycleState == lifecycleUnregistered:
 		outcome = v1.OutcomeUpdated
 		eventKind = eventRegisterUpdated
@@ -134,11 +144,13 @@ func (repository *RelayRepository) Register(
 			 SET public_base_url = ?,
 			     lifecycle_state = ?,
 			     updated_at_unix = ?,
+			     last_seen_at_unix = ?,
 			     last_heartbeat_at_unix = NULL,
 			     unregistered_at_unix = NULL
 			 WHERE relay_actor = ?`,
 			intent.PublicBaseURL,
 			lifecycleRegistered,
+			acceptedUnix,
 			acceptedUnix,
 			intent.RelayActor,
 		)
@@ -206,8 +218,11 @@ func (repository *RelayRepository) Heartbeat(
 	if _, err := transaction.ExecContext(
 		ctx,
 		`UPDATE relays
-		 SET updated_at_unix = ?, last_heartbeat_at_unix = ?
+		 SET updated_at_unix = ?,
+		     last_seen_at_unix = ?,
+		     last_heartbeat_at_unix = ?
 		 WHERE relay_actor = ?`,
+		acceptedUnix,
 		acceptedUnix,
 		acceptedUnix,
 		intent.RelayActor,
@@ -304,6 +319,7 @@ type relayRecord struct {
 	lifecycleState      string
 	administrativeState string
 	updatedAtUnix       int64
+	lastSeenAtUnix      int64
 }
 
 func (repository *RelayRepository) begin(ctx context.Context) (*sql.Tx, error) {
@@ -328,7 +344,8 @@ func selectRelay(
 		`SELECT public_base_url,
 		        lifecycle_state,
 		        administrative_state,
-		        updated_at_unix
+		        updated_at_unix,
+		        last_seen_at_unix
 		 FROM relays
 		 WHERE relay_actor = ?`,
 		relayActor,
@@ -337,6 +354,7 @@ func selectRelay(
 		&relay.lifecycleState,
 		&relay.administrativeState,
 		&relay.updatedAtUnix,
+		&relay.lastSeenAtUnix,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -357,6 +375,9 @@ func requireMonotonicTime(
 	latest := int64(-1)
 	if relay != nil {
 		latest = relay.updatedAtUnix
+		if relay.lastSeenAtUnix > latest {
+			latest = relay.lastSeenAtUnix
+		}
 	}
 	var latestEvent sql.NullInt64
 	if err := transaction.QueryRowContext(

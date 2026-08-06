@@ -24,7 +24,7 @@ func (operation Operation) Valid() bool {
 	}
 }
 
-// HealthState classifies a relay by the recency of its last valid heartbeat.
+// HealthState classifies a relay by server-owned accepted register/heartbeat recency.
 type HealthState string
 
 const (

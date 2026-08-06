@@ -147,8 +147,8 @@ func TestMigrateUpgradesVersionOneWithoutChangingExistingState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 3 {
-		t.Fatalf("migration count = %d, want 3", len(migrations))
+	if len(migrations) != CurrentSchemaVersion {
+		t.Fatalf("migration count = %d, want %d", len(migrations), CurrentSchemaVersion)
 	}
 	if _, err := database.Exec(migrationTableSQL); err != nil {
 		t.Fatalf("create migration table: %v", err)
@@ -214,8 +214,8 @@ func TestMigrateUpgradesVersionOneWithoutChangingExistingState(t *testing.T) {
 	relay := readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleRegistered ||
 		relay.administrativeState != administrativeActive ||
-		relay.updatedAtUnix != 110 || !relay.lastHeartbeat.Valid ||
-		relay.lastHeartbeat.Int64 != 110 {
+		relay.updatedAtUnix != 110 || relay.lastSeenAtUnix != 110 ||
+		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 {
 		t.Fatalf("upgraded relay = %#v", relay)
 	}
 	if got := readTestEventKinds(t, database, testRelayActor); !equalStrings(
@@ -287,7 +287,8 @@ func TestMigrateVersionTwoAddsClosedEnrollmentWithoutChangingRelay(t *testing.T)
 		t.Fatalf("Migrate(version 2) error = %v", err)
 	}
 	relay := readTestRelay(t, database, testRelayActor)
-	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 100 {
+	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 100 ||
+		relay.lastSeenAtUnix != 100 {
 		t.Fatalf("upgraded relay = %#v", relay)
 	}
 	var open int
@@ -637,28 +638,71 @@ func insertRelay(
 	wantSuccess bool,
 ) {
 	t.Helper()
-	_, err := database.Exec(
-		`INSERT INTO relays (
-		    relay_actor,
-		    public_base_url,
-		    lifecycle_state,
-		    administrative_state,
-		    first_registered_at_unix,
-		    updated_at_unix,
-		    last_heartbeat_at_unix,
-		    unregistered_at_unix,
-		    suspended_at_unix
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		actor,
-		"https://relay.example/",
-		lifecycle,
-		administrative,
-		firstRegisteredAt,
-		updatedAt,
-		lastHeartbeatAt,
-		unregisteredAt,
-		suspendedAt,
-	)
+
+	lastSeenAt := firstRegisteredAt
+	if lastHeartbeatAt != nil && *lastHeartbeatAt > lastSeenAt {
+		lastSeenAt = *lastHeartbeatAt
+	}
+
+	var hasLastSeen int
+	if err := database.QueryRow(
+		`SELECT COUNT(*)
+		 FROM pragma_table_info('relays')
+		 WHERE name = 'last_seen_at_unix'`,
+	).Scan(&hasLastSeen); err != nil {
+		t.Fatalf("inspect relay columns: %v", err)
+	}
+
+	var err error
+	if hasLastSeen == 1 {
+		_, err = database.Exec(
+			`INSERT INTO relays (
+			    relay_actor,
+			    public_base_url,
+			    lifecycle_state,
+			    administrative_state,
+			    first_registered_at_unix,
+			    updated_at_unix,
+			    last_seen_at_unix,
+			    last_heartbeat_at_unix,
+			    unregistered_at_unix,
+			    suspended_at_unix
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			actor,
+			"https://relay.example/",
+			lifecycle,
+			administrative,
+			firstRegisteredAt,
+			updatedAt,
+			lastSeenAt,
+			lastHeartbeatAt,
+			unregisteredAt,
+			suspendedAt,
+		)
+	} else {
+		_, err = database.Exec(
+			`INSERT INTO relays (
+			    relay_actor,
+			    public_base_url,
+			    lifecycle_state,
+			    administrative_state,
+			    first_registered_at_unix,
+			    updated_at_unix,
+			    last_heartbeat_at_unix,
+			    unregistered_at_unix,
+			    suspended_at_unix
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			actor,
+			"https://relay.example/",
+			lifecycle,
+			administrative,
+			firstRegisteredAt,
+			updatedAt,
+			lastHeartbeatAt,
+			unregisteredAt,
+			suspendedAt,
+		)
+	}
 	if wantSuccess && err != nil {
 		t.Fatalf("insert relay %q error = %v", actor, err)
 	}

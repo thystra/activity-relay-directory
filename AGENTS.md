@@ -25,8 +25,10 @@
 - Registration, heartbeat, and unregister requests will require authenticated
   signatures, content digests, bounded timestamps, nonce replay protection,
   and bounded request bodies.
-- Public status terminology will use healthy, stale, dead, and prune windows
-  defined by recency.
+- Public status terminology uses fixed version 1 healthy, stale, dead, and
+  prune boundaries at 36 hours, 7 days, and 30 days of server-owned recency.
+- Accepted register and heartbeat operations maintain one nondecreasing
+  `last_seen_at_unix`; future values fail closed during projection.
 - Moderation and administrative suspension override automated health state.
 - Protocol compatibility must be versioned and tested with fixtures.
 
@@ -158,6 +160,14 @@ source/actor capacity, bounded oldest-idle
 cleanup, nondecreasing time, global concurrency permits, idempotent release,
 and redacted decisions. Admission construction does not authorize handler
 wiring, registration availability, or deployment.
+
+Health projection code must use `storage.ClassifyHealth` and the fixed version 1
+boundaries. One caller-captured server time classifies an entire bounded page.
+SQLite reads must use the `(lifecycle_state, administrative_state,
+last_seen_at_unix, relay_actor)` index and keyset cursor, exclude suspended and
+unregistered rows before decoding, perform no writes, and reject future
+last-seen values. Do not add a public listing route or pruning transition in the
+health-projection tranche.
 
 Lifecycle HTTP code must use `httpapi.LifecycleHandler` and remain disabled by
 default. `DIRECTORY_LIFECYCLE_ENABLED=true` gates register, heartbeat, and

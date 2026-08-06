@@ -46,7 +46,7 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 
 	relay := readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 110 ||
-		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
+		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
 		relay.unregisteredAt.Valid {
 		t.Fatalf("registered relay state = %#v", relay)
 	}
@@ -64,7 +64,7 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 
 	relay = readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleUnregistered || relay.updatedAtUnix != 130 ||
-		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
+		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
 		!relay.unregisteredAt.Valid || relay.unregisteredAt.Int64 != 130 {
 		t.Fatalf("unregistered relay state = %#v", relay)
 	}
@@ -79,7 +79,8 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 	)), v1.OutcomeUpdated)
 	relay = readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleRegistered || relay.firstRegisteredAt != 100 ||
-		relay.updatedAtUnix != 150 || relay.lastHeartbeat.Valid ||
+		relay.updatedAtUnix != 150 || relay.lastSeenAtUnix != 150 ||
+		relay.lastHeartbeat.Valid ||
 		relay.unregisteredAt.Valid {
 		t.Fatalf("restored relay state = %#v", relay)
 	}
@@ -363,7 +364,8 @@ func TestRelayRepositoryRollsBackHeartbeatAndUnregisterWhenAuditInsertFails(t *t
 
 			relay := readTestRelay(t, database, testRelayActor)
 			if relay.lifecycleState != lifecycleRegistered ||
-				relay.updatedAtUnix != 100 || relay.lastHeartbeat.Valid ||
+				relay.updatedAtUnix != 100 || relay.lastSeenAtUnix != 100 ||
+				relay.lastHeartbeat.Valid ||
 				relay.unregisteredAt.Valid {
 				t.Fatalf("relay changed after %s rollback: %#v", operation, relay)
 			}
@@ -530,6 +532,7 @@ type testRelayRecord struct {
 	administrativeState string
 	firstRegisteredAt   int64
 	updatedAtUnix       int64
+	lastSeenAtUnix      int64
 	lastHeartbeat       sql.NullInt64
 	unregisteredAt      sql.NullInt64
 	suspendedAt         sql.NullInt64
@@ -574,6 +577,7 @@ func readTestRelay(t *testing.T, database *sql.DB, relayActor string) testRelayR
 		        administrative_state,
 		        first_registered_at_unix,
 		        updated_at_unix,
+		        last_seen_at_unix,
 		        last_heartbeat_at_unix,
 		        unregistered_at_unix,
 		        suspended_at_unix
@@ -586,6 +590,7 @@ func readTestRelay(t *testing.T, database *sql.DB, relayActor string) testRelayR
 		&relay.administrativeState,
 		&relay.firstRegisteredAt,
 		&relay.updatedAtUnix,
+		&relay.lastSeenAtUnix,
 		&relay.lastHeartbeat,
 		&relay.unregisteredAt,
 		&relay.suspendedAt,

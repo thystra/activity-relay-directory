@@ -31,10 +31,11 @@ The contract packages remain independently testable. The runtime composes them
 with the safe actor resolver, durable replay adapter, admission policy, and
 state repository only when lifecycle service is explicitly enabled.
 
-The first persistence foundation is an embedded SQLite migration set for one
-active directory process on one host. It defines strict relay lifecycle and
-administrative state, opaque replay reservations, and separate append-only
-lifecycle and private moderation events. Migration history is transactional
+The persistence foundation is an embedded SQLite migration set for one active
+directory process on one host. It defines strict relay lifecycle and
+administrative state, one indexed server-owned `last_seen_at_unix`, opaque
+replay reservations, and separate append-only lifecycle and private moderation
+events. Migration history is transactional
 and content-hashed so drift,
 missing history, and databases newer than the binary fail closed. Process
 startup requires an absolute database path, applies migrations before opening
@@ -54,7 +55,19 @@ authorization is operating-system access to the executable and owner-only local
 database; there is no preemptive blocklist, moderation HTTP endpoint, bearer
 token, or automatically granted administrative group. SQLite files must remain
 local; multi-host service topology requires a later database backend rather
-than shared SQLite storage. See `docs/PERSISTENCE.md` and
+than shared SQLite storage.
+
+Accepted register and heartbeat operations maintain `last_seen_at_unix` in the
+same transaction as their lifecycle event. Migration 4 deterministically
+backfills it from first registration, retained heartbeat time, and accepted
+register/heartbeat events. A backend-neutral bounded health read orders active
+registered relays by `(last_seen_at_unix, relay_actor)` and classifies the whole
+page against one captured server time. Version 1 boundaries are fixed: through
+36 hours is healthy, over 36 hours and before 7 days is stale, 7 days through
+before 30 days is dead, and 30 days or more requires pruning. Suspended and
+unregistered rows are excluded at the query boundary, future timestamps fail
+closed, and ordinary projection reads never mutate state. This tranche adds no
+public listing or pruning transition. See `docs/PERSISTENCE.md` and
 `docs/MODERATION.md`.
 
 The SQLite replay store implements the RFC 9421 opaque-key interface.
@@ -94,7 +107,7 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. health-state calculation and pruning;
+1. bounded reversible soft pruning;
 2. public JSON and human-readable directory views;
 3. bounded retention policy;
 4. Activity-Relay client integration and soak testing.
