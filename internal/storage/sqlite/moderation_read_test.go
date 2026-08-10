@@ -240,6 +240,7 @@ func TestModerationReadVocabulary(t *testing.T) {
 	for _, state := range []storage.RelayLifecycleState{
 		storage.LifecycleRegistered,
 		storage.LifecycleUnregistered,
+		storage.LifecyclePruned,
 	} {
 		if !state.Valid() {
 			t.Fatalf("lifecycle state %q is invalid", state)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/thystra/activity-relay-directory/internal/admincommand"
 	"github.com/thystra/activity-relay-directory/internal/config"
+	"github.com/thystra/activity-relay-directory/internal/prunecommand"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
@@ -33,6 +34,9 @@ func runAdminWithInput(
 	}
 	if arguments[2] == "enrollment" {
 		return runEnrollmentAdmin(arguments, stdout, stderr, now)
+	}
+	if arguments[2] == "pruning" {
+		return runPruningAdmin(arguments, stdout, stderr, now)
 	}
 
 	request, err := admincommand.Parse(arguments[2:])
@@ -68,6 +72,45 @@ func runAdminWithInput(
 		return admincommand.ExitOperational
 	}
 	return admincommand.Execute(ctx, request, repository, stdout, stderr, now)
+}
+
+func runPruningAdmin(
+	arguments []string,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	if len(arguments) < 4 {
+		writePruningUsage(stderr)
+		return prunecommand.ExitUsage
+	}
+	request, err := prunecommand.Parse(arguments[3:])
+	if err != nil {
+		writePruningUsage(stderr)
+		return prunecommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return prunecommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return prunecommand.ExitUsage
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+	defer cancel()
+	database, err := initializeReadOnlyDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return prunecommand.ExitOperational
+	}
+	defer database.Close()
+	repository, err := storageSQLite.NewRelayRepository(database)
+	if err != nil {
+		fmt.Fprintln(stderr, "soft-pruning repository initialization failed")
+		return prunecommand.ExitOperational
+	}
+	return prunecommand.Execute(ctx, request, repository, stdout, stderr, now)
 }
 
 func runEnrollmentAdmin(
@@ -169,6 +212,11 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin restore --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin show --actor URL [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
+}
+
+func writePruningUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
 }
 
 func writeEnrollmentUsage(output io.Writer) {

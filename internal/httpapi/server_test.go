@@ -229,3 +229,20 @@ func TestPublicStatusOmitsPrivateModerationFields(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicHTTPDoesNotExposeSoftPruningMaintenance(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+		for _, path := range []string{
+			"/v1/pruning",
+			"/v1/pruning/run",
+			"/admin/pruning",
+		} {
+			request := httptest.NewRequest(method, path, nil)
+			response := httptest.NewRecorder()
+			testHandler().ServeHTTP(response, request)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want 404", method, path, response.Code)
+			}
+		}
+	}
+}

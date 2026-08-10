@@ -17,6 +17,7 @@ const (
 	maximumReasonCodeBytes     = storage.MaximumModerationReasonCodeBytes
 	lifecycleRegistered        = "registered"
 	lifecycleUnregistered      = "unregistered"
+	lifecyclePruned            = "pruned"
 	administrativeActive       = "active"
 	administrativeSuspended    = "suspended"
 	eventRegisterCreated       = "register_created"
@@ -25,6 +26,7 @@ const (
 	eventHeartbeatRecorded     = "heartbeat_recorded"
 	eventUnregisterRemoved     = "unregister_removed"
 	eventUnregisterAbsent      = "unregister_absent"
+	eventRelayPruned           = "relay_pruned"
 	moderationSuspendApplied   = "suspend_applied"
 	moderationSuspendUnchanged = "suspend_unchanged"
 	moderationRestoreApplied   = "restore_applied"
@@ -54,7 +56,7 @@ func NewRelayRepository(database *sql.DB) (*RelayRepository, error) {
 }
 
 // Register creates, restores, or confirms a relay registration. It never
-// clears administrative suspension and restores no pre-unregister heartbeat.
+// clears administrative suspension and restores no pre-unregister or pre-prune heartbeat.
 func (repository *RelayRepository) Register(
 	ctx context.Context,
 	intent storage.RegisterIntent,
@@ -135,7 +137,8 @@ func (repository *RelayRepository) Register(
 			acceptedUnix,
 			intent.RelayActor,
 		)
-	case relay.lifecycleState == lifecycleUnregistered:
+	case relay.lifecycleState == lifecycleUnregistered ||
+		relay.lifecycleState == lifecyclePruned:
 		outcome = v1.OutcomeUpdated
 		eventKind = eventRegisterUpdated
 		_, err = transaction.ExecContext(
@@ -146,7 +149,8 @@ func (repository *RelayRepository) Register(
 			     updated_at_unix = ?,
 			     last_seen_at_unix = ?,
 			     last_heartbeat_at_unix = NULL,
-			     unregistered_at_unix = NULL
+			     unregistered_at_unix = NULL,
+			     pruned_at_unix = NULL
 			 WHERE relay_actor = ?`,
 			intent.PublicBaseURL,
 			lifecycleRegistered,

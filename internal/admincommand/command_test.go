@@ -178,6 +178,7 @@ func TestExecuteShowAndAuditEmitStablePrivateOperatorViews(t *testing.T) {
 		"updated_at_unix=110\n" +
 		"last_heartbeat_at_unix=105\n" +
 		"unregistered_at_unix=-\n" +
+		"pruned_at_unix=-\n" +
 		"suspended_at_unix=110\n"
 	if stdout.String() != wantShow || stderr.Len() != 0 {
 		t.Fatalf("show = (%q, %q)", stdout.String(), stderr.String())

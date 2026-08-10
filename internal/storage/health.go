@@ -86,6 +86,14 @@ type HealthProjectionRelay struct {
 	LastSeenUnix  int64
 }
 
+// PublicEligible reports whether a classified relay may enter a public listing.
+// Public adapters must apply this check independently of the asynchronous
+// soft-pruning transition so a relay at or beyond the 30-day boundary never
+// remains visible merely because maintenance has not run yet.
+func (relay HealthProjectionRelay) PublicEligible() bool {
+	return relay.HealthState.Valid() && relay.HealthState != v1.HealthPrune
+}
+
 // HealthProjectionPage is one bounded keyset page. Next is zero when no later
 // row was observed during this read.
 type HealthProjectionPage struct {

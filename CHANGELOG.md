@@ -40,6 +40,16 @@
   backfill and an indexed bounded health-projection read model.
 - Fixed version 1 health classification at 36 hours, 7 days, and 30 days with
   fail-closed future-time handling and suspended/unregistered exclusion.
+- Transactional schema version 5 with reversible `pruned` lifecycle state,
+  `pruned_at_unix`, append-only `relay_pruned` events, and an indexed candidate
+  scan that preserves suspension and audit history.
+- Bounded soft-pruning coordinator with transactional eligibility revalidation,
+  cancellation, a fixed 1,000-candidate-attempt run budget, a one-hour minimum
+  scheduling interval, and default-off automatic maintenance.
+- Local read-only `admin pruning dry-run` with bounded keyset pagination and
+  stable human/JSON output.
+- Node-24-compatible Docker Buildx and Build Push GitHub Actions majors with a
+  regression test against reintroducing the retired versions.
 
 ### Security
 

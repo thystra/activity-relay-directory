@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestLoadDefaultsLifecycleDisabled(t *testing.T) {
@@ -34,6 +37,71 @@ func TestLoadDefaultsLifecycleDisabled(t *testing.T) {
 	}
 	if len(cfg.TrustedProxyPrefixes) != 0 {
 		t.Fatalf("TrustedProxyPrefixes = %#v", cfg.TrustedProxyPrefixes)
+	}
+}
+
+func TestLoadDefaultsSoftPruningDisabled(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
+	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.SoftPruningEnabled {
+		t.Fatal("SoftPruningEnabled = true")
+	}
+	if cfg.SoftPruningInterval != storage.DefaultSoftPruningInterval {
+		t.Fatalf("SoftPruningInterval = %s", cfg.SoftPruningInterval)
+	}
+}
+
+func TestLoadParsesBoundedSoftPruningConfiguration(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "true")
+	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "6h")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.SoftPruningEnabled || cfg.SoftPruningInterval != 6*time.Hour {
+		t.Fatalf("soft-pruning configuration = enabled:%t interval:%s", cfg.SoftPruningEnabled, cfg.SoftPruningInterval)
+	}
+}
+
+func TestLoadRejectsInvalidSoftPruningConfiguration(t *testing.T) {
+	for name, values := range map[string][2]string{
+		"invalid boolean":  {"sometimes", "24h"},
+		"invalid duration": {"true", "daily"},
+		"below minimum":    {"true", "59m59s"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+			t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", values[0])
+			t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", values[1])
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() accepted enabled=%q interval=%q", values[0], values[1])
+			}
+		})
+	}
+}
+
+func TestValidateRequiresIntervalWhenSoftPruningEnabled(t *testing.T) {
+	cfg := Config{
+		ListenAddress:       "127.0.0.1:8080",
+		PublicBaseURL:       "https://directory.example",
+		DatabasePath:        filepath.Join(t.TempDir(), "directory.sqlite"),
+		SoftPruningEnabled:  true,
+		SoftPruningInterval: 0,
+		MaxRequestBodyBytes: defaultMaxRequestBodyBytes,
+	}
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "SOFT_PRUNING_INTERVAL") {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -211,6 +279,8 @@ func TestValidateRejectsRelativeOrUncleanDatabasePath(t *testing.T) {
 
 func setRequiredEnvironment(t *testing.T) {
 	t.Helper()
+	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
+	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
 	t.Setenv(
 		"DIRECTORY_DATABASE_PATH",
 		filepath.Join(t.TempDir(), "directory.sqlite"),
