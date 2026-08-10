@@ -10,11 +10,12 @@ This repository currently provides a conservative service scaffold only:
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/status`
+- default-off `GET /v1/relays` public JSON listing
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
 - signed register, heartbeat, and unregister APIs, disabled together by default
-- no public listing, network moderation, or pruning API; health projection and
-  soft-pruning maintenance remain private local capabilities
+- no network moderation or pruning API; the public JSON listing is independently
+  gated and defaults off, while soft-pruning maintenance remains private/local
 - version 1 protocol vocabulary and JSON compatibility fixtures
 - network-free canonical relay identity and URL validation
 - network-free RFC 9530 SHA-256 Content-Digest generation and verification
@@ -56,8 +57,10 @@ source derivation, two-stage admission, safe actor/key resolution and caching,
 RFC 9530 and RFC 9421 verification, durable nonce reservation, suspension
 checks, and audited SQLite transitions. See `docs/HANDLERS.md`,
 `docs/PERSISTENCE.md`, `docs/MODERATION.md`, `docs/RESOLUTION.md`, and
-`docs/ADMISSION.md`. Public listings, network moderation transport, inactive
-record retention, and release/deployment integration remain later work.
+`docs/ADMISSION.md`. The independently gated public JSON listing is documented
+in `docs/PUBLIC-LISTING.md`. Human-readable presentation, network moderation
+transport, inactive-record retention, and release/deployment integration remain
+later work.
 Their dependency order, review tranches, and completion gates are tracked
 in `TODO.md`.
 
@@ -121,6 +124,18 @@ and cannot be less than `1h`. Each run captures one server time, processes at
 most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
+
+## Public JSON listing
+
+`DIRECTORY_PUBLIC_LISTING_ENABLED=true` independently enables `GET`/`HEAD`
+`/v1/relays`. It does not enable lifecycle registration or open enrollment. The
+listing defaults off and returns only canonical relay actor/base URL, fixed
+health state, and server-owned UTC `last_seen_at` values. Pages default to 50
+rows, are capped at 100, and use an opaque keyset cursor. Suspended,
+unregistered, pruned, and 30-day-or-older rows are excluded in the bounded
+SQLite query before presentation. Responses use a one-minute public cache
+policy and strong ETags. Invalid pagination and backend failures return fixed
+redacted JSON errors. See `docs/PUBLIC-LISTING.md`.
 
 ## Privacy boundary
 

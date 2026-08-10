@@ -163,11 +163,12 @@ registered relays before decoding, and performs no writes.
 A `last_seen_at_unix` later than the captured observation time fails the whole
 read closed instead of producing a younger state. Administrative suspension and
 explicit unregister therefore win before health classification. The internal
-projection returns `prune` state to private maintenance. Public adapters must
-apply `HealthProjectionRelay.PublicEligible` or equivalent indexed query
-filtering before presentation, excluding `prune` independently of whether the
-asynchronous lifecycle transition has committed. Projection reads do not expose
-a public listing or delete rows.
+projection returns `prune` state to private maintenance. The public JSON listing
+uses a separate bounded repository query over the same composite index and
+enforces `last_seen_at_unix > observed_at - 30 days` together with registered
+and administratively active state before rows reach presentation. Thus exactly
+30-day-old, pruned, unregistered, and suspended rows are excluded regardless of
+asynchronous maintenance lag. Listing reads remain read-only and delete no rows.
 
 ## Reversible soft pruning
 

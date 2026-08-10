@@ -1,0 +1,1 @@
+{"schema_version":1,"relays":[{"relay_actor":"https://relay.example/actor","public_base_url":"https://relay.example","health":"healthy","last_seen_at":"1970-01-02T03:46:40Z"}],"pagination":{"limit":50,"next_cursor":""}}

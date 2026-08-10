@@ -9,3 +9,7 @@ both repositories and is accepted by the Directory's real verifier.
 
 Fixtures use reserved `.example` names. They must exclude production keys,
 identities, host inventories, connected-site membership, and user data.
+
+`public/v1/` contains public-view representation fixtures. They freeze the
+listing schema separately from the signed lifecycle protocol vocabulary under
+`directory/v1/`.

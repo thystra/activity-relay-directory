@@ -6,7 +6,8 @@ Activity-Relay itself.
 The initial process contains:
 
 - environment-backed configuration with strict validation;
-- an HTTP server with health, readiness, and public status endpoints;
+- an HTTP server with health, readiness, public status, and an independently gated
+  public JSON listing endpoint;
 - immutable build-version metadata;
 - single-node SQLite startup migration and readiness checks;
 - fail-closed signed lifecycle handlers that remain disabled by default.
@@ -65,9 +66,13 @@ registered relays by `(last_seen_at_unix, relay_actor)` and classifies the whole
 page against one captured server time. Version 1 boundaries are fixed: through
 36 hours is healthy, over 36 hours and before 7 days is stale, 7 days through
 before 30 days is dead, and 30 days or more requires pruning. Suspended and
-unregistered rows are excluded at the query boundary, future timestamps fail
-closed, and ordinary projection reads never mutate state. This tranche adds no
-public listing. Migration 5 adds the reversible `pruned` state and
+unregistered rows are excluded at the private health-query boundary, future
+timestamps fail closed, and ordinary projection reads never mutate state. A
+separate default-off public listing repository query uses the same composite
+index while enforcing registered/active state and the fixed 30-day cutoff in
+SQL before presentation. The HTTP adapter adds deterministic bounded JSON, an
+opaque observation-pinned keyset cursor, strong ETags, and an independent
+concurrency ceiling. Migration 5 adds the reversible `pruned` state and
 `relay_pruned` event. A private coordinator scans indexed keyset pages against
 one captured time, revalidates each transition inside its immediate transaction,
 and caps every run at 1,000 candidates. Suspension is preserved, repeated runs
@@ -113,8 +118,8 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. public JSON and human-readable directory views;
-2. bounded retention policy;
+1. human-readable directory view from the public JSON projection;
+2. bounded retention policy and database-growth safeguards;
 3. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review

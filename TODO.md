@@ -77,6 +77,10 @@ is short-lived housekeeping and is not this proposed hard-retention feature.
 | 17 | Directory | Database growth guard and administrator notification |
 | 18 | Both | Staging soak, packaging, and release-candidate evidence |
 
+Repository history also contains an operational CI change described as “Tranche
+14: native Forgejo CI.” That infrastructure milestone is outside this product
+feature roadmap and does not renumber the product tranches above.
+
 ## Tranche 8: Cross-repository client contract
 
 Completed (2026-08-05): the cross-repository contract is implemented in both
@@ -358,6 +362,11 @@ Acceptance gates:
 - no public request can trigger an unbounded scan or maintenance run.
 
 ## Tranche 14: Public JSON directory view
+
+Completed in source (2026-08-10): the default-off versioned JSON listing,
+indexed public-eligibility query, opaque bounded pagination, cache validator,
+and independent public admission ceiling are implemented. It remains
+undeployed and inactive by default.
 
 Repository: `thystra/activity-relay-directory`.
 
