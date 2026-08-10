@@ -6,8 +6,8 @@ Activity-Relay itself.
 The initial process contains:
 
 - environment-backed configuration with strict validation;
-- an HTTP server with health, readiness, public status, and an independently gated
-  public JSON listing endpoint;
+- an HTTP server with health, readiness, public status, and independently gated
+  JSON and human-readable views of one public directory projection;
 - immutable build-version metadata;
 - single-node SQLite startup migration and readiness checks;
 - fail-closed signed lifecycle handlers that remain disabled by default.
@@ -70,9 +70,11 @@ unregistered rows are excluded at the private health-query boundary, future
 timestamps fail closed, and ordinary projection reads never mutate state. A
 separate default-off public listing repository query uses the same composite
 index while enforcing registered/active state and the fixed 30-day cutoff in
-SQL before presentation. The HTTP adapter adds deterministic bounded JSON, an
-opaque observation-pinned keyset cursor, strong ETags, and an independent
-concurrency ceiling. Migration 5 adds the reversible `pruned` state and
+SQL before presentation. One HTTP projection loader adds the shared authenticated
+observation-pinned keyset cursor and independent concurrency ceiling; deterministic
+JSON and Go-template HTML render from that same result with matching cache policy
+and strong exact-byte ETags. The HTML view uses only bundled local styling and a
+strict CSP. Migration 5 adds the reversible `pruned` state and
 `relay_pruned` event. A private coordinator scans indexed keyset pages against
 one captured time, revalidates each transition inside its immediate transaction,
 and caps every run at 1,000 candidates. Suspension is preserved, repeated runs
@@ -118,9 +120,8 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. human-readable directory view from the public JSON projection;
-2. bounded retention policy and database-growth safeguards;
-3. Activity-Relay client integration and soak testing.
+1. bounded retention policy and database-growth safeguards;
+2. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review
 tranches, and acceptance gates for these components.

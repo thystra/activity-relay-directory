@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Activity-Relay Directory</title>
+  <link rel="stylesheet" href="{{.Stylesheet}}">
+</head>
+<body>
+  <a class="skip-link" href="#directory">Skip to directory</a>
+  <header class="site-header">
+    <div class="shell">
+      <p class="eyebrow">Activity-Relay Directory</p>
+      <h1>Public relay directory</h1>
+      <p class="lede">Relays shown here are registered, active, and recently seen by this directory.</p>
+    </div>
+  </header>
+
+  <main id="directory" class="shell" tabindex="-1">
+    <section aria-labelledby="relay-list-heading">
+      <div class="section-heading">
+        <div>
+          <h2 id="relay-list-heading">Relays</h2>
+          <p>Relays on this page: {{len .Listing.Relays}}.</p>
+        </div>
+        <a class="secondary-link" href="{{.JSONURL}}">View JSON</a>
+      </div>
+
+{{if .Listing.Relays}}
+      <ul class="relay-list">
+{{range .Listing.Relays}}
+        <li>
+          <article class="relay-card">
+            <h3><a href="{{.PublicBaseURL}}" rel="noreferrer">{{.PublicBaseURL}}</a></h3>
+            <dl>
+              <div>
+                <dt>Actor</dt>
+                <dd><code>{{.RelayActor}}</code></dd>
+              </div>
+              <div>
+                <dt>Health</dt>
+                <dd><span class="health health-{{.Health}}">{{.Health}}</span></dd>
+              </div>
+              <div>
+                <dt>Last seen</dt>
+                <dd><time datetime="{{.LastSeenAt}}">{{.LastSeenAt}}</time></dd>
+              </div>
+            </dl>
+          </article>
+        </li>
+{{end}}
+      </ul>
+{{else}}
+      <p class="empty-state">No relays are currently available in the public directory.</p>
+{{end}}
+    </section>
+
+    <nav class="pagination" aria-label="Directory pages">
+      {{if .NextURL}}<a class="button-link" href="{{.NextURL}}">Next page</a>{{else}}<span>End of directory</span>{{end}}
+    </nav>
+
+    <section class="health-help" aria-labelledby="health-heading">
+      <h2 id="health-heading">Health definitions</h2>
+      <dl>
+        <div>
+          <dt>healthy</dt>
+          <dd>Last seen by the directory no more than 36 hours ago.</dd>
+        </div>
+        <div>
+          <dt>stale</dt>
+          <dd>Last seen more than 36 hours ago but less than 7 days ago.</dd>
+        </div>
+        <div>
+          <dt>dead</dt>
+          <dd>Last seen at least 7 days ago but less than 30 days ago.</dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell">
+      <p>Public data only. Administrative and moderation details are not exposed here.</p>
+    </div>
+  </footer>
+</body>
+</html>

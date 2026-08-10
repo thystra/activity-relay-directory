@@ -4,6 +4,10 @@
 
 ### Added
 
+- Human-readable `GET`/`HEAD` `/` directory view rendered from the same bounded public
+  projection as `/v1/relays`, with shared authenticated pagination, bundled
+  same-origin styling, automatic HTML escaping, strict CSP, and matching cache
+  validators.
 - Initial Go service scaffold.
 - Health, readiness, and schema-versioned status endpoints.
 - Strict environment configuration validation.

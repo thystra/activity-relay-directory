@@ -148,6 +148,21 @@ func NewHandlerWithRuntime(
 			}
 			publicListing.serve(response, request)
 		})
+		mux.HandleFunc(directoryStylesheetPath, serveDirectoryStylesheet)
+		mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
+			if request.URL.Path != "/" {
+				http.NotFound(response, request)
+				return
+			}
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")
+				return
+			}
+			publicListing.serveHumanDirectory(response, request)
+		})
 	}
 
 	return securityHeaders(mux)

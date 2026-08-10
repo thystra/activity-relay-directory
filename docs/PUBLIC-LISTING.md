@@ -1,4 +1,4 @@
-# Public JSON directory listing
+# Public directory views
 
 ## Boundary
 
@@ -49,3 +49,27 @@ independent of signed lifecycle source/actor admission. Saturation returns a
 fixed HTTP 429 response with a bounded retry hint. Repository reads have a
 two-second request deadline. Security headers are inherited from the common
 HTTP wrapper and the listing defines no write method or CORS write surface.
+
+## Human-readable view
+
+When the public listing is enabled, `GET`/`HEAD` `/` renders the same bounded
+projection through Go `html/template`; it does not have a second repository or
+eligibility query. The HTML route and `/assets/directory.css` are registered
+under the same `DIRECTORY_PUBLIC_LISTING_ENABLED` gate as `/v1/relays`.
+
+HTML pagination uses the same authenticated five-minute cursor and page-size
+bounds as JSON, so ordering, observation time, health classification, and the
+30-day public-eligibility cutoff cannot drift between representations. A cursor
+issued by one representation is accepted by the other while it remains valid.
+
+The initial HTML page contains only the public JSON relay fields plus explanatory
+labels and health definitions. Go templates provide automatic HTML escaping.
+Relay public base URLs are the only relay-controlled outbound links; relay HTML,
+images, scripts, styles, fonts, and other remote resources are never fetched.
+The page uses a bundled same-origin stylesheet and no JavaScript.
+
+HTML responses use the same one-minute cache policy and exact-byte SHA-256 ETag
+semantics as JSON. The HTML page overrides the common deny-by-default CSP only
+to allow its same-origin stylesheet; scripts, images, fonts, connections,
+frames, objects, media, forms, and base-URI changes remain denied. Error
+responses are fixed, redacted, and `no-store`.
