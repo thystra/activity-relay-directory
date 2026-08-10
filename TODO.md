@@ -406,6 +406,12 @@ Acceptance gates:
 
 ## Tranche 15: Human-readable directory view
 
+Completed (2026-08-10): the human-readable `GET`/`HEAD` `/` view is implemented
+from the same public projection as `/v1/relays`, with shared authenticated
+pagination, deterministic caching, bundled same-origin styling, automatic
+template escaping, and a strict CSP. It remains undeployed and default-off with
+the public listing gate.
+
 Repository: `thystra/activity-relay-directory`.
 
 Build `GET /` from the same public projection as JSON so filtering and privacy

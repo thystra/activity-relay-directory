@@ -182,6 +182,17 @@ independently of scheduler completion. Keep the scheduler default-off and out of
 all HTTP handlers; the local dry-run command must use an existing current-schema
 query-only connection and perform no database creation, migration, or writes.
 
+
+
+Public directory presentation must use the same `httpapi.PublicListingHandler`
+projection for JSON and human-readable output. Do not add a second HTML-specific
+repository query, health classifier, moderation filter, or eligibility rule.
+`GET`/`HEAD` `/` and its bundled static assets remain under the same default-off
+`DIRECTORY_PUBLIC_LISTING_ENABLED` gate as `/v1/relays`. HTML must use Go
+`html/template`, automatic escaping, local assets only, a strict CSP, the same
+bounded authenticated cursor and one-minute cache policy, and no relay-provided
+HTML, scripts, fonts, analytics, or relay-controlled image fetches.
+
 The container workflow must use the reviewed Node-24-compatible Docker action
 majors `docker/setup-buildx-action@v4` and `docker/build-push-action@v7`. Keep the
 static workflow regression test when copying or updating CI scaffolding so the

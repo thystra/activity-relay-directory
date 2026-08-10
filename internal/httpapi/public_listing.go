@@ -35,10 +35,11 @@ var ErrPublicListingConfiguration = errors.New("public listing configuration is 
 // PublicListingHandler serves the separately gated public directory projection.
 // Its concurrency budget is independent of signed lifecycle admission.
 type PublicListingHandler struct {
-	repository storage.PublicListingRepository
-	now        func() time.Time
-	semaphore  chan struct{}
-	cursorKey  []byte
+	repository           storage.PublicListingRepository
+	now                  func() time.Time
+	semaphore            chan struct{}
+	cursorKey            []byte
+	renderHumanDirectory func(humanDirectoryPage) ([]byte, error)
 }
 
 // NewPublicListingHandler validates the production public-listing dependency graph.
@@ -61,11 +62,16 @@ func newPublicListingHandler(
 	if _, err := rand.Read(cursorKey); err != nil {
 		return nil, ErrPublicListingConfiguration
 	}
+	renderHumanDirectory, err := newHumanDirectoryRenderer()
+	if err != nil || renderHumanDirectory == nil {
+		return nil, ErrPublicListingConfiguration
+	}
 	return &PublicListingHandler{
-		repository: repository,
-		now:        now,
-		semaphore:  make(chan struct{}, maximumConcurrent),
-		cursorKey:  cursorKey,
+		repository:           repository,
+		now:                  now,
+		semaphore:            make(chan struct{}, maximumConcurrent),
+		cursorKey:            cursorKey,
+		renderHumanDirectory: renderHumanDirectory,
 	}, nil
 }
 
@@ -73,25 +79,54 @@ func (handler *PublicListingHandler) serve(response http.ResponseWriter, request
 	if !allowReadMethod(response, request) {
 		return
 	}
+	result, failure := handler.loadPublicListing(request)
+	if failure != nil {
+		if failure.retryAfter != "" {
+			response.Header().Set("Retry-After", failure.retryAfter)
+		}
+		writePublicListingError(response, request, failure.status, failure.code, failure.message)
+		return
+	}
+
+	writeCacheablePublicListingJSON(response, request, result)
+}
+
+type publicListingFailure struct {
+	status     int
+	code       string
+	message    string
+	retryAfter string
+}
+
+func (handler *PublicListingHandler) loadPublicListing(request *http.Request) (publicListingResponse, *publicListingFailure) {
 	if handler == nil || handler.repository == nil || handler.now == nil || handler.semaphore == nil ||
 		len(handler.cursorKey) != publicListingCursorKeySize {
-		writePublicListingError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "public listing temporarily unavailable")
-		return
+		return publicListingResponse{}, &publicListingFailure{
+			status:  http.StatusServiceUnavailable,
+			code:    "temporarily_unavailable",
+			message: "public listing temporarily unavailable",
+		}
 	}
 
 	select {
 	case handler.semaphore <- struct{}{}:
 		defer func() { <-handler.semaphore }()
 	default:
-		response.Header().Set("Retry-After", "1")
-		writePublicListingError(response, request, http.StatusTooManyRequests, "rate_limited", "public listing request limit exceeded")
-		return
+		return publicListingResponse{}, &publicListingFailure{
+			status:     http.StatusTooManyRequests,
+			code:       "rate_limited",
+			message:    "public listing request limit exceeded",
+			retryAfter: "1",
+		}
 	}
 
 	parsed, err := handler.parsePublicListingQuery(request.URL.RawQuery, handler.now())
 	if err != nil {
-		writePublicListingError(response, request, http.StatusBadRequest, "invalid_request", "invalid public listing request")
-		return
+		return publicListingResponse{}, &publicListingFailure{
+			status:  http.StatusBadRequest,
+			code:    "invalid_request",
+			message: "invalid public listing request",
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(request.Context(), publicListingReadTimeout)
@@ -102,15 +137,19 @@ func (handler *PublicListingHandler) serve(response http.ResponseWriter, request
 		ObservedAt: parsed.observedAt,
 	})
 	if err != nil {
-		writePublicListingError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "public listing temporarily unavailable")
-		return
+		return publicListingResponse{}, &publicListingFailure{
+			status:  http.StatusServiceUnavailable,
+			code:    "temporarily_unavailable",
+			message: "public listing temporarily unavailable",
+		}
 	}
 
 	result := publicListingResponse{
 		SchemaVersion: publicListingSchemaVersion,
 		Relays:        make([]publicListingRelay, 0, len(page.Relays)),
 		Pagination: publicListingPagination{
-			Limit: parsed.limit,
+			Limit:         parsed.limit,
+			CurrentCursor: parsed.currentCursor,
 		},
 	}
 	for _, relay := range page.Relays {
@@ -119,8 +158,11 @@ func (handler *PublicListingHandler) serve(response http.ResponseWriter, request
 		if identityErr != nil || identity.RelayActor != relay.RelayActor ||
 			identity.PublicBaseURL != relay.PublicBaseURL || healthErr != nil ||
 			expectedHealth != relay.HealthState || !relay.PublicEligible() {
-			writePublicListingError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "public listing temporarily unavailable")
-			return
+			return publicListingResponse{}, &publicListingFailure{
+				status:  http.StatusServiceUnavailable,
+				code:    "temporarily_unavailable",
+				message: "public listing temporarily unavailable",
+			}
 		}
 		result.Relays = append(result.Relays, publicListingRelay{
 			RelayActor:    relay.RelayActor,
@@ -137,19 +179,23 @@ func (handler *PublicListingHandler) serve(response http.ResponseWriter, request
 			RelayActor:   page.Next.RelayActor,
 		})
 		if err != nil {
-			writePublicListingError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "public listing temporarily unavailable")
-			return
+			return publicListingResponse{}, &publicListingFailure{
+				status:  http.StatusServiceUnavailable,
+				code:    "temporarily_unavailable",
+				message: "public listing temporarily unavailable",
+			}
 		}
 		result.Pagination.NextCursor = cursor
 	}
 
-	writeCacheablePublicListingJSON(response, request, result)
+	return result, nil
 }
 
 type publicListingQuery struct {
-	limit      int
-	after      storage.HealthProjectionCursor
-	observedAt time.Time
+	limit         int
+	after         storage.HealthProjectionCursor
+	observedAt    time.Time
+	currentCursor string
 }
 
 type publicListingCursor struct {
@@ -173,8 +219,9 @@ type publicListingRelay struct {
 }
 
 type publicListingPagination struct {
-	Limit      int    `json:"limit"`
-	NextCursor string `json:"next_cursor"`
+	Limit         int    `json:"limit"`
+	NextCursor    string `json:"next_cursor"`
+	CurrentCursor string `json:"-"`
 }
 
 type publicListingErrorEnvelope struct {
@@ -220,6 +267,7 @@ func (handler *PublicListingHandler) parsePublicListingQuery(rawQuery string, no
 			return publicListingQuery{}, errors.New("invalid public listing cursor")
 		}
 		result.observedAt = time.Unix(cursor.ObservedUnix, 0).UTC()
+		result.currentCursor = entries[0]
 		result.after = storage.HealthProjectionCursor{
 			LastSeenUnix: cursor.LastSeenUnix,
 			RelayActor:   cursor.RelayActor,
@@ -307,10 +355,19 @@ func writeCacheablePublicListingJSON(
 		return
 	}
 	body = append(body, '\n')
+	writeCacheablePublicRepresentation(response, request, "application/json", body)
+}
+
+func writeCacheablePublicRepresentation(
+	response http.ResponseWriter,
+	request *http.Request,
+	contentType string,
+	body []byte,
+) {
 	digest := sha256.Sum256(body)
 	etag := `"sha256-` + base64.RawURLEncoding.EncodeToString(digest[:]) + `"`
 
-	response.Header().Set("Content-Type", "application/json")
+	response.Header().Set("Content-Type", contentType)
 	response.Header().Set("Cache-Control", publicListingCacheControl)
 	response.Header().Set("ETag", etag)
 	if matchesIfNoneMatch(request.Header.Get("If-None-Match"), etag) {

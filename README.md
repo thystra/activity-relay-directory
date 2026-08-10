@@ -10,7 +10,7 @@ This repository currently provides a conservative service scaffold only:
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/status`
-- default-off `GET /v1/relays` public JSON listing
+- default-off `GET /v1/relays` public JSON listing and `GET /` human-readable view
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
 - signed register, heartbeat, and unregister APIs, disabled together by default
@@ -57,10 +57,9 @@ source derivation, two-stage admission, safe actor/key resolution and caching,
 RFC 9530 and RFC 9421 verification, durable nonce reservation, suspension
 checks, and audited SQLite transitions. See `docs/HANDLERS.md`,
 `docs/PERSISTENCE.md`, `docs/MODERATION.md`, `docs/RESOLUTION.md`, and
-`docs/ADMISSION.md`. The independently gated public JSON listing is documented
-in `docs/PUBLIC-LISTING.md`. Human-readable presentation, network moderation
-transport, inactive-record retention, and release/deployment integration remain
-later work.
+`docs/ADMISSION.md`. The independently gated public JSON and human-readable directory views are documented
+in `docs/PUBLIC-LISTING.md`. Network moderation transport, inactive-record retention,
+and release/deployment integration remain later work.
 Their dependency order, review tranches, and completion gates are tracked
 in `TODO.md`.
 
@@ -125,7 +124,7 @@ most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
 
-## Public JSON listing
+## Public directory views
 
 `DIRECTORY_PUBLIC_LISTING_ENABLED=true` independently enables `GET`/`HEAD`
 `/v1/relays`. It does not enable lifecycle registration or open enrollment. The
@@ -135,7 +134,9 @@ rows, are capped at 100, and use an opaque keyset cursor. Suspended,
 unregistered, pruned, and 30-day-or-older rows are excluded in the bounded
 SQLite query before presentation. Responses use a one-minute public cache
 policy and strong ETags. Invalid pagination and backend failures return fixed
-redacted JSON errors. See `docs/PUBLIC-LISTING.md`.
+redacted errors. The same gate also enables `GET`/`HEAD` `/`, rendered from the
+same projection with Go templates and a bundled same-origin stylesheet. See
+`docs/PUBLIC-LISTING.md`.
 
 ## Privacy boundary
 

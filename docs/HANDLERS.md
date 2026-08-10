@@ -109,3 +109,17 @@ HTTP 429 includes an integer `Retry-After` when the admission decision provides
 one. Unsupported methods return HTTP 405 with `Allow: POST`. This profile does
 not emit an authentication challenge; clients authenticate proactively with
 the required RFC 9421 message signature.
+
+## Human-readable public directory
+
+When `DIRECTORY_PUBLIC_LISTING_ENABLED=true`, the server also registers
+`GET`/`HEAD` `/` and `/assets/directory.css`. The root view calls the same
+`PublicListingHandler` projection loader used by `/v1/relays`; it does not
+create another repository read or public-eligibility path. HTML and JSON share
+the same page limits, authenticated cursor, observation time, repository
+deadline, concurrency ceiling, and one-minute cache policy.
+
+The HTML renderer uses Go `html/template` with bundled local assets. Relay
+content is emitted only as escaped text and canonical public-base links. The
+initial page has no JavaScript, remote fonts, analytics, relay-provided HTML,
+relay-controlled image loads, or third-party resources.

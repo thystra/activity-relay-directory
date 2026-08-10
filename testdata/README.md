@@ -13,3 +13,6 @@ identities, host inventories, connected-site membership, and user data.
 `public/v1/` contains public-view representation fixtures. They freeze the
 listing schema separately from the signed lifecycle protocol vocabulary under
 `directory/v1/`.
+
+- `public/v1/relays-page.valid.html` freezes the deterministic initial
+  human-readable projection rendered from the same public relay fields.

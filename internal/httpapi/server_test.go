@@ -325,3 +325,71 @@ func TestEnabledListingWithMissingGraphFailsClosed(t *testing.T) {
 		t.Fatalf("POST response = status %d Allow %q", postResponse.Code, postResponse.Header().Get("Allow"))
 	}
 }
+
+func TestHumanDirectoryRouteIsDefaultOff(t *testing.T) {
+	for _, path := range []string{"/", directoryStylesheetPath} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		testHandler().ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404", path, response.Code)
+		}
+	}
+}
+
+func TestHumanDirectorySharesPublicListingGateAndProjection(t *testing.T) {
+	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{Relays: []storage.HealthProjectionRelay{}}}
+	listing, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+	handler := NewHandlerWithRuntime(
+		config.Config{PublicBaseURL: "https://directory.example", PublicListingEnabled: true},
+		"test-version",
+		func(context.Context) error { return nil },
+		nil,
+		nil,
+		listing,
+	)
+
+	for _, path := range []string{"/", "/v1/relays", directoryStylesheetPath} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body = %q", path, response.Code, response.Body.String())
+		}
+	}
+
+	unknown := httptest.NewRecorder()
+	handler.ServeHTTP(unknown, httptest.NewRequest(http.MethodGet, "/not-a-directory-route", nil))
+	if unknown.Code != http.StatusNotFound {
+		t.Fatalf("unknown route status = %d", unknown.Code)
+	}
+}
+
+func TestEnabledHumanDirectoryWithMissingGraphFailsClosed(t *testing.T) {
+	handler := NewHandlerWithRuntime(
+		config.Config{PublicBaseURL: "https://directory.example", PublicListingEnabled: true},
+		"test-version",
+		func(context.Context) error { return nil },
+		nil,
+		nil,
+		nil,
+	)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusServiceUnavailable ||
+		response.Body.String() != "directory temporarily unavailable\n" {
+		t.Fatalf("response = status %d body %q", response.Code, response.Body.String())
+	}
+	if response.Header().Get("Content-Security-Policy") != humanDirectoryCSP {
+		t.Fatalf("CSP = %q", response.Header().Get("Content-Security-Policy"))
+	}
+
+	post := httptest.NewRecorder()
+	handler.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("x")))
+	if post.Code != http.StatusMethodNotAllowed || post.Header().Get("Allow") != "GET, HEAD" {
+		t.Fatalf("POST response = status %d Allow %q", post.Code, post.Header().Get("Allow"))
+	}
+}
