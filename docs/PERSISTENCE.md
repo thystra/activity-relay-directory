@@ -295,6 +295,34 @@ or the database is newer than the binary. Once released, a migration is
 immutable: schema changes require a new consecutively numbered migration and
 upgrade tests from every supported version.
 
+## Inactive retention and narrow delete scope
+
+Schema version 6 adds `retention_metadata`, guarded aggregate `retention_runs`,
+`relays_retention_candidates_idx`, and actor/event-ID indexes used to snapshot
+latest lifecycle/moderation decisions without scanning full actor histories. It
+does not delete any existing row during upgrade. The singleton retention metadata
+row is guarded against update/delete; its persistent random database identity lets
+the local purge command distinguish a backup of this database from a different
+directory database.
+
+Hard retention is local-admin-only and disabled by the default
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0`. Candidate reads select only active
+unregistered/pruned rows from their unregister/prune timestamp. Destructive
+batches snapshot and revalidate row update time plus latest lifecycle and
+moderation event IDs before opening the narrow lifecycle-event delete scope. A
+concurrent accepted lifecycle or moderation decision therefore skips the stale
+candidate.
+
+The normal `relay_events_no_delete` trigger is dropped and recreated only inside
+the immediate purge transaction. Eligible lifecycle events and the relay row
+commit together; any error or cancellation rolls back the deletions and trigger
+DDL. `moderation_events`, enrollment events/policy, replay reservations, and the
+retention-run audit row are outside the lifecycle-event delete scope. Each
+committed purge batch updates that run row in the same transaction, so a crash
+cannot leave a committed deletion without durable aggregate checkpoint evidence.
+Finalization makes the run row immutable. See `docs/RETENTION.md` for
+bounds, backup verification, restore consequences, and manual compaction.
+
 ## Backup and recovery boundary
 
 Before production deployment, the deployment runbook must specify a local,

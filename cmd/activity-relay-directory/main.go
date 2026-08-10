@@ -205,6 +205,8 @@ func run(arguments []string) int {
 		"public_listing_available", publicListingHandler != nil,
 		"soft_pruning_enabled", cfg.SoftPruningEnabled,
 		"soft_pruning_interval", cfg.SoftPruningInterval,
+		"inactive_retention_days", cfg.InactiveRetentionDays,
+		"inactive_retention_execution", "local_admin_only",
 		"database_schema_version", storage.CurrentSchemaVersion,
 		"version", buildinfo.Version,
 	)

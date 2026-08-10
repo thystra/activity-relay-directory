@@ -123,3 +123,11 @@ The HTML renderer uses Go `html/template` with bundled local assets. Relay
 content is emitted only as escaped text and canonical public-base links. The
 initial page has no JavaScript, remote fonts, analytics, relay-provided HTML,
 relay-controlled image loads, or third-party resources.
+
+## Local retention is not an HTTP handler
+
+Roadmap Tranche 16 adds only local `admin retention dry-run` and backup-gated
+`admin retention purge` commands. `/v1/retention`, `/v1/retention/purge`,
+`/v1/purge`, and `/admin/retention` are not routes and must remain `404` for
+GET, HEAD, POST, and DELETE. A positive retention policy never authorizes a
+remote caller or request path to start maintenance. See `docs/RETENTION.md`.

@@ -172,8 +172,10 @@ Creating the first retained row also requires the durable enrollment policy to
 be open. Closing enrollment never changes an existing row. Any actor with a
 retained row remains accepted and may update registration metadata or return
 from unregistered or later soft-pruned state while enrollment is closed,
-subject to moderation. If retention eventually deletes that row, a later
-return is again a never-seen registration.
+subject to moderation. The separately configured local inactive-retention purge
+may later delete an eligible active inactive row after its backup gate; a later
+return is then again a never-seen registration. Suspended rows are never
+automatic purge candidates.
 
 The register handler uses the complete authenticated composition with the safe
 actor resolver and durable replay store before calling the state repository at

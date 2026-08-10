@@ -236,12 +236,16 @@ func TestPublicStatusOmitsPrivateModerationFields(t *testing.T) {
 	}
 }
 
-func TestPublicHTTPDoesNotExposeSoftPruningMaintenance(t *testing.T) {
-	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost} {
+func TestPublicHTTPDoesNotExposeLocalMaintenance(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodDelete} {
 		for _, path := range []string{
 			"/v1/pruning",
 			"/v1/pruning/run",
 			"/admin/pruning",
+			"/v1/retention",
+			"/v1/retention/purge",
+			"/admin/retention",
+			"/v1/purge",
 		} {
 			request := httptest.NewRequest(method, path, nil)
 			response := httptest.NewRecorder()

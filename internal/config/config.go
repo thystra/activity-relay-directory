@@ -24,28 +24,30 @@ const (
 
 // Config is the directory service's process configuration.
 type Config struct {
-	ListenAddress        string
-	PublicBaseURL        string
-	DatabasePath         string
-	LifecycleEnabled     bool
-	PublicListingEnabled bool
-	SoftPruningEnabled   bool
-	SoftPruningInterval  time.Duration
-	MaxRequestBodyBytes  int64
-	TrustedProxyPrefixes []netip.Prefix
+	ListenAddress         string
+	PublicBaseURL         string
+	DatabasePath          string
+	LifecycleEnabled      bool
+	PublicListingEnabled  bool
+	SoftPruningEnabled    bool
+	SoftPruningInterval   time.Duration
+	InactiveRetentionDays int
+	MaxRequestBodyBytes   int64
+	TrustedProxyPrefixes  []netip.Prefix
 }
 
 // Load reads configuration from the process environment.
 func Load() (Config, error) {
 	cfg := Config{
-		ListenAddress:        envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
-		PublicBaseURL:        strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
-		DatabasePath:         strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
-		LifecycleEnabled:     false,
-		PublicListingEnabled: false,
-		SoftPruningEnabled:   false,
-		SoftPruningInterval:  storage.DefaultSoftPruningInterval,
-		MaxRequestBodyBytes:  defaultMaxRequestBodyBytes,
+		ListenAddress:         envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
+		PublicBaseURL:         strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
+		DatabasePath:          strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
+		LifecycleEnabled:      false,
+		PublicListingEnabled:  false,
+		SoftPruningEnabled:    false,
+		SoftPruningInterval:   storage.DefaultSoftPruningInterval,
+		InactiveRetentionDays: 0,
+		MaxRequestBodyBytes:   defaultMaxRequestBodyBytes,
 	}
 
 	if strings.TrimSpace(os.Getenv("DIRECTORY_REGISTRATION_ENABLED")) != "" {
@@ -96,6 +98,12 @@ func Load() (Config, error) {
 		cfg.SoftPruningInterval = value
 	}
 
+	retentionDays, err := parseInactiveRetentionDays(os.Getenv("DIRECTORY_INACTIVE_RETENTION_DAYS"))
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.InactiveRetentionDays = retentionDays
+
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_MAX_REQUEST_BODY_BYTES")); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
@@ -131,6 +139,27 @@ func LoadDatabasePath() (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// LoadInactiveRetentionDays reads only the hard-retention policy required by
+// local retention commands. It does not require public HTTP configuration.
+func LoadInactiveRetentionDays() (int, error) {
+	return parseInactiveRetentionDays(os.Getenv("DIRECTORY_INACTIVE_RETENTION_DAYS"))
+}
+
+func parseInactiveRetentionDays(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	value, err := strconv.ParseUint(raw, 10, 32)
+	if err != nil || strconv.FormatUint(value, 10) != raw || value > uint64(storage.MaximumInactiveRetentionDays) {
+		return 0, fmt.Errorf(
+			"DIRECTORY_INACTIVE_RETENTION_DAYS must be an integer between 0 and %d",
+			storage.MaximumInactiveRetentionDays,
+		)
+	}
+	return int(value), nil
 }
 
 // ValidateDatabasePath applies the shared local SQLite path policy.
@@ -208,6 +237,12 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.SoftPruningEnabled && cfg.SoftPruningInterval == 0 {
 		return errors.New("DIRECTORY_SOFT_PRUNING_INTERVAL is required when soft pruning is enabled")
+	}
+	if cfg.InactiveRetentionDays < 0 || cfg.InactiveRetentionDays > storage.MaximumInactiveRetentionDays {
+		return fmt.Errorf(
+			"DIRECTORY_INACTIVE_RETENTION_DAYS must be between 0 and %d",
+			storage.MaximumInactiveRetentionDays,
+		)
 	}
 
 	if cfg.MaxRequestBodyBytes < 1024 ||

@@ -3,6 +3,7 @@ package config
 import (
 	"net/netip"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -325,4 +326,57 @@ func setRequiredEnvironment(t *testing.T) {
 		"DIRECTORY_DATABASE_PATH",
 		filepath.Join(t.TempDir(), "directory.sqlite"),
 	)
+}
+
+func TestLoadDefaultsInactiveRetentionToIndefinite(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.InactiveRetentionDays != 0 {
+		t.Fatalf("InactiveRetentionDays = %d, want 0", cfg.InactiveRetentionDays)
+	}
+}
+
+func TestLoadParsesInactiveRetentionDays(t *testing.T) {
+	for _, raw := range []string{"0", "1", "365", "36500"} {
+		t.Run(raw, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+			t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", raw)
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			want, _ := strconv.Atoi(raw)
+			if cfg.InactiveRetentionDays != want {
+				t.Fatalf("InactiveRetentionDays = %d, want %d", cfg.InactiveRetentionDays, want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsInvalidInactiveRetentionDays(t *testing.T) {
+	for _, raw := range []string{"-1", "1.5", "+1", "01", "36501", "4294967296", "not-days"} {
+		t.Run(raw, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+			t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", raw)
+			if _, err := Load(); err == nil || !strings.Contains(err.Error(), "INACTIVE_RETENTION_DAYS") {
+				t.Fatalf("Load() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadInactiveRetentionDaysNeedsNoPublicConfiguration(t *testing.T) {
+	t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", "365")
+	got, err := LoadInactiveRetentionDays()
+	if err != nil || got != 365 {
+		t.Fatalf("LoadInactiveRetentionDays() = (%d, %v), want (365, nil)", got, err)
+	}
 }

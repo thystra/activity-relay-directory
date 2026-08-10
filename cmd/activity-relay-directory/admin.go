@@ -12,11 +12,15 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/admincommand"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/prunecommand"
+	"github.com/thystra/activity-relay-directory/internal/retentioncommand"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
 
-const adminCommandTimeout = 30 * time.Second
+const (
+	adminCommandTimeout   = 30 * time.Second
+	retentionPurgeTimeout = 5 * time.Minute
+)
 
 func runAdmin(arguments []string, stdout, stderr io.Writer, now func() time.Time) int {
 	return runAdminWithInput(arguments, os.Stdin, stdout, stderr, now)
@@ -37,6 +41,9 @@ func runAdminWithInput(
 	}
 	if arguments[2] == "pruning" {
 		return runPruningAdmin(arguments, stdout, stderr, now)
+	}
+	if arguments[2] == "retention" {
+		return runRetentionAdmin(arguments, stdin, stdout, stderr, now)
 	}
 
 	request, err := admincommand.Parse(arguments[2:])
@@ -111,6 +118,104 @@ func runPruningAdmin(
 		return prunecommand.ExitOperational
 	}
 	return prunecommand.Execute(ctx, request, repository, stdout, stderr, now)
+}
+
+func runRetentionAdmin(
+	arguments []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	if len(arguments) < 4 {
+		writeRetentionUsage(stderr)
+		return retentioncommand.ExitUsage
+	}
+	request, err := retentioncommand.Parse(arguments[3:])
+	if err != nil {
+		writeRetentionUsage(stderr)
+		return retentioncommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return retentioncommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return retentioncommand.ExitUsage
+	}
+	retentionDays, err := config.LoadInactiveRetentionDays()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid retention configuration")
+		return retentioncommand.ExitUsage
+	}
+	if request.Action == "dry-run" {
+		ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+		defer cancel()
+		database, err := initializeReadOnlyDatabase(ctx, databasePath)
+		if err != nil {
+			fmt.Fprintln(stderr, "database initialization failed")
+			return retentioncommand.ExitOperational
+		}
+		defer database.Close()
+		repository, err := storageSQLite.NewRelayRepository(database)
+		if err != nil {
+			fmt.Fprintln(stderr, "retention repository initialization failed")
+			return retentioncommand.ExitOperational
+		}
+		return retentioncommand.ExecuteDryRun(
+			ctx, request, repository, retentionDays, stdout, stderr, now,
+		)
+	}
+
+	if retentionDays == 0 {
+		fmt.Fprintln(stderr, "inactive retention is disabled; DIRECTORY_INACTIVE_RETENTION_DAYS is 0")
+		return retentioncommand.ExitUsage
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retentionPurgeTimeout)
+	defer cancel()
+	preflight, err := initializeReadOnlyDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return retentioncommand.ExitOperational
+	}
+	if err := preflight.Close(); err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return retentioncommand.ExitOperational
+	}
+	database, err := initializeDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return retentioncommand.ExitOperational
+	}
+	defer database.Close()
+	backupDigest, err := storageSQLite.VerifyRetentionBackup(
+		ctx, database, databasePath, request.BackupPath,
+	)
+	if err != nil {
+		fmt.Fprintln(stderr, "verified pre-retention backup requirement failed")
+		return retentioncommand.ExitOperational
+	}
+	if err := retentioncommand.Confirm(request, stdin, stderr, retentionDays); err != nil {
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "inactive-retention purge confirmation failed")
+		return retentioncommand.ExitUsage
+	}
+	confirmedDigest, err := storageSQLite.VerifyRetentionBackup(
+		ctx, database, databasePath, request.BackupPath,
+	)
+	if err != nil || confirmedDigest != backupDigest {
+		fmt.Fprintln(stderr, "verified pre-retention backup changed after confirmation")
+		return retentioncommand.ExitOperational
+	}
+	repository, err := storageSQLite.NewRelayRepository(database)
+	if err != nil {
+		fmt.Fprintln(stderr, "retention repository initialization failed")
+		return retentioncommand.ExitOperational
+	}
+	return retentioncommand.ExecutePurge(
+		ctx, request, repository, retentionDays, backupDigest, stdout, stderr, now,
+	)
 }
 
 func runEnrollmentAdmin(
@@ -213,10 +318,17 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin show --actor URL [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
 }
 
 func writePruningUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
+}
+
+func writeRetentionUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin retention dry-run [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
 }
 
 func writeEnrollmentUsage(output io.Writer) {
