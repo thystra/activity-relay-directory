@@ -145,9 +145,23 @@ func run(arguments []string) int {
 		lifecycleHandler = lifecycle.handler
 	}
 
+	var publicListingHandler *httpapi.PublicListingHandler
+	if cfg.PublicListingEnabled {
+		listingRepository, err := storage.NewRelayRepository(database)
+		if err != nil {
+			logger.Error("public-listing initialization failed", "error", err)
+			return 1
+		}
+		publicListingHandler, err = httpapi.NewPublicListingHandler(listingRepository, time.Now)
+		if err != nil {
+			logger.Error("public-listing initialization failed", "error", err)
+			return 1
+		}
+	}
+
 	server := &http.Server{
 		Addr: cfg.ListenAddress,
-		Handler: httpapi.NewHandlerWithLifecycle(
+		Handler: httpapi.NewHandlerWithRuntime(
 			cfg,
 			buildinfo.Version,
 			func(ctx context.Context) error {
@@ -161,6 +175,7 @@ func run(arguments []string) int {
 				}
 				return repository.EnrollmentOpen(ctx)
 			},
+			publicListingHandler,
 		),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -186,6 +201,8 @@ func run(arguments []string) int {
 		"public_base_url", cfg.PublicBaseURL,
 		"lifecycle_enabled", cfg.LifecycleEnabled,
 		"lifecycle_available", lifecycleHandler != nil,
+		"public_listing_enabled", cfg.PublicListingEnabled,
+		"public_listing_available", publicListingHandler != nil,
 		"soft_pruning_enabled", cfg.SoftPruningEnabled,
 		"soft_pruning_interval", cfg.SoftPruningInterval,
 		"database_schema_version", storage.CurrentSchemaVersion,

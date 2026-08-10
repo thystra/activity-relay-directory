@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	statusSchemaVersion = 2
+	statusSchemaVersion = 3
 	readinessTimeout    = 2 * time.Second
 )
 
@@ -29,7 +29,7 @@ func NewHandler(
 	version string,
 	checkReadiness ReadinessCheck,
 ) http.Handler {
-	return NewHandlerWithLifecycle(cfg, version, checkReadiness, nil, nil)
+	return NewHandlerWithRuntime(cfg, version, checkReadiness, nil, nil, nil)
 }
 
 // NewHandlerWithLifecycle returns the public HTTP surface and conditionally
@@ -42,8 +42,24 @@ func NewHandlerWithLifecycle(
 	lifecycle *LifecycleHandler,
 	enrollmentStatus EnrollmentStatus,
 ) http.Handler {
+	return NewHandlerWithRuntime(
+		cfg, version, checkReadiness, lifecycle, enrollmentStatus, nil,
+	)
+}
+
+// NewHandlerWithRuntime composes independently gated lifecycle and public
+// listing graphs behind the shared public status and security headers.
+func NewHandlerWithRuntime(
+	cfg config.Config,
+	version string,
+	checkReadiness ReadinessCheck,
+	lifecycle *LifecycleHandler,
+	enrollmentStatus EnrollmentStatus,
+	publicListing *PublicListingHandler,
+) http.Handler {
 	mux := http.NewServeMux()
 	lifecycleAvailable := cfg.LifecycleEnabled && lifecycle != nil
+	publicListingAvailable := cfg.PublicListingEnabled && publicListing != nil
 
 	mux.HandleFunc("/healthz", func(response http.ResponseWriter, request *http.Request) {
 		if !allowReadMethod(response, request) {
@@ -96,13 +112,15 @@ func NewHandlerWithLifecycle(
 			}
 		}
 		writeJSON(response, request, http.StatusOK, map[string]any{
-			"schema_version":      statusSchemaVersion,
-			"service":             "activity-relay-directory",
-			"version":             version,
-			"public_base_url":     cfg.PublicBaseURL,
-			"lifecycle_enabled":   cfg.LifecycleEnabled,
-			"lifecycle_available": lifecycleAvailable,
-			"enrollment_open":     enrollmentOpen,
+			"schema_version":           statusSchemaVersion,
+			"service":                  "activity-relay-directory",
+			"version":                  version,
+			"public_base_url":          cfg.PublicBaseURL,
+			"lifecycle_enabled":        cfg.LifecycleEnabled,
+			"lifecycle_available":      lifecycleAvailable,
+			"enrollment_open":          enrollmentOpen,
+			"public_listing_enabled":   cfg.PublicListingEnabled,
+			"public_listing_available": publicListingAvailable,
 		})
 	})
 
@@ -118,6 +136,19 @@ func NewHandlerWithLifecycle(
 	registerLifecycleRoute(v1.RegisterEndpointPath, v1.OperationRegister)
 	registerLifecycleRoute(v1.HeartbeatEndpointPath, v1.OperationHeartbeat)
 	registerLifecycleRoute(v1.UnregisterEndpointPath, v1.OperationUnregister)
+
+	if cfg.PublicListingEnabled {
+		mux.HandleFunc("/v1/relays", func(response http.ResponseWriter, request *http.Request) {
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writePublicListingError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "public listing temporarily unavailable")
+				return
+			}
+			publicListing.serve(response, request)
+		})
+	}
 
 	return securityHeaders(mux)
 }

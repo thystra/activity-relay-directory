@@ -40,9 +40,48 @@ func TestLoadDefaultsLifecycleDisabled(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsPublicListingDisabled(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PublicListingEnabled {
+		t.Fatal("PublicListingEnabled = true")
+	}
+}
+
+func TestLoadParsesPublicListingEnabled(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.PublicListingEnabled {
+		t.Fatal("PublicListingEnabled = false")
+	}
+}
+
+func TestLoadRejectsInvalidPublicListingFlag(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "sometimes")
+
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "PUBLIC_LISTING_ENABLED") {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
 func TestLoadDefaultsSoftPruningDisabled(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
 
@@ -279,6 +318,7 @@ func TestValidateRejectsRelativeOrUncleanDatabasePath(t *testing.T) {
 
 func setRequiredEnvironment(t *testing.T) {
 	t.Helper()
+	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
 	t.Setenv(

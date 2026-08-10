@@ -2,8 +2,10 @@
 
 The server composes the version 1 register, heartbeat, and unregister contracts
 into HTTP routes. All three routes remain disabled together by default. This
-code does not deploy the service, configure a reverse proxy, enable an
-Activity-Relay client, or provide public listings.
+code does not deploy the service, configure a reverse proxy, or enable an
+Activity-Relay client. Public listings use a separate default-off read graph
+documented in `docs/PUBLIC-LISTING.md`; they do not share signed lifecycle
+admission or authentication.
 
 ## Fail-closed activation
 

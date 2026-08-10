@@ -50,6 +50,10 @@
   stable human/JSON output.
 - Node-24-compatible Docker Buildx and Build Push GitHub Actions majors with a
   regression test against reintroducing the retired versions.
+- Default-off version 1 public JSON relay listing with indexed public-eligibility
+  filtering, opaque observation-pinned keyset pagination, deterministic UTC
+  fields, strong ETags, a one-minute cache policy, and independent bounded
+  concurrency.
 
 ### Security
 

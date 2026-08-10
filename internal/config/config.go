@@ -28,6 +28,7 @@ type Config struct {
 	PublicBaseURL        string
 	DatabasePath         string
 	LifecycleEnabled     bool
+	PublicListingEnabled bool
 	SoftPruningEnabled   bool
 	SoftPruningInterval  time.Duration
 	MaxRequestBodyBytes  int64
@@ -37,13 +38,14 @@ type Config struct {
 // Load reads configuration from the process environment.
 func Load() (Config, error) {
 	cfg := Config{
-		ListenAddress:       envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
-		PublicBaseURL:       strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
-		DatabasePath:        strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
-		LifecycleEnabled:    false,
-		SoftPruningEnabled:  false,
-		SoftPruningInterval: storage.DefaultSoftPruningInterval,
-		MaxRequestBodyBytes: defaultMaxRequestBodyBytes,
+		ListenAddress:        envOrDefault("DIRECTORY_LISTEN_ADDRESS", defaultListenAddress),
+		PublicBaseURL:        strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_BASE_URL")),
+		DatabasePath:         strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
+		LifecycleEnabled:     false,
+		PublicListingEnabled: false,
+		SoftPruningEnabled:   false,
+		SoftPruningInterval:  storage.DefaultSoftPruningInterval,
+		MaxRequestBodyBytes:  defaultMaxRequestBodyBytes,
 	}
 
 	if strings.TrimSpace(os.Getenv("DIRECTORY_REGISTRATION_ENABLED")) != "" {
@@ -60,6 +62,17 @@ func Load() (Config, error) {
 			)
 		}
 		cfg.LifecycleEnabled = value
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_PUBLIC_LISTING_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"DIRECTORY_PUBLIC_LISTING_ENABLED must be a boolean: %w",
+				err,
+			)
+		}
+		cfg.PublicListingEnabled = value
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_SOFT_PRUNING_ENABLED")); raw != "" {
