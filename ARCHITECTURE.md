@@ -83,6 +83,28 @@ event is deleted. The scheduler is default-off, enforces a one-hour minimum
 interval, and is not reachable through HTTP. See `docs/PERSISTENCE.md` and
 `docs/MODERATION.md`.
 
+Schema version 6 adds a separate irreversible inactive-retention boundary.
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0` is indefinite and cannot purge; a positive
+value supplies policy only to the local administrator command. There is no hard-
+retention scheduler or HTTP route. Indexed candidate reads select only active
+unregistered/pruned rows by their authoritative inactive-transition timestamp.
+Each candidate also snapshots `updated_at_unix` and the latest lifecycle and
+moderation event IDs, and the immediate purge transaction rereads all of those
+values so even idempotent concurrent lifecycle/moderation decisions invalidate
+a stale candidate. One page is capped at 100 and one command at 1,000 scanned
+candidates.
+
+A purge transaction temporarily drops the lifecycle-event delete guard, deletes
+only revalidated actors' lifecycle events and relay rows, recreates the guard,
+and commits. Transaction rollback restores data and trigger state. Private
+moderation events remain append-only and are never in the delete scope. A
+persistent random database identity lets every destructive invocation verify a
+secure, current-schema, `quick_check`-clean backup of this exact database before
+confirmation. A private identity-free `retention_runs` row is created before
+scanning; each committed purge batch checkpoints aggregate counts in that same
+transaction, and finalization makes the row immutable. The backup SHA-256 is
+recorded there. See `docs/RETENTION.md`.
+
 The SQLite replay store implements the RFC 9421 opaque-key interface.
 It uses the schema's 32-byte primary key for atomic duplicate suppression across
 connections and process restart. Each reservation removes an expired copy of
@@ -120,7 +142,7 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. bounded retention policy and database-growth safeguards;
+1. database-growth safeguards and administrator notification;
 2. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review

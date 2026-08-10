@@ -431,6 +431,12 @@ Deliverables and gates:
 
 ## Tranche 16: Configurable inactive-record retention
 
+Completed (2026-08-10): the source implementation adds strict default-zero
+inactive retention, a local identity-free dry-run, backup-gated confirmed purge,
+bounded transactionally revalidated batches, crash-safe aggregate run audit,
+and schema version 6 retention metadata/indexes. It remains undeployed; no
+positive production policy or purge is activated by this source completion.
+
 Repository: `thystra/activity-relay-directory`.
 
 Retention distinguishes protocol replay expiry, 30-day soft pruning, inactive

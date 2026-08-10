@@ -4,6 +4,11 @@
 
 ### Added
 
+- Schema version 6 inactive-record retention with a persistent database identity,
+  indexed active-inactive candidate reads, strict default-zero policy parsing,
+  identity-free local dry-run, backup-gated confirmed purge, bounded
+  transactionally revalidated batches, retained moderation evidence, and
+  crash-safe transactionally checkpointed aggregate retention-run audits.
 - Human-readable `GET`/`HEAD` `/` directory view rendered from the same bounded public
   projection as `/v1/relays`, with shared authenticated pagination, bundled
   same-origin styling, automatic HTML escaping, strict CSP, and matching cache

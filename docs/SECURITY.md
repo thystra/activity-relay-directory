@@ -184,6 +184,23 @@ notes are not stored. Those fields, database details, and internal moderation
 outcomes must not reach public errors or listing data. No HTTP endpoint or CLI
 invokes this repository yet. See `docs/MODERATION.md`.
 
+## Hard-retention threat boundary
+
+Inactive retention is the only reviewed path that may permanently remove a
+retained relay row or lifecycle history. It is default-zero, local-only, bounded,
+and backup-gated. Suspended rows are excluded both by indexed candidate reads
+and by transactional revalidation. Candidate snapshots include latest lifecycle
+and moderation event IDs so an intervening idempotent operator/lifecycle action
+cannot be erased by a stale destructive decision. Private moderation events are
+never deleted by this policy.
+
+The temporary lifecycle-event delete-trigger bypass exists only inside the same
+immediate SQLite transaction that revalidates and deletes an eligible row; the
+trigger is recreated before commit and transaction rollback restores the normal
+append-only guard. Supplied backups must be secure current-schema SQLite files,
+pass `quick_check`, and match the live persistent database identity before
+confirmation. See `docs/RETENTION.md`.
+
 Before production deployment, backup/restore and the disabled/enabled lifecycle
 boundary must be exercised. Database errors must continue to fail closed
 without reaching clients. See `docs/HANDLERS.md` for the reviewed handler order,

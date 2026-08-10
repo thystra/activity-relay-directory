@@ -56,8 +56,23 @@ func TestSoftPruningMigrationAddsStateTimestampEventAndIndexes(t *testing.T) {
 		t.Fatalf("LastInsertId() error = %v", err)
 	}
 
-	if err := Migrate(context.Background(), database); err != nil {
-		t.Fatalf("Migrate(version 5) error = %v", err)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("loadMigrations() error = %v", err)
+	}
+	migration := migrations[4]
+	if _, err := database.Exec(migration.sql); err != nil {
+		t.Fatalf("apply migration %d: %v", migration.version, err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO schema_migrations
+		    (version, name, sha256, applied_at_unix)
+		 VALUES (?, ?, ?, 0)`,
+		migration.version,
+		migration.name,
+		migration.sha256,
+	); err != nil {
+		t.Fatalf("record migration %d: %v", migration.version, err)
 	}
 	version, err := SchemaVersion(context.Background(), database)
 	if err != nil || version != 5 {

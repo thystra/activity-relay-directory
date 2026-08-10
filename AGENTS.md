@@ -182,7 +182,26 @@ independently of scheduler completion. Keep the scheduler default-off and out of
 all HTTP handlers; the local dry-run command must use an existing current-schema
 query-only connection and perform no database creation, migration, or writes.
 
+Hard-retention code must use the separate purge vocabulary and keep
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0` as indefinite/default. Only active
+`unregistered` or `pruned` rows may be candidates, ordered by their current
+inactive-transition timestamp; registered or suspended rows must never pass the
+destructive predicate. Bind a candidate to row update time and the latest
+lifecycle/moderation event IDs and revalidate all of them under the immediate
+write transaction so even idempotent concurrent decisions prevent a stale
+delete. Keep pages <=100 and one run <=1,000 candidates.
 
+Never delete `moderation_events` in inactive retention. `relay_events` deletion
+may bypass its append-only trigger only transaction-locally, with the trigger
+recreated before commit and rollback restoring it on every failure. Keep the aggregate retention audit identity-free: create it before scanning,
+checkpoint committed destructive counts in the same purge transaction, and make
+it immutable when finalized. No public HTTP handler
+or automatic scheduler may invoke hard purge. Purge must preflight an existing
+current-schema database read-only and must not create or migrate its target. Every destructive local run must
+verify a secure same-database current-schema backup before confirmation and
+re-verify the same digest immediately after confirmation; `--yes` must not bypass
+those checks. `VACUUM`/manual checkpoint work remains explicit
+operator maintenance outside purge/request transactions.
 
 Public directory presentation must use the same `httpapi.PublicListingHandler`
 projection for JSON and human-readable output. Do not add a second HTML-specific

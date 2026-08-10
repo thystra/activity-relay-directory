@@ -83,6 +83,40 @@ func OpenReadOnly(ctx context.Context, path string) (*sql.DB, error) {
 	return database, nil
 }
 
+// openImmutableReadOnly opens a secure standalone SQLite snapshot without
+// creating or consulting WAL/shared-memory sidecars. It is reserved for backup
+// verification; normal read-only administration must continue to observe the
+// live database and therefore uses OpenReadOnly.
+func openImmutableReadOnly(ctx context.Context, path string) (*sql.DB, error) {
+	if ctx == nil || path == "" || !filepath.IsAbs(path) {
+		return nil, ErrDatabasePath
+	}
+	if err := requireSecureExistingDatabaseFile(path); err != nil {
+		return nil, err
+	}
+
+	database, err := sql.Open(driverName, sqliteImmutableReadOnlyDSN(path))
+	if err != nil {
+		return nil, fmt.Errorf("open immutable read-only SQLite database: %w", err)
+	}
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
+
+	if err := database.PingContext(ctx); err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("connect to immutable read-only SQLite database: %w", err)
+	}
+	var queryOnly int
+	if err := database.QueryRowContext(ctx, `PRAGMA query_only`).Scan(&queryOnly); err != nil || queryOnly != 1 {
+		_ = database.Close()
+		if err != nil {
+			return nil, fmt.Errorf("verify immutable read-only SQLite database: %w", err)
+		}
+		return nil, errors.New("verify immutable read-only SQLite database: query_only is disabled")
+	}
+	return database, nil
+}
+
 func secureDatabaseFile(path string) error {
 	information, err := os.Lstat(path)
 	switch {
@@ -145,6 +179,17 @@ func sqliteReadOnlyDSN(path string) string {
 	parameters := dsn.Query()
 	parameters.Set("mode", "ro")
 	parameters.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMillis))
+	parameters.Add("_pragma", "foreign_keys(ON)")
+	parameters.Add("_pragma", "query_only(ON)")
+	dsn.RawQuery = parameters.Encode()
+	return dsn.String()
+}
+
+func sqliteImmutableReadOnlyDSN(path string) string {
+	dsn := &url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	parameters := dsn.Query()
+	parameters.Set("mode", "ro")
+	parameters.Set("immutable", "1")
 	parameters.Add("_pragma", "foreign_keys(ON)")
 	parameters.Add("_pragma", "query_only(ON)")
 	dsn.RawQuery = parameters.Encode()

@@ -47,3 +47,12 @@ mixed public/private DNS answers, direct literals, connection pinning, custom
 HTTPS ports, redirects, proxy exclusion, timeouts, header/body limits,
 ActivityStreams media types, duplicate/deep JSON, actor/key ownership, both RSA
 PEM forms, cancellation, and public error redaction.
+Before activating a positive inactive-retention policy, first deploy/upgrade with
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0`, take and restore-test a fresh pre-retention standalone
+SQLite backup, then capture identity-free dry-run evidence for the proposed
+policy. Exercise exact 1-day/365-day boundaries, suspended and registered
+exclusion, stale-candidate concurrency, interrupted/restarted batches, migration
+rollback, backup mismatch rejection, exact pre-purge restoration, and append-only
+guard restoration. A destructive trial must use the backup-gated local command;
+no HTTP route or scheduler may initiate purge. Physical `VACUUM`/checkpoint work
+is a separate maintenance operation.
