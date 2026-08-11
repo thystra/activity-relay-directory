@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+_No changes yet._
+
+## 0.1.0-rc1 - 2026-08-11
+
 ### Added
 
 - Schema version 7 bounded database-growth state plus a non-destructive 1 GiB

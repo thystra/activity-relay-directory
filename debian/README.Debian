@@ -1,0 +1,29 @@
+Activity-Relay Directory for Debian/Ubuntu
+===========================================
+
+Installation is deliberately separate from activation.
+
+The package installs a dedicated activity-relay-directory system account,
+owner-only state directory, /etc/default/activity-relay-directory, and a
+hardened systemd unit. The service is not enabled or started automatically.
+
+Fresh package defaults bind only to 127.0.0.1:8080 and keep lifecycle,
+public listing, automatic soft pruning, positive inactive retention, and
+administrator email disabled. Review /etc/default/activity-relay-directory
+before manually enabling or starting the unit.
+
+Removal/purge safety
+--------------------
+
+Removing the package preserves /var/lib/activity-relay-directory and the
+dedicated system account. Purging removes package conffiles in the normal dpkg
+manner but intentionally does NOT delete the SQLite database or system account.
+This prevents an accidental purge from destroying directory state. After a
+verified backup, an administrator who truly wants to destroy the instance must
+remove the preserved state and account explicitly.
+
+Downgrade safety
+----------------
+
+SQLite schema downgrade is not supported in place. Restore the database backup
+taken for the matching older release before starting an older binary.

@@ -1,0 +1,41 @@
+.TH ACTIVITY-RELAY-DIRECTORY 1 "11 August 2026" "Activity-Relay Directory 0.1.0-rc1" "User Commands"
+.SH NAME
+activity-relay-directory \- signed relay directory service for Activity-Relay
+.SH SYNOPSIS
+.B activity-relay-directory
+.br
+.B activity-relay-directory --version
+.SH DESCRIPTION
+.B activity-relay-directory
+runs the Activity-Relay Directory HTTP service and its local SQLite-backed
+state. Runtime configuration is supplied through environment variables.
+.PP
+The Debian package installs the service disabled and does not start it
+automatically. Its default environment binds only to loopback and keeps
+lifecycle handling, public listing, automatic soft pruning, positive inactive
+retention, and administrator email disabled.
+.SH OPTIONS
+.TP
+.B --version
+Print the embedded application version and exit.
+.SH CONFIGURATION
+The packaged systemd service reads
+.BR /etc/default/activity-relay-directory .
+Review that file before enabling or starting the service.
+.SH FILES
+.TP
+.B /etc/default/activity-relay-directory
+Package-managed runtime environment.
+.TP
+.B /var/lib/activity-relay-directory/directory.sqlite
+Default SQLite database path. The state directory is intentionally preserved
+when the package is removed or purged.
+.SH SECURITY
+Do not enable lifecycle handling or public exposure merely because the package
+is installed. Review the trusted-proxy, HTTPS public-base, retention, database
+growth, and mail settings documented with the package before activation.
+.SH SEE ALSO
+The packaged README and documentation under
+.B /usr/share/doc/activity-relay-directory/
+cover protocol, persistence, moderation, retention, reverse proxying, release,
+and rollback behavior.

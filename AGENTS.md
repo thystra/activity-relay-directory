@@ -277,3 +277,38 @@ or otherwise configure an operator's proxy automatically.
 AI-assisted tools may help draft or review changes. The human maintainer must
 inspect the result, approve the design, execute validation, control releases
 and deployments, and remain accountable for the software.
+
+## Release discipline
+
+- The pre-1.0 candidate line is `v0.1.0-rcN`, with embedded application version
+  `0.1.0-rcN` and Debian version `0.1.0~rcN-<revision>`.
+- Debian prerelease versions intentionally retain `~` (for example,
+  `0.1.0~rc1-1`), while embedded application versions and public artifact names
+  use `-` (for example, `0.1.0-rc1`). Keep the Debian version itself unchanged.
+- **Bash tilde substitution is a packaging trap:** when translating a Debian
+  prerelease version with Bash `${parameter//pattern/replacement}`, do not use a
+  bare `~` pattern such as `${value//~/-}`. Escape the literal pattern as
+  `${value//\~/-}`. This applies to Debian-to-application version translation
+  and public artifact filename translation.
+- Any applicator or release builder that creates or changes this translation
+  must include a focused regression assertion before the package build. At a
+  minimum, prove that `0.1.0~rc1` becomes `0.1.0-rc1`; do not rely only on a
+  later package-version assertion to discover this shell-expansion error.
+- The first stable release is `v1.0.0`, not `v0.1.0`; its initial Debian
+  version is `1.0.0-1`. Do not publish a `v0.1.0` final tag.
+- Forgejo is authoritative. Push/PR package jobs are validation only. Canonical
+  release bytes are produced once by the manually dispatched Forgejo release
+  workflow from an exact reviewed commit, then those same bytes are promoted to
+  Forgejo and downstream GitHub release surfaces.
+- Installation, service activation, reverse-proxy exposure, lifecycle/public
+  listing activation, tagging, and release publication are separate gates.
+- Debian package installation must not enable/start the service, invent a mail
+  recipient, configure credentials/relay hosts, enable lifecycle/public listing,
+  activate positive retention, or raise the reviewed database-growth budget.
+- Package upgrades must not stop or restart an operator-activated service
+  automatically. Keep the Debian helper policy equivalent to
+  `--no-stop-on-upgrade`; loading a newly installed binary into an active
+  deployment requires an explicit operator-controlled restart after upgrade
+  validation. Package removal may stop the service normally.
+- Package removal and purge preserve `/var/lib/activity-relay-directory`; state
+  destruction requires a separate explicit operator action after backup review.

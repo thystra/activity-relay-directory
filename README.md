@@ -266,6 +266,20 @@ Optional, host-neutral Nginx, Apache, and Caddy examples are under `contrib/`.
 They are not installed or enabled automatically. See
 `docs/REVERSE-PROXY.md` before adapting one for a public deployment.
 
+## Debian package behavior
+
+The first packaged candidate uses application version `0.1.0-rc1` and internal
+Debian version `0.1.0~rc1-1`. Package installation is deliberately separate from
+activation: the systemd unit is installed disabled and is not started
+automatically. The packaged environment binds to loopback, stores SQLite state
+under `/var/lib/activity-relay-directory`, and keeps lifecycle, public listing,
+automatic soft pruning, positive inactive retention, and administrator email
+disabled until an operator explicitly changes them.
+
+Removing or purging the package never deletes the SQLite state automatically.
+See `debian/README.Debian` and `docs/RELEASING.md` before package installation,
+activation, upgrade, downgrade, or state removal.
+
 ## Licence
 
 GNU Affero General Public License version 3. See `LICENCE`.

@@ -1,0 +1,25 @@
+Source: activity-relay-directory
+Section: net
+Priority: optional
+Maintainer: Alan Johnson <alan@argentwolf.org>
+Build-Depends:
+ debhelper-compat (= 13),
+ golang-go (>= 2:1.26~)
+Rules-Requires-Root: no
+Standards-Version: 4.7.0
+Homepage: https://forgejo.argentwolf.org/alan/activity-relay-directory
+Vcs-Git: https://forgejo.argentwolf.org/alan/activity-relay-directory.git
+Vcs-Browser: https://forgejo.argentwolf.org/alan/activity-relay-directory
+
+Package: activity-relay-directory
+Architecture: any
+Depends:
+ ${misc:Depends},
+ adduser
+Suggests:
+ bsd-mailx | mailutils
+Description: signed relay directory service for Activity-Relay
+ Activity-Relay Directory provides the versioned signed lifecycle directory,
+ local operator administration, bounded public relay views, SQLite persistence,
+ retention controls, and database-growth safeguards used by Activity-Relay
+ deployments.

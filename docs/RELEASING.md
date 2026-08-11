@@ -1,6 +1,50 @@
 # Releasing
 
-No release workflow is active yet.
+## Versioning and authority
+
+The pre-1.0 release-candidate series is `v0.1.0-rcN`, with embedded version
+`0.1.0-rcN` and Debian version `0.1.0~rcN-<revision>`. The first stable release
+will jump directly to `v1.0.0` / `1.0.0` with Debian
+`1.0.0-1`. Do not publish a `v0.1.0` final tag.
+
+Forgejo is authoritative. `.forgejo/workflows/package.yml` and the GitHub
+package workflow are validation only. `.forgejo/workflows/release.yml` is a
+manual, exact-commit artifact gate: it builds the canonical candidate bytes
+once and stores them as a Forgejo Actions artifact. After the exact artifact
+set is installed and validated on Hermod, a later publication gate tags the
+same commit and uploads those byte-identical files to both Forgejo and GitHub.
+GitHub runners do not manufacture a second official release set.
+
+## Debian package contract
+
+The first candidate package is `activity-relay-directory` version `0.1.0~rc1-1` for
+application `0.1.0-rc1`. It installs a dedicated system account, owner-only
+`/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
+the binary, documentation, and a hardened systemd unit. Debhelper is invoked
+with `dh_installsystemd --no-enable --no-start --no-stop-on-upgrade`.
+Fresh package installation must leave the unit disabled and inactive, while a
+package upgrade must not stop or restart an operator-activated service. Loading
+the newly installed binary into an active deployment is a separate,
+operator-controlled restart gate after upgrade validation.
+
+Fresh package defaults bind only to `127.0.0.1:8080`, use a loopback public
+base URL, and keep lifecycle, public listing, automatic soft pruning, positive
+inactive retention, and administrator email disabled. Installing the package
+does not configure Nginx/Apache/Caddy, DNS, recipients, credentials, or a mail
+relay. Activation and public exposure are later explicit gates.
+
+Package removal and purge intentionally preserve the SQLite state directory
+and dedicated system account. Purge removes dpkg-managed conffiles but does not
+destroy `/var/lib/activity-relay-directory`; destructive state removal requires
+a verified backup and explicit operator action. In-place database downgrade is
+unsupported and requires restoring the backup matching the older binary.
+
+The public candidate artifact set consists of the `.deb`, the exact packaged
+standalone binary, CycloneDX JSON SBOM, build metadata, and `SHA256SUMS`.
+`.changes`, `.buildinfo`, package control scripts, Lintian output, and package
+inventory are retained as build evidence rather than promoted as end-user
+release assets.
+
 
 Before the first release:
 
@@ -99,3 +143,27 @@ matrix.
 After the Directory pass is complete, apply the same deliberate Go-version
 compatibility/floor review to `thystra/Activity-Relay`, including its
 interoperability fixtures and release/container/package builds.
+
+## Debian Lintian exceptions
+
+The project-owned Debian package keeps Lintian strict: every unoverridden
+error or warning is a release-build failure. The package carries four narrow
+binary overrides with comments:
+
+- `statically-linked-binary` is intentional because the daemon is built with
+  `CGO_ENABLED=0` as a self-contained Go release binary;
+- `non-standard-file-perm` is intentionally scoped only to
+  `/etc/default/activity-relay-directory`: this operator-editable systemd
+  environment file is kept root-owned and mode `0640` so deployment-local
+  values are not world-readable; `debian/rules` runs normal `dh_fixperms`
+  first and then restores only this file to `0640`;
+- `initial-upload-closes-no-bugs` does not apply because these artifacts are
+  published on the Activity-Relay project release surfaces rather than as an
+  initial upload to the Debian archive; and
+- `copyright-without-copyright-notice` reflects the upstream repository-wide
+  AGPL/contributor ownership model rather than per-source-file copyright
+  headers.
+
+Do not add a Lintian override merely to make a release gate green. Resolve a
+finding normally when the package can reasonably comply, as with the packaged
+manual page and Debian changelog line wrapping in the first RC.
