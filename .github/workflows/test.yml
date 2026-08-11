@@ -35,11 +35,10 @@ jobs:
         run: go build ./cmd/activity-relay-directory
 
   # Keep forward-compatibility semantics equivalent to the authoritative
-  # Forgejo workflow: blocking stable lanes first, then non-blocking prerelease
-  # validation with explicit raw outcome reporting.
+  # Forgejo workflow: independently schedule the non-blocking prerelease lane
+  # alongside the stable matrix and preserve explicit raw outcome reporting.
   forward:
     name: Go 1.27rc2 (forward)
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
