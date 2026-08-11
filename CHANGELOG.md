@@ -41,8 +41,9 @@
   heartbeat, unregister, and append-only audit transitions.
 - Durable SQLite RFC 9421 replay reservations with atomic conflict handling,
   restart persistence, ten-minute retention enforcement, and bounded cleanup.
-- Dormant ActivityPub actor and RSA signing-key resolver with pinned public DNS
-  targets, redirect revalidation, bounded documents, and strict actor ownership.
+- SSRF-resistant ActivityPub actor and RSA signing-key resolver wired into the
+  explicitly enabled lifecycle graph, with pinned public DNS targets, redirect
+  revalidation, bounded documents, and strict actor ownership.
 - Optional Nginx, Apache, and Caddy reverse-proxy examples.
 - GitHub funding links aligned with Activity-Relay.
 - Local audited enrollment-policy administration commands.
@@ -71,9 +72,10 @@
 
 ### Security
 
-- Registration is disabled and unavailable in the initial scaffold.
-- Non-loopback public URLs require HTTPS.
-- Request-body limits are bounded even before request endpoints exist.
+- Lifecycle registration, heartbeat, and unregister routes are disabled by
+  default; durable enrollment also starts closed.
+- Non-loopback public URLs require HTTPS, and enabled lifecycle requires HTTPS.
+- Lifecycle request-body limits are configurable but always bounded.
 - Database initialization and schema mismatch fail before the HTTP listener starts.
 - Readiness failures do not disclose database errors or filesystem paths.
 - Relay transitions reject noncanonical identities, backward acceptance time,

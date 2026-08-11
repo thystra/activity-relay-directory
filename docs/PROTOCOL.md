@@ -199,11 +199,12 @@ The contract function establishes only an authenticated heartbeat intent. It
 does not prove that the actor is registered or administratively active, record
 liveness, or produce the `recorded` outcome. The state repository enforces an
 existing active registration, rejects suspension, and records server-side
-acceptance time atomically with a `heartbeat_recorded` event. Dormant
-administrative transitions can apply or clear suspension for an existing
-retained relay. The enabled handler composes durable replay, admission, and
-repository persistence; operator moderation transport remains later work.
-Liveness recency must never use a client-supplied signature timestamp.
+acceptance time atomically with a `heartbeat_recorded` event. Local
+administrative commands can apply or clear suspension for an existing retained
+relay. The enabled handler composes durable replay, admission, and repository
+persistence; moderation is intentionally not a version 1 network operation and
+no moderation HTTP target exists. Liveness recency must never use a
+client-supplied signature timestamp.
 An actor without an active registration receives the stable
 `relay_not_registered` code. Clients may use only that code—not
 `invalid_request`—to initiate one bounded register reconciliation.

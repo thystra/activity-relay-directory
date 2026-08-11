@@ -79,8 +79,10 @@ type growthPersistentState struct {
 	RetryAttempt     int
 }
 
-// ConfigureDatabaseGrowthLimit applies the persistent SQLite max_page_count
-// backstop before migration. The returned logical main-file limit reserves a
+// ConfigureDatabaseGrowthLimit applies and verifies SQLite max_page_count on
+// the connection selected by database. Production writable pools use
+// OpenMigrationGuarded/OpenGuarded so this connection-local PRAGMA is encoded in
+// every pooled connection DSN. The returned logical main-file limit reserves a
 // bounded slice of the configured family budget for WAL/control/migration work.
 func ConfigureDatabaseGrowthLimit(
 	ctx context.Context,

@@ -1,6 +1,6 @@
 // Package sqlite provides single-node SQLite migrations, readiness, relay
-// state repositories, and opaque replay reservations. State and replay stores
-// remain disconnected from HTTP handlers until later security tranches.
+// state repositories, growth controls, and opaque replay reservations used by
+// the explicitly enabled lifecycle graph and local administrative commands.
 package sqlite
 
 import (

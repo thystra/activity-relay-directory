@@ -128,7 +128,7 @@ func (store *RFC9421ReplayStore) ReserveRFC9421Replay(
 }
 
 // CleanupExpiredRFC9421Replay deletes at most maximum expired reservations.
-// It is suitable for later bounded maintenance scheduling; reservations also
+// The service uses it from bounded maintenance scheduling; reservations also
 // perform one default-size cleanup batch.
 func (store *RFC9421ReplayStore) CleanupExpiredRFC9421Replay(
 	ctx context.Context,

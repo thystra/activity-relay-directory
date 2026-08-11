@@ -14,6 +14,11 @@
   artifacts outside the tracked checkout. If `.project-local/` is used inside
   a checkout, it must be excluded locally and never committed.
 - Distinguish applied, tested, committed, pushed, deployed, and released.
+- Treat documentation review as part of every implemented change, milestone, and
+  tranche. Before declaring work complete, compare affected Markdown, examples,
+  configuration references, CLI/API descriptions, roadmap/release notes, and
+  source comments with the resulting source; update stale text and verify local
+  documentation links.
 - Do not deploy or enable registration merely because code exists.
 
 ## Architectural invariants
@@ -22,7 +27,7 @@
 - Fresh installations contain no active external directory endpoints.
 - The directory stores relay-instance metadata, never connected-site or user
   identities.
-- Registration, heartbeat, and unregister requests will require authenticated
+- Registration, heartbeat, and unregister requests require authenticated
   signatures, content digests, bounded timestamps, nonce replay protection,
   and bounded request bodies.
 - Public status terminology uses fixed version 1 healthy, stale, dead, and

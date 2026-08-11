@@ -11,7 +11,7 @@
 - directory poisoning and abusive metadata;
 - automated removal of administratively suspended entries.
 
-## Required controls before registration exists
+## Required registration controls
 
 - authenticated signatures and digest verification;
 - exact key-to-relay binding;
@@ -175,14 +175,15 @@ create a missing registration; unregister preserves suspension. Each successful
 outcome and event commit in one immediate transaction, and forced event failure
 rolls the state mutation back.
 
-The dormant moderation repository requires an existing retained relay, so it
-cannot preemptively suspend an identity the directory has never recorded.
-Suspend and restore are idempotent and each accepted operator decision receives
-an append-only private event in the same transaction as any state change.
-Moderator identifiers and reason codes use bounded token alphabets; free-form
-notes are not stored. Those fields, database details, and internal moderation
-outcomes must not reach public errors or listing data. No HTTP endpoint or CLI
-invokes this repository yet. See `docs/MODERATION.md`.
+The moderation repository requires an existing retained relay, so it cannot
+preemptively suspend an identity the directory has never recorded. Suspend and
+restore are idempotent and each accepted operator decision receives an
+append-only private event in the same transaction as any state change. Moderator
+identifiers and reason codes use bounded token alphabets; free-form notes are
+not stored. Those fields, database details, and internal moderation outcomes
+must not reach public errors or listing data. The reviewed adapter is the local
+operating-system-authorized CLI; no moderation HTTP endpoint exists. See
+`docs/MODERATION.md`.
 
 ## Hard-retention threat boundary
 
