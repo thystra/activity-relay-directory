@@ -10,10 +10,13 @@ will jump directly to `v1.0.0` / `1.0.0` with Debian
 Forgejo is authoritative. `.forgejo/workflows/package.yml` and the GitHub
 package workflow are validation only. `.forgejo/workflows/release.yml` is a
 manual, exact-commit artifact gate: it builds the canonical candidate bytes
-once and stores them as a Forgejo Actions artifact. After the exact artifact
-set is installed and validated on Hermod, a later publication gate tags the
-same commit and uploads those byte-identical files to both Forgejo and GitHub.
-GitHub runners do not manufacture a second official release set.
+once and stores them as one Forgejo Actions artifact. That set includes both
+supported installation paths: the Debian package and a Docker-loadable
+`linux/amd64` image archive tagged `activity-relay-directory:0.1.0-rc1`.
+After the exact artifact set is independently install-tested through both
+paths, a later publication gate tags the same commit and promotes those exact
+bytes to Forgejo and GitHub release surfaces. GitHub runners do not manufacture
+a second official release set or rebuild the container image.
 
 ## Debian package contract
 
@@ -40,10 +43,18 @@ a verified backup and explicit operator action. In-place database downgrade is
 unsupported and requires restoring the backup matching the older binary.
 
 The public candidate artifact set consists of the `.deb`, the exact packaged
-standalone binary, CycloneDX JSON SBOM, build metadata, and `SHA256SUMS`.
+standalone binary, CycloneDX JSON SBOM, build metadata, the Docker-loadable
+`activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar`, and one
+`SHA256SUMS` covering all five public assets. Loading the archive with
+`docker load` must produce image tag `activity-relay-directory:0.1.0-rc1`.
 `.changes`, `.buildinfo`, package control scripts, Lintian output, and package
 inventory are retained as build evidence rather than promoted as end-user
 release assets.
+
+RC acceptance requires independent installation tests of the exact canonical
+`.deb` and the exact canonical Docker archive before tagging or publication.
+Give the two tests separate SQLite state and separate bind ports if they run
+concurrently; they must not share one writable database.
 
 
 Before the first release:
