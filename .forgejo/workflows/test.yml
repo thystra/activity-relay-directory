@@ -45,11 +45,11 @@ jobs:
         run: go build ./cmd/activity-relay-directory
 
   # Forgejo v15 ignores job-level continue-on-error. Keep prerelease
-  # compatibility non-blocking at the validation-step level and summarize the
-  # raw step outcomes so a failure remains explicit triage evidence.
+  # compatibility non-blocking at the validation-step level and independently
+  # schedulable so it can overlap the stable lanes when runner capacity permits.
+  # Summarize raw step outcomes so a failure remains explicit triage evidence.
   forward:
     name: Go 1.27rc2 (forward)
-    needs: test
     runs-on: forgejo-pilot
     steps:
       - name: Check out repository

@@ -615,8 +615,9 @@ Required evidence:
    private or attacker-controlled data leakage; and
 15. the pre-RC compatibility pass fixes the Directory module floor at Go 1.26.0
    with no higher `toolchain` directive. CI blocks on exact Go 1.26.0 and the
-   validated Go 1.26.5 patch lane. Go 1.27rc2 runs afterward as non-blocking
-   forward-compatibility evidence whose failures remain explicit triage items
+   validated Go 1.26.5 patch lane. Go 1.27rc2 runs as an independently scheduled
+   non-blocking forward-compatibility lane so it may execute concurrently when
+   runner capacity permits; its failures remain explicit triage items
    rather than silently changing supported-version claims. Container builds use
    the validated Go 1.26.5 / Alpine 3.24 builder while preserving the reviewed
    runtime stage. After Go 1.27 final, rerun full compatibility before changing

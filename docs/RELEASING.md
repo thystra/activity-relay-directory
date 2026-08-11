@@ -85,9 +85,10 @@ The pre-RC compatibility pass establishes Go 1.26.0 as the minimum supported
 Directory module floor. `go.mod` must declare `go 1.26.0` and must not add a
 higher `toolchain` directive. The blocking CI matrix runs exact Go 1.26.0 and
 the validated Go 1.26.5 patch lane. A separate Go 1.27rc2 forward-compatibility
-job runs only after the blocking matrix succeeds; prerelease validation failures
-must remain visible for individual triage but do not silently redefine the
-supported floor or stable blocking lanes.
+job is independently scheduled so it may execute concurrently with the stable
+lanes when runner capacity permits; prerelease validation failures must remain
+visible for individual triage but do not silently redefine the supported floor
+or stable blocking lanes.
 
 Container builds use the validated
 `docker.io/library/golang:1.26.5-alpine3.24` builder while preserving the
