@@ -105,6 +105,6 @@ jobs:
         uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: activity-relay-directory-0.1.0-rc1-canonical-${{ inputs.expected_commit }}
-          path: $RUNNER_TEMP/canonical-release/
+          path: ${{ runner.temp }}/canonical-release/
           if-no-files-found: error
           retention-days: 30

@@ -327,3 +327,25 @@ and deployments, and remain accountable for the software.
   that explicit policy selection. Lintian exit status `2` is a `--fail-on`
   policy result rather than a runtime failure; never let ambient runner/local
   Lintian configuration choose the release policy implicitly.
+
+## Validation control maturity
+
+- Match validation depth to the maturity and risk of the function being
+  validated. New, destructive, security-sensitive, authority,
+  data-integrity, and release-immutability boundaries should begin
+  fail-closed with strong independent checks.
+- Once a function or infrastructure component has been independently proven
+  and is operating reliably, retire redundant implementation-level checks and
+  rely on the appropriate higher-level contract or outcome unless there is a
+  documented reason for continued strict validation.
+- Do not retain stale or duplicative controls merely because they were useful
+  during initial validation. False failures, brittleness, and avoidable rework
+  are themselves operational risks.
+- If unusually strict or redundant checks are retained after a function is
+  proven, document the specific reason and the condition or review point for
+  relaxing them.
+- Example: after Forgejo runner identity, service behavior, capacity, and
+  isolation have been proven, repository gates should validate the expected
+  runner labels and required workflow/job outcomes rather than repeatedly
+  re-auditing runner UUIDs, PIDs, restart counters, journals, or DinD
+  internals without a new reason to suspect them.
