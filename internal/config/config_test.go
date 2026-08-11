@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"net/netip"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -378,5 +380,134 @@ func TestLoadInactiveRetentionDaysNeedsNoPublicConfiguration(t *testing.T) {
 	got, err := LoadInactiveRetentionDays()
 	if err != nil || got != 365 {
 		t.Fatalf("LoadInactiveRetentionDays() = (%d, %v), want (365, nil)", got, err)
+	}
+}
+
+func TestLoadDefaultsDatabaseGrowthGuardAndDisablesEmail(t *testing.T) {
+	setRequiredEnvironment(t)
+	clearDatabaseGrowthEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	growth := cfg.DatabaseGrowth
+	if growth.MaxBytes != storage.DefaultDatabaseMaxBytes ||
+		growth.WarningPercent != storage.DefaultDatabaseWarningPercent ||
+		growth.EmailEnabled() || len(growth.AdministratorEmails) != 0 ||
+		growth.MailBackend != defaultMailBackend ||
+		growth.MailCommand != defaultMailCommand ||
+		growth.MailTimeout != defaultMailTimeoutSeconds*time.Second {
+		t.Fatalf("DatabaseGrowth defaults = %#v", growth)
+	}
+}
+
+func TestLoadParsesDatabaseGrowthAndMailerSettings(t *testing.T) {
+	setRequiredEnvironment(t)
+	clearDatabaseGrowthEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_DATABASE_MAX_BYTES", "2147483648")
+	t.Setenv("DIRECTORY_DATABASE_WARNING_PERCENT", "80")
+	t.Setenv("DIRECTORY_ADMIN_EMAIL", "admin@example.com,ops@example.com")
+	t.Setenv("DIRECTORY_MAIL_BACKEND", "mail")
+	t.Setenv("DIRECTORY_MAIL_COMMAND", "/opt/directory/bin/mail")
+	t.Setenv("DIRECTORY_MAIL_TIMEOUT_SECONDS", "45")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	growth := cfg.DatabaseGrowth
+	if growth.MaxBytes != 2147483648 || growth.WarningPercent != 80 ||
+		!growth.EmailEnabled() || growth.MailBackend != "mail" ||
+		growth.MailCommand != "/opt/directory/bin/mail" || growth.MailTimeout != 45*time.Second {
+		t.Fatalf("DatabaseGrowth = %#v", growth)
+	}
+	want := []string{"admin@example.com", "ops@example.com"}
+	if !reflect.DeepEqual(growth.AdministratorEmails, want) {
+		t.Fatalf("AdministratorEmails = %#v, want %#v", growth.AdministratorEmails, want)
+	}
+}
+
+func TestLoadDatabaseGrowthConfigNeedsNoPublicConfiguration(t *testing.T) {
+	clearDatabaseGrowthEnvironment(t)
+	t.Setenv("DIRECTORY_DATABASE_MAX_BYTES", "1073741824")
+	growth, err := LoadDatabaseGrowthConfig()
+	if err != nil {
+		t.Fatalf("LoadDatabaseGrowthConfig() error = %v", err)
+	}
+	if growth.MaxBytes != storage.DefaultDatabaseMaxBytes || growth.EmailEnabled() {
+		t.Fatalf("DatabaseGrowth = %#v", growth)
+	}
+}
+
+func TestLoadRejectsInvalidDatabaseGrowthSettings(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "zero max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: "0"},
+		{name: "negative max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: "-1"},
+		{name: "plus max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: "+1073741824"},
+		{name: "leading zero max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: "01073741824"},
+		{name: "whitespace max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: " 1073741824"},
+		{name: "oversized max", key: "DIRECTORY_DATABASE_MAX_BYTES", value: "1099511627777"},
+		{name: "zero warning", key: "DIRECTORY_DATABASE_WARNING_PERCENT", value: "0"},
+		{name: "critical warning", key: "DIRECTORY_DATABASE_WARNING_PERCENT", value: "90"},
+		{name: "leading zero warning", key: "DIRECTORY_DATABASE_WARNING_PERCENT", value: "075"},
+		{name: "whitespace warning", key: "DIRECTORY_DATABASE_WARNING_PERCENT", value: "75 "},
+		{name: "display name recipient", key: "DIRECTORY_ADMIN_EMAIL", value: "Admin <admin@example.com>"},
+		{name: "option recipient", key: "DIRECTORY_ADMIN_EMAIL", value: "-x@example.com"},
+		{name: "duplicate recipient", key: "DIRECTORY_ADMIN_EMAIL", value: "admin@example.com,admin@example.com"},
+		{name: "recipient whitespace", key: "DIRECTORY_ADMIN_EMAIL", value: "admin@example.com, ops@example.com"},
+		{name: "control recipient", key: "DIRECTORY_ADMIN_EMAIL", value: "admin@example.com\n-bcc@example.com"},
+		{name: "unsupported backend", key: "DIRECTORY_MAIL_BACKEND", value: "smtp"},
+		{name: "backend whitespace", key: "DIRECTORY_MAIL_BACKEND", value: "mail "},
+		{name: "relative command", key: "DIRECTORY_MAIL_COMMAND", value: "usr/bin/mail"},
+		{name: "unclean command", key: "DIRECTORY_MAIL_COMMAND", value: "/usr/bin/../bin/mail"},
+		{name: "zero timeout", key: "DIRECTORY_MAIL_TIMEOUT_SECONDS", value: "0"},
+		{name: "oversized timeout", key: "DIRECTORY_MAIL_TIMEOUT_SECONDS", value: "301"},
+		{name: "timeout whitespace", key: "DIRECTORY_MAIL_TIMEOUT_SECONDS", value: "30 "},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			clearDatabaseGrowthEnvironment(t)
+			t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+			t.Setenv(test.key, test.value)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() accepted %s=%q", test.key, test.value)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsTooManyAdministratorEmailRecipients(t *testing.T) {
+	setRequiredEnvironment(t)
+	clearDatabaseGrowthEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	var recipients []string
+	for index := 0; index < maximumAdministratorEmails+1; index++ {
+		recipients = append(recipients, fmt.Sprintf("admin%d@example.com", index))
+	}
+	t.Setenv("DIRECTORY_ADMIN_EMAIL", strings.Join(recipients, ","))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted too many administrator recipients")
+	}
+}
+
+func clearDatabaseGrowthEnvironment(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{
+		"DIRECTORY_DATABASE_MAX_BYTES",
+		"DIRECTORY_DATABASE_WARNING_PERCENT",
+		"DIRECTORY_ADMIN_EMAIL",
+		"DIRECTORY_MAIL_BACKEND",
+		"DIRECTORY_MAIL_COMMAND",
+		"DIRECTORY_MAIL_TIMEOUT_SECONDS",
+	} {
+		t.Setenv(name, "")
 	}
 }

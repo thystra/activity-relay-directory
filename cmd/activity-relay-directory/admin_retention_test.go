@@ -52,6 +52,29 @@ func TestAdminRetentionDryRunIsReadOnlyAndIdentityFree(t *testing.T) {
 	}
 }
 
+func TestAdminRetentionDryRunDoesNotRequireConfiguredMailerExecutable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	seedAdminRelay(t, path, 100)
+	unregisterAdminRelay(t, path, 200)
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+	t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", "1")
+	t.Setenv("DIRECTORY_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("DIRECTORY_MAIL_BACKEND", "mail")
+	t.Setenv("DIRECTORY_MAIL_COMMAND", filepath.Join(t.TempDir(), "missing-mail"))
+	t.Setenv("DIRECTORY_MAIL_TIMEOUT_SECONDS", "30")
+
+	var stdout, stderr bytes.Buffer
+	code := runAdmin(
+		[]string{"activity-relay-directory", "admin", "retention", "dry-run", "--format", "json"},
+		&stdout,
+		&stderr,
+		func() time.Time { return time.Unix(200+86400, 0) },
+	)
+	if code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"candidate_count":1`) {
+		t.Fatalf("retention dry-run with unavailable mailer = (%d, %q, %q)", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestAdminRetentionRejectsInvalidInvocationWithoutOpeningDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing.sqlite")
 	t.Setenv("DIRECTORY_DATABASE_PATH", path)

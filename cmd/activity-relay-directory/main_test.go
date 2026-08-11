@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
+	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
 	storage "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
 
@@ -93,6 +94,26 @@ func TestAdminEnrollmentCLIRejectsInvalidInvocationWithoutOpeningDatabase(t *tes
 	}
 }
 
+func TestRunFailsStartupBeforeDatabaseWhenAdministratorMailerUnavailable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	t.Setenv("DIRECTORY_LISTEN_ADDRESS", "127.0.0.1:0")
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+	t.Setenv("DIRECTORY_ADMIN_EMAIL", "admin@example.com")
+	t.Setenv("DIRECTORY_MAIL_COMMAND", filepath.Join(t.TempDir(), "missing-mail"))
+	t.Setenv("DIRECTORY_MAIL_BACKEND", "mail")
+	t.Setenv("DIRECTORY_MAIL_TIMEOUT_SECONDS", "30")
+	t.Setenv("DIRECTORY_DATABASE_MAX_BYTES", "1073741824")
+	t.Setenv("DIRECTORY_DATABASE_WARNING_PERCENT", "75")
+
+	if code := run([]string{"activity-relay-directory"}); code != 2 {
+		t.Fatalf("run() code = %d, want 2", code)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("mailer startup failure created database: %v", err)
+	}
+}
+
 func TestInitializeDatabaseCreatesCurrentSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "directory.sqlite")
 	database, err := initializeDatabase(context.Background(), path)
@@ -158,7 +179,7 @@ func TestInitializeDatabaseHonorsCanceledContext(t *testing.T) {
 func TestInitializeLifecycleIsDisabledWithoutConstructingDependencies(t *testing.T) {
 	runtime, err := initializeLifecycle(config.Config{
 		LifecycleEnabled: false,
-	}, nil)
+	}, nil, storageContract.AllowWrites)
 	if err != nil || runtime != nil {
 		t.Fatalf("initializeLifecycle(disabled) = (%#v, %v)", runtime, err)
 	}
@@ -169,7 +190,7 @@ func TestInitializeLifecycleFailsClosedWithoutEnabledStorage(t *testing.T) {
 		PublicBaseURL:       "https://directory.example",
 		LifecycleEnabled:    true,
 		MaxRequestBodyBytes: 64 * 1024,
-	}, nil)
+	}, nil, storageContract.AllowWrites)
 	if runtime != nil || err == nil {
 		t.Fatalf("initializeLifecycle(incomplete) = (%#v, %v)", runtime, err)
 	}
@@ -190,7 +211,7 @@ func TestInitializeLifecycleBuildsCompleteEnabledGraph(t *testing.T) {
 		LifecycleEnabled:     true,
 		MaxRequestBodyBytes:  64 * 1024,
 		TrustedProxyPrefixes: nil,
-	}, database)
+	}, database, storageContract.AllowWrites)
 	if err != nil {
 		t.Fatalf("initializeLifecycle() error = %v", err)
 	}

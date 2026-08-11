@@ -503,6 +503,13 @@ Acceptance gates:
 
 Repository: `thystra/activity-relay-directory`.
 
+Completed (2026-08-10): the reviewed source implementation adds the bounded
+non-destructive SQLite growth guard, common write admission, readiness behavior,
+local storage inspection, and opt-in no-shell administrator notifications. It
+remains undeployed: the administrator recipient is still empty/default-off, no
+production notification has been sent, and no retention policy or database
+budget was activated by source completion.
+
 Retention reduces reusable data only when a positive policy is selected. The
 service also needs a non-destructive upper bound so an unattended instance with
 indefinite retention cannot consume a VPS filesystem without warning. Reaching

@@ -105,6 +105,43 @@ scanning; each committed purge batch checkpoints aggregate counts in that same
 transaction, and finalization makes the row immutable. The backup SHA-256 is
 recorded there. See `docs/RETENTION.md`.
 
+Schema version 7 adds one bounded identity-free storage-growth state row and a
+non-destructive runtime `DatabaseGrowthGuard`. Writable process startup first
+uses a migration pool whose DSN applies a page-size-rounded `max_page_count` on
+every connection while retaining SQLite's default cache spilling. After schema
+migration, that pool is closed and the steady-state writable pool reopens with
+the same page ceiling plus `cache_spill=OFF` on every connection. This avoids a
+database-scale dirty-memory set during table-copy migrations while making the
+reviewed steady-state WAL transient bound enforceable. Each authoritative sample
+combines used logical pages (`page_count - freelist_count`) with physical
+main/WAL/SHM size, applies configurable warning plus fixed 90% critical and 100%
+hard transitions, and preserves reusable free-list pages as capacity rather
+than pretending deletion shrank the file.
+
+Every runtime repository mutation acquires the same write-admission lease before
+opening its transaction; lifecycle, enrollment, moderation, pruning, retention,
+and replay housekeeping therefore share one hard-state decision. The guard mutex is held through commit/rollback, while SQLite remains the
+cross-process single-writer backstop. The reserved headroom is not represented
+as an active-WAL quota; the storage-growth runbook documents the conservative
+steady-state single-transaction WAL/SHM transient filesystem bound and separately
+requires migration filesystem capacity because migration keeps cache spilling
+enabled. Current-schema startup is allowed at hard state for liveness and
+read-only inspection, but readiness fails and domain/application writes are
+refused. The only post-hard SQLite control/storage operations are the
+bounded identity-free `storage_growth_state` singleton UPDATE and a PASSIVE WAL
+checkpoint; neither changes logical domain data or grants repository write
+admission. A pending schema migration is preflighted against the same budget
+and remains protected transactionally by `max_page_count`. Public listing
+repositories are constructed with writes explicitly denied.
+
+The five-minute sampler uses only a passive WAL checkpoint and the connection
+policy sets bounded WAL autocheckpoint/journal retention. Transition/reminder
+state is one singleton row with no relay identities. Optional administrator mail
+uses a validated absolute executable with direct `exec.CommandContext`, fixed
+arguments, stdin body, no shell, bounded output/runtime, and bounded retry.
+Email remains disabled with an empty recipient list. See
+`docs/STORAGE-GROWTH.md`.
+
 The SQLite replay store implements the RFC 9421 opaque-key interface.
 It uses the schema's 32-byte primary key for atomic duplicate suppression across
 connections and process restart. Each reservation removes an expired copy of
@@ -142,7 +179,7 @@ target required by HTTP message-signature verification.
 
 Remaining components will be added behind explicit contracts:
 
-1. database-growth safeguards and administrator notification;
+1. cross-repository staging soak and release-candidate evidence;
 2. Activity-Relay client integration and soak testing.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review

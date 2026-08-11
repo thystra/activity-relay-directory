@@ -34,7 +34,7 @@ func TestLifecycleOperationsDriveAcceleratedHealthProjection(t *testing.T) {
 		t.Fatalf("open enrollment: %v", err)
 	}
 
-	repository, err := sqlitestore.NewRelayRepository(database)
+	repository, err := sqlitestore.NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}

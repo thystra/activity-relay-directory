@@ -56,3 +56,22 @@ rollback, backup mismatch rejection, exact pre-purge restoration, and append-onl
 guard restoration. A destructive trial must use the backup-gated local command;
 no HTTP route or scheduler may initiate purge. Physical `VACUUM`/checkpoint work
 is a separate maintenance operation.
+
+## Database-growth release gate
+
+Before the first release candidate, exercise the Tranche 17 storage guard with
+email disabled and with an isolated fake/local test mailer. Validate exact
+warning/critical/hard boundaries, five-minute and pre-write sampling,
+`max_page_count` across supported SQLite page sizes, WAL/checkpoint growth,
+freed-page reuse, near-limit migration rollback, concurrent writers, restart
+notification suppression, recovery hysteresis, bounded failure retry, and
+full-disk-class refusal. At hard state prove `/healthz` and allowed public/local
+reads remain available while `/readyz` and every runtime mutation fail closed.
+
+The stock container deliberately does not install a mail command. A deployment
+that enables `DIRECTORY_ADMIN_EMAIL` must explicitly provide and configure the
+validated command. A future Debian package may recommend a mail transport, but
+must not configure recipients, credentials, relay hosts, or enable alerts. Host
+filesystem monitoring remains required independently of the application budget.
+No release/deployment gate may silently raise the configured database budget or
+activate positive inactive retention.

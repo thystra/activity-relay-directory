@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/thystra/activity-relay-directory/internal/storage"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -33,8 +35,84 @@ func Open(ctx context.Context, path string) (*sql.DB, error) {
 	if err := secureDatabaseFile(path); err != nil {
 		return nil, err
 	}
+	return openDatabasePool(ctx, sqliteDSN(path))
+}
 
-	dsn := sqliteDSN(path)
+// OpenGuarded opens the steady-state writable runtime pool with the Tranche 17
+// max_page_count backstop and cache_spill=OFF encoded in the DSN so every
+// database/sql connection receives the same page ceiling and retains dirty
+// pages until commit. max_page_count and cache_spill are connection-local in
+// SQLite; setting either once through *sql.DB is not sufficient for a pool.
+func OpenGuarded(
+	ctx context.Context,
+	path string,
+	maxBytes int64,
+) (*sql.DB, int64, int64, error) {
+	return openGuarded(ctx, path, maxBytes, false)
+}
+
+// OpenMigrationGuarded opens the pre-runtime migration pool with the same
+// per-connection max_page_count ceiling while leaving SQLite's default cache
+// spilling enabled. Table-copy migrations may dirty a database-scale page set;
+// retaining that entire set in memory merely to bound transient WAL growth would
+// trade a filesystem safeguard for avoidable memory pressure. The caller must
+// close this pool after migration and reopen with OpenGuarded before serving or
+// admitting steady-state mutations.
+func OpenMigrationGuarded(
+	ctx context.Context,
+	path string,
+	maxBytes int64,
+) (*sql.DB, int64, int64, error) {
+	return openGuarded(ctx, path, maxBytes, true)
+}
+
+func openGuarded(
+	ctx context.Context,
+	path string,
+	maxBytes int64,
+	migration bool,
+) (*sql.DB, int64, int64, error) {
+	if ctx == nil || path == "" || !filepath.IsAbs(path) {
+		return nil, 0, 0, ErrDatabasePath
+	}
+	if err := secureDatabaseFile(path); err != nil {
+		return nil, 0, 0, err
+	}
+
+	bootstrap, err := openDatabasePool(ctx, sqliteDSN(path))
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	bootstrap.SetMaxOpenConns(1)
+	bootstrap.SetMaxIdleConns(1)
+	desiredPages, effectivePages, mainLimit, err := databaseGrowthPageLimits(
+		ctx, bootstrap, maxBytes,
+	)
+	if closeErr := bootstrap.Close(); err == nil && closeErr != nil {
+		err = fmt.Errorf("close SQLite growth bootstrap: %w", closeErr)
+	}
+	if err != nil {
+		return nil, 0, 0, err
+	}
+
+	dsn := sqliteDSNWithMaxPageCount(path, effectivePages)
+	if migration {
+		dsn = sqliteMigrationDSNWithMaxPageCount(path, effectivePages)
+	}
+	database, err := openDatabasePool(ctx, dsn)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	if err := verifyDatabaseGrowthConnectionPolicy(
+		ctx, database, maxBytes, desiredPages, mainLimit, migration,
+	); err != nil {
+		_ = database.Close()
+		return nil, 0, 0, err
+	}
+	return database, desiredPages, mainLimit, nil
+}
+
+func openDatabasePool(ctx context.Context, dsn string) (*sql.DB, error) {
 	database, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open SQLite database: %w", err)
@@ -163,12 +241,34 @@ func validateSecureDatabaseInformation(information os.FileInfo) error {
 }
 
 func sqliteDSN(path string) string {
+	return sqliteDSNWithMaxPageCount(path, 0)
+}
+
+func sqliteDSNWithMaxPageCount(path string, maxPageCount int64) string {
+	return sqliteGrowthDSN(path, maxPageCount, false)
+}
+
+func sqliteMigrationDSNWithMaxPageCount(path string, maxPageCount int64) string {
+	return sqliteGrowthDSN(path, maxPageCount, true)
+}
+
+func sqliteGrowthDSN(path string, maxPageCount int64, migration bool) string {
 	dsn := &url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
 	parameters := dsn.Query()
 	parameters.Set("_txlock", "immediate")
 	parameters.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeoutMillis))
 	parameters.Add("_pragma", "foreign_keys(ON)")
 	parameters.Add("_pragma", "journal_mode(WAL)")
+	parameters.Add("_pragma", fmt.Sprintf("wal_autocheckpoint(%d)", storage.DatabaseWALAutoCheckpointPages))
+	parameters.Add("_pragma", fmt.Sprintf("journal_size_limit(%d)", storage.DatabaseJournalSizeLimitBytes))
+	if maxPageCount > 0 {
+		if migration {
+			parameters.Add("_pragma", "cache_spill(ON)")
+		} else {
+			parameters.Add("_pragma", "cache_spill(OFF)")
+		}
+		parameters.Add("_pragma", fmt.Sprintf("max_page_count(%d)", maxPageCount))
+	}
 	parameters.Add("_pragma", "synchronous(NORMAL)")
 	dsn.RawQuery = parameters.Encode()
 	return dsn.String()

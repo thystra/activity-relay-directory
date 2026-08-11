@@ -7,6 +7,7 @@ import (
 	"time"
 
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 const (
@@ -17,17 +18,22 @@ const (
 // RFC9421ReplayStore durably reserves opaque key-ID/nonce digests in SQLite.
 // It stores no raw signature identifier.
 type RFC9421ReplayStore struct {
-	database     *sql.DB
-	now          func() time.Time
-	cleanupBatch int
+	database       *sql.DB
+	writeAdmission storage.WriteAdmission
+	now            func() time.Time
+	cleanupBatch   int
 }
 
 var _ v1.RFC9421ReplayStore = (*RFC9421ReplayStore)(nil)
 
 // NewRFC9421ReplayStore creates a durable replay store with bounded cleanup.
-func NewRFC9421ReplayStore(database *sql.DB) (*RFC9421ReplayStore, error) {
+func NewRFC9421ReplayStore(
+	database *sql.DB,
+	writeAdmission storage.WriteAdmission,
+) (*RFC9421ReplayStore, error) {
 	return newRFC9421ReplayStore(
 		database,
+		writeAdmission,
 		time.Now,
 		defaultRFC9421ReplayCleanupBatch,
 	)
@@ -35,17 +41,19 @@ func NewRFC9421ReplayStore(database *sql.DB) (*RFC9421ReplayStore, error) {
 
 func newRFC9421ReplayStore(
 	database *sql.DB,
+	writeAdmission storage.WriteAdmission,
 	now func() time.Time,
 	cleanupBatch int,
 ) (*RFC9421ReplayStore, error) {
-	if database == nil || now == nil || cleanupBatch <= 0 ||
+	if database == nil || writeAdmission == nil || now == nil || cleanupBatch <= 0 ||
 		cleanupBatch > maximumRFC9421ReplayCleanupBatch {
 		return nil, v1.ErrRFC9421ReplayStore
 	}
 	return &RFC9421ReplayStore{
-		database:     database,
-		now:          now,
-		cleanupBatch: cleanupBatch,
+		database:       database,
+		writeAdmission: writeAdmission,
+		now:            now,
+		cleanupBatch:   cleanupBatch,
 	}, nil
 }
 
@@ -61,6 +69,11 @@ func (store *RFC9421ReplayStore) ReserveRFC9421Replay(
 		return false, err
 	}
 
+	lease, err := store.writeAdmission.AcquireWrite(ctx)
+	if err != nil {
+		return false, fmt.Errorf("%w: %w", v1.ErrRFC9421ReplayStore, err)
+	}
+	defer lease.Release()
 	transaction, err := store.database.BeginTx(ctx, nil)
 	if err != nil {
 		return false, replayStoreFailure("begin reservation", err)
@@ -121,7 +134,7 @@ func (store *RFC9421ReplayStore) CleanupExpiredRFC9421Replay(
 	ctx context.Context,
 	maximum int,
 ) (int64, error) {
-	if store == nil || store.database == nil || store.now == nil ||
+	if store == nil || store.database == nil || store.writeAdmission == nil || store.now == nil ||
 		ctx == nil || maximum <= 0 ||
 		maximum > maximumRFC9421ReplayCleanupBatch {
 		return 0, v1.ErrRFC9421ReplayStore
@@ -136,6 +149,11 @@ func (store *RFC9421ReplayStore) CleanupExpiredRFC9421Replay(
 		return 0, v1.ErrRFC9421ReplayStore
 	}
 
+	lease, err := store.writeAdmission.AcquireWrite(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %w", v1.ErrRFC9421ReplayStore, err)
+	}
+	defer lease.Release()
 	transaction, err := store.database.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, replayStoreFailure("begin replay cleanup", err)
@@ -161,7 +179,7 @@ func (store *RFC9421ReplayStore) validate(
 	ctx context.Context,
 	expiresAt time.Time,
 ) (time.Time, int64, error) {
-	if store == nil || store.database == nil || store.now == nil ||
+	if store == nil || store.database == nil || store.writeAdmission == nil || store.now == nil ||
 		store.cleanupBatch <= 0 ||
 		store.cleanupBatch > maximumRFC9421ReplayCleanupBatch || ctx == nil {
 		return time.Time{}, 0, v1.ErrRFC9421ReplayStore

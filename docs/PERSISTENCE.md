@@ -323,6 +323,42 @@ cannot leave a committed deletion without durable aggregate checkpoint evidence.
 Finalization makes the run row immutable. See `docs/RETENTION.md` for
 bounds, backup verification, restore consequences, and manual compaction.
 
+## Schema version 7 and database growth state
+
+Schema version 7 adds exactly one `storage_growth_state` singleton used for the
+bounded warning/critical/hard/recovery notification state. It stores only state,
+sample/transition times, physical-byte baseline, last successful alert metadata,
+and one pending retry record. It contains no relay identity, moderation token,
+or unbounded history, and a trigger prevents deletion of the singleton.
+
+Writable startup computes SQLite `max_page_count` before any pending migration,
+injects the effective ceiling into every migration-pool connection, and preflights
+the current database-family pressure. Migration retains SQLite's default cache
+spilling to avoid holding a database-scale dirty set in memory. After migration,
+the pool is closed and reopened with the same per-connection page ceiling plus
+`cache_spill=OFF` for steady-state service/admin mutations. The configured total
+budget covers the main file plus `-wal` and `-shm`; the main-page cap reserves a
+page-aligned planning envelope for WAL/control/migration work. Runtime samples
+separately report `page_count`, `freelist_count`, used pages, allocated pages,
+main/WAL/SHM bytes, and the configured total. Free-list pages are reusable and
+reduce logical-use pressure without claiming a smaller physical file.
+
+Every production runtime mutator uses a common write-admission lease before its
+transaction. The lease remains held through commit or rollback so another
+in-process writer cannot pass a stale sample concurrently. Replay reservation
+and replay cleanup use the same boundary. Schema migrations remain a startup
+operation: hard preflight refuses a pending migration, and SQLite's page cap
+rolls back a near-limit migration that cannot allocate safely.
+
+A five-minute passive checkpoint plus WAL autocheckpoint and journal-size policy
+bounds ordinary retained sidecar growth; neither setting is an active-transaction
+WAL quota. Steady-state `cache_spill=OFF` supplies the additional invariant used
+by `docs/STORAGE-GROWTH.md` to derive its conservative runtime single-transaction
+WAL/SHM filesystem planning bound. That formula intentionally excludes schema
+migration, whose spill-enabled pool requires separately planned host free space.
+At hard state current-schema data remains readable and `/healthz` stays live, but
+readiness and mutating operations fail closed. See `docs/STORAGE-GROWTH.md`.
+
 ## Backup and recovery boundary
 
 Before production deployment, the deployment runbook must specify a local,

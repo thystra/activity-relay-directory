@@ -40,7 +40,8 @@ const (
 // RelayRepository applies authenticated relay lifecycle intents to SQLite.
 // It does not authenticate requests, resolve actors, or expose HTTP handlers.
 type RelayRepository struct {
-	database *sql.DB
+	database       *sql.DB
+	writeAdmission storage.WriteAdmission
 }
 
 var _ storage.RelayRepository = (*RelayRepository)(nil)
@@ -48,11 +49,17 @@ var _ storage.ModerationRepository = (*RelayRepository)(nil)
 var _ storage.EnrollmentRepository = (*RelayRepository)(nil)
 
 // NewRelayRepository binds relay state transitions to a migrated database.
-func NewRelayRepository(database *sql.DB) (*RelayRepository, error) {
-	if database == nil {
+func NewRelayRepository(
+	database *sql.DB,
+	writeAdmission storage.WriteAdmission,
+) (*RelayRepository, error) {
+	if database == nil || writeAdmission == nil {
 		return nil, storage.ErrRepositoryConfiguration
 	}
-	return &RelayRepository{database: database}, nil
+	return &RelayRepository{
+		database:       database,
+		writeAdmission: writeAdmission,
+	}, nil
 }
 
 // Register creates, restores, or confirms a relay registration. It never
@@ -70,10 +77,11 @@ func (repository *RelayRepository) Register(
 		return "", err
 	}
 
-	transaction, err := repository.begin(ctx)
+	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer lease.Release()
 	defer func() { _ = transaction.Rollback() }()
 
 	relay, err := selectRelay(ctx, transaction, intent.RelayActor)
@@ -193,10 +201,11 @@ func (repository *RelayRepository) Heartbeat(
 		return "", err
 	}
 
-	transaction, err := repository.begin(ctx)
+	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer lease.Release()
 	defer func() { _ = transaction.Rollback() }()
 
 	relay, err := selectRelay(ctx, transaction, intent.RelayActor)
@@ -263,10 +272,11 @@ func (repository *RelayRepository) Unregister(
 		return "", err
 	}
 
-	transaction, err := repository.begin(ctx)
+	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer lease.Release()
 	defer func() { _ = transaction.Rollback() }()
 
 	relay, err := selectRelay(ctx, transaction, intent.RelayActor)
@@ -326,15 +336,37 @@ type relayRecord struct {
 	lastSeenAtUnix      int64
 }
 
-func (repository *RelayRepository) begin(ctx context.Context) (*sql.Tx, error) {
-	if repository == nil || repository.database == nil || ctx == nil {
-		return nil, storage.ErrRepositoryConfiguration
+func (repository *RelayRepository) begin(
+	ctx context.Context,
+) (*sql.Tx, storage.WriteLease, error) {
+	if repository == nil || repository.database == nil ||
+		repository.writeAdmission == nil || ctx == nil {
+		return nil, nil, storage.ErrRepositoryConfiguration
+	}
+	lease, err := repository.writeAdmission.AcquireWrite(ctx)
+	if err != nil {
+		return nil, nil, storageFailure("admit transition", err)
 	}
 	transaction, err := repository.database.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, storageFailure("begin transition", err)
+		lease.Release()
+		return nil, nil, storageFailure("begin transition", err)
 	}
-	return transaction, nil
+	return transaction, lease, nil
+}
+
+func (repository *RelayRepository) acquireWrite(
+	ctx context.Context,
+) (storage.WriteLease, error) {
+	if repository == nil || repository.database == nil ||
+		repository.writeAdmission == nil || ctx == nil {
+		return nil, storage.ErrRepositoryConfiguration
+	}
+	lease, err := repository.writeAdmission.AcquireWrite(ctx)
+	if err != nil {
+		return nil, storageFailure("admit storage mutation", err)
+	}
+	return lease, nil
 }
 
 func selectRelay(

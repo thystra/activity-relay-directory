@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/actorresolver"
+	"github.com/thystra/activity-relay-directory/internal/adminnotify"
 	"github.com/thystra/activity-relay-directory/internal/admission"
 	"github.com/thystra/activity-relay-directory/internal/buildinfo"
 	"github.com/thystra/activity-relay-directory/internal/config"
@@ -77,6 +78,19 @@ func run(arguments []string) int {
 		return 2
 	}
 
+	var growthMailer storage.GrowthMailer
+	if cfg.DatabaseGrowth.EmailEnabled() {
+		growthMailer, err = adminnotify.NewCommandMailer(
+			cfg.DatabaseGrowth.MailCommand,
+			cfg.DatabaseGrowth.AdministratorEmails,
+			cfg.DatabaseGrowth.MailTimeout,
+		)
+		if err != nil {
+			logger.Error("administrator mailer initialization failed")
+			return 2
+		}
+	}
+
 	signals, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -84,7 +98,14 @@ func run(arguments []string) int {
 	)
 	defer stop()
 
-	database, err := initializeDatabase(signals, cfg.DatabasePath)
+	database, growthGuard, err := initializeGuardedDatabase(
+		signals,
+		cfg.DatabasePath,
+		cfg.DatabaseGrowth,
+		cfg.InactiveRetentionDays,
+		growthMailer,
+		time.Now,
+	)
 	if err != nil {
 		logger.Error("database initialization failed", "error", err)
 		return 1
@@ -95,7 +116,9 @@ func run(arguments []string) int {
 		}
 	}()
 
-	lifecycle, err := initializeLifecycle(cfg, database)
+	go growthGuard.Run(signals)
+
+	lifecycle, err := initializeLifecycle(cfg, database, growthGuard)
 	if err != nil {
 		logger.Error("lifecycle initialization failed", "error", err)
 		return 1
@@ -113,7 +136,7 @@ func run(arguments []string) int {
 	}
 
 	if cfg.SoftPruningEnabled {
-		pruningRepository, err := storage.NewRelayRepository(database)
+		pruningRepository, err := storage.NewRelayRepository(database, growthGuard)
 		if err != nil {
 			logger.Error("soft-pruning initialization failed", "error", err)
 			return 1
@@ -147,7 +170,7 @@ func run(arguments []string) int {
 
 	var publicListingHandler *httpapi.PublicListingHandler
 	if cfg.PublicListingEnabled {
-		listingRepository, err := storage.NewRelayRepository(database)
+		listingRepository, err := storage.NewRelayRepository(database, storageContract.DenyWrites)
 		if err != nil {
 			logger.Error("public-listing initialization failed", "error", err)
 			return 1
@@ -165,11 +188,14 @@ func run(arguments []string) int {
 			cfg,
 			buildinfo.Version,
 			func(ctx context.Context) error {
-				return storage.CheckReady(ctx, database)
+				if err := storage.CheckReady(ctx, database); err != nil {
+					return err
+				}
+				return growthGuard.Ready()
 			},
 			lifecycleHandler,
 			func(ctx context.Context) (bool, error) {
-				repository, err := storage.NewRelayRepository(database)
+				repository, err := storage.NewRelayRepository(database, storageContract.DenyWrites)
 				if err != nil {
 					return false, err
 				}
@@ -207,6 +233,11 @@ func run(arguments []string) int {
 		"soft_pruning_interval", cfg.SoftPruningInterval,
 		"inactive_retention_days", cfg.InactiveRetentionDays,
 		"inactive_retention_execution", "local_admin_only",
+		"database_max_bytes", cfg.DatabaseGrowth.MaxBytes,
+		"database_warning_percent", cfg.DatabaseGrowth.WarningPercent,
+		"database_critical_percent", storageContract.DatabaseCriticalPercent,
+		"database_hard_percent", storageContract.DatabaseHardPercent,
+		"database_admin_email_enabled", cfg.DatabaseGrowth.EmailEnabled(),
 		"database_schema_version", storage.CurrentSchemaVersion,
 		"version", buildinfo.Version,
 	)
@@ -229,11 +260,12 @@ type lifecycleRuntime struct {
 func initializeLifecycle(
 	cfg config.Config,
 	database *sql.DB,
+	writeAdmission storageContract.WriteAdmission,
 ) (*lifecycleRuntime, error) {
 	if !cfg.LifecycleEnabled {
 		return nil, nil
 	}
-	if database == nil {
+	if database == nil || writeAdmission == nil {
 		return nil, httpapi.ErrLifecycleConfiguration
 	}
 	publicBase, err := url.Parse(cfg.PublicBaseURL)
@@ -267,11 +299,11 @@ func initializeLifecycle(
 	if err != nil {
 		return nil, err
 	}
-	replayStore, err := storage.NewRFC9421ReplayStore(database)
+	replayStore, err := storage.NewRFC9421ReplayStore(database, writeAdmission)
 	if err != nil {
 		return nil, err
 	}
-	repository, err := storage.NewRelayRepository(database)
+	repository, err := storage.NewRelayRepository(database, writeAdmission)
 	if err != nil {
 		return nil, err
 	}
@@ -380,6 +412,87 @@ func initializeReadOnlyDatabase(ctx context.Context, path string) (*sql.DB, erro
 		return nil, err
 	}
 	return database, nil
+}
+
+func initializeGuardedDatabase(
+	ctx context.Context,
+	path string,
+	growthConfig config.DatabaseGrowthConfig,
+	retentionDays int,
+	mailer storage.GrowthMailer,
+	now func() time.Time,
+) (*sql.DB, *storage.DatabaseGrowthGuard, error) {
+	if ctx == nil || now == nil {
+		return nil, nil, storage.ErrGrowthConfiguration
+	}
+	database, desiredPages, mainLimit, err := storage.OpenMigrationGuarded(
+		ctx, path, growthConfig.MaxBytes,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	version, err := storage.SchemaVersion(ctx, database)
+	if err != nil {
+		_ = database.Close()
+		return nil, nil, err
+	}
+	if version != storage.CurrentSchemaVersion {
+		if err := storage.CheckMigrationGrowthAdmission(
+			ctx,
+			database,
+			path,
+			growthConfig.MaxBytes,
+			growthConfig.WarningPercent,
+			desiredPages,
+			mainLimit,
+		); err != nil {
+			_ = database.Close()
+			return nil, nil, err
+		}
+	}
+
+	if err := storage.Migrate(ctx, database); err != nil {
+		_ = database.Close()
+		return nil, nil, err
+	}
+	if err := storage.CheckReady(ctx, database); err != nil {
+		_ = database.Close()
+		return nil, nil, err
+	}
+	if err := database.Close(); err != nil {
+		return nil, nil, fmt.Errorf("close guarded SQLite migration pool: %w", err)
+	}
+
+	database, _, _, err = storage.OpenGuarded(ctx, path, growthConfig.MaxBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := storage.CheckReady(ctx, database); err != nil {
+		_ = database.Close()
+		return nil, nil, err
+	}
+
+	guard, err := storage.NewDatabaseGrowthGuard(
+		ctx,
+		database,
+		storage.DatabaseGrowthOptions{
+			Path:             path,
+			MaxBytes:         growthConfig.MaxBytes,
+			WarningPercent:   growthConfig.WarningPercent,
+			RetentionDays:    retentionDays,
+			EmailEnabled:     growthConfig.EmailEnabled(),
+			Mailer:           mailer,
+			Now:              now,
+			SampleInterval:   storageContract.DatabaseGrowthSampleInterval,
+			ReminderInterval: storageContract.DatabaseGrowthReminderInterval,
+		},
+	)
+	if err != nil {
+		_ = database.Close()
+		return nil, nil, err
+	}
+	return database, guard, nil
 }
 
 func initializeDatabase(ctx context.Context, path string) (*sql.DB, error) {

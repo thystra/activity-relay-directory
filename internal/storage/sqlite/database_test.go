@@ -2,11 +2,14 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestOpenCreatesSecureDatabaseWithRequiredPragmas(t *testing.T) {
@@ -36,6 +39,8 @@ func TestOpenCreatesSecureDatabaseWithRequiredPragmas(t *testing.T) {
 	if journalMode != "wal" {
 		t.Fatalf("journal_mode = %q, want wal", journalMode)
 	}
+	assertPragmaInteger(t, database, "wal_autocheckpoint", storage.DatabaseWALAutoCheckpointPages)
+	assertPragmaInteger(t, database, "journal_size_limit", int(storage.DatabaseJournalSizeLimitBytes))
 }
 
 func TestOpenRejectsUnsafePaths(t *testing.T) {
@@ -184,5 +189,148 @@ func TestOpenReadOnlyDoesNotMigrateOlderSchema(t *testing.T) {
 	}
 	if prunedColumnCount != 0 {
 		t.Fatalf("read-only open applied migration 5: pruned column count = %d", prunedColumnCount)
+	}
+}
+
+func TestOpenGuardedAppliesMaxPageCountToEveryPooledConnection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	bootstrap, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open(bootstrap) error = %v", err)
+	}
+	if err := Migrate(context.Background(), bootstrap); err != nil {
+		_ = bootstrap.Close()
+		t.Fatalf("Migrate(bootstrap) error = %v", err)
+	}
+	var pageSize int64
+	if err := bootstrap.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil || pageSize <= 0 {
+		_ = bootstrap.Close()
+		t.Fatalf("bootstrap page_size = %d, %v", pageSize, err)
+	}
+	if err := bootstrap.Close(); err != nil {
+		t.Fatalf("Close(bootstrap) error = %v", err)
+	}
+
+	maxBytes := pageSize * 4096
+	database, desired, _, err := OpenGuarded(context.Background(), path, maxBytes)
+	if err != nil {
+		t.Fatalf("OpenGuarded() error = %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	var pageCount int64
+	if err := database.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
+		t.Fatalf("page_count: %v", err)
+	}
+	expected := desired
+	if pageCount > expected {
+		expected = pageCount
+	}
+
+	connections := make([]*sql.Conn, 0, 4)
+	defer func() {
+		for _, connection := range connections {
+			_ = connection.Close()
+		}
+	}()
+	for index := 0; index < 4; index++ {
+		connection, err := database.Conn(context.Background())
+		if err != nil {
+			t.Fatalf("Conn(%d) error = %v", index, err)
+		}
+		connections = append(connections, connection)
+
+		var effective int64
+		if err := connection.QueryRowContext(
+			context.Background(), `PRAGMA max_page_count`,
+		).Scan(&effective); err != nil {
+			t.Fatalf("connection %d max_page_count: %v", index, err)
+		}
+		if effective != expected {
+			t.Fatalf(
+				"connection %d max_page_count = %d, want %d",
+				index, effective, expected,
+			)
+		}
+		var cacheSpill int
+		if err := connection.QueryRowContext(
+			context.Background(), `PRAGMA cache_spill`,
+		).Scan(&cacheSpill); err != nil {
+			t.Fatalf("connection %d cache_spill: %v", index, err)
+		}
+		if cacheSpill != 0 {
+			t.Fatalf("connection %d cache_spill = %d, want 0", index, cacheSpill)
+		}
+	}
+}
+
+func TestOpenMigrationGuardedKeepsCacheSpillEnabled(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	bootstrap, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatalf("Open(bootstrap) error = %v", err)
+	}
+	if err := Migrate(context.Background(), bootstrap); err != nil {
+		_ = bootstrap.Close()
+		t.Fatalf("Migrate(bootstrap) error = %v", err)
+	}
+	var pageSize int64
+	if err := bootstrap.QueryRow(`PRAGMA page_size`).Scan(&pageSize); err != nil || pageSize <= 0 {
+		_ = bootstrap.Close()
+		t.Fatalf("bootstrap page_size = %d, %v", pageSize, err)
+	}
+	if err := bootstrap.Close(); err != nil {
+		t.Fatalf("Close(bootstrap) error = %v", err)
+	}
+
+	database, desired, _, err := OpenMigrationGuarded(
+		context.Background(), path, pageSize*4096,
+	)
+	if err != nil {
+		t.Fatalf("OpenMigrationGuarded() error = %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	var pageCount int64
+	if err := database.QueryRow(`PRAGMA page_count`).Scan(&pageCount); err != nil {
+		t.Fatalf("page_count: %v", err)
+	}
+	expected := desired
+	if pageCount > expected {
+		expected = pageCount
+	}
+	connections := make([]*sql.Conn, 0, 4)
+	defer func() {
+		for _, connection := range connections {
+			_ = connection.Close()
+		}
+	}()
+	for index := 0; index < 4; index++ {
+		connection, err := database.Conn(context.Background())
+		if err != nil {
+			t.Fatalf("Conn(%d) error = %v", index, err)
+		}
+		connections = append(connections, connection)
+		var effective int64
+		if err := connection.QueryRowContext(
+			context.Background(), `PRAGMA max_page_count`,
+		).Scan(&effective); err != nil {
+			t.Fatalf("connection %d max_page_count: %v", index, err)
+		}
+		if effective != expected {
+			t.Fatalf(
+				"connection %d max_page_count = %d, want %d",
+				index, effective, expected,
+			)
+		}
+		var cacheSpill int
+		if err := connection.QueryRowContext(
+			context.Background(), `PRAGMA cache_spill`,
+		).Scan(&cacheSpill); err != nil {
+			t.Fatalf("connection %d cache_spill: %v", index, err)
+		}
+		if cacheSpill == 0 {
+			t.Fatalf("connection %d cache_spill = 0, want enabled", index)
+		}
 	}
 }

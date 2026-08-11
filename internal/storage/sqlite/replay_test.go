@@ -12,6 +12,7 @@ import (
 	"time"
 
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestSQLiteRFC9421ReplayStoreReservesUntilExpiry(t *testing.T) {
@@ -331,12 +332,13 @@ func TestSQLiteRFC9421ReplayStoreRejectsInvalidUse(t *testing.T) {
 			t.Fatalf("CleanupExpiredRFC9421Replay(%d) = %d, %v", maximum, deleted, err)
 		}
 	}
-	if created, err := NewRFC9421ReplayStore(nil); created != nil ||
+	if created, err := NewRFC9421ReplayStore(nil, storage.AllowWrites); created != nil ||
 		!errors.Is(err, v1.ErrRFC9421ReplayStore) {
-		t.Fatalf("NewRFC9421ReplayStore(nil) = (%v, %v)", created, err)
+		t.Fatalf("NewRFC9421ReplayStore(nil, storage.AllowWrites) = (%v, %v)", created, err)
 	}
 	if created, err := newRFC9421ReplayStore(
 		database,
+		storage.AllowWrites,
 		func() time.Time { return now },
 		maximumRFC9421ReplayCleanupBatch+1,
 	); created != nil || !errors.Is(err, v1.ErrRFC9421ReplayStore) {
@@ -364,6 +366,7 @@ func newTestRFC9421ReplayStore(
 	t.Helper()
 	store, err := newRFC9421ReplayStore(
 		database,
+		storage.AllowWrites,
 		func() time.Time { return *now },
 		cleanupBatch,
 	)
@@ -425,4 +428,33 @@ func testReplayReservationExists(
 		t.Fatalf("inspect replay reservation: %v", err)
 	}
 	return count == 1
+}
+
+func TestRFC9421ReplayStoreHardGrowthGateRejectsReserveAndCleanupWithoutMutation(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	now := time.Date(2026, 8, 10, 20, 0, 0, 0, time.UTC)
+	admission := writeAdmissionError{err: storage.ErrWriteAdmissionHard}
+	store, err := newRFC9421ReplayStore(database, admission, func() time.Time { return now }, 4)
+	if err != nil {
+		t.Fatalf("newRFC9421ReplayStore() error = %v", err)
+	}
+	key := v1.DeriveRFC9421ReplayKey("https://relay.example/actor#key", "growth-hard")
+	reserved, err := store.ReserveRFC9421Replay(context.Background(), key, now.Add(v1.RFC9421ReplayTTL))
+	if reserved || !errors.Is(err, storage.ErrWriteAdmissionHard) {
+		t.Fatalf("ReserveRFC9421Replay() = (%t, %v), want hard-limit rejection", reserved, err)
+	}
+	deleted, err := store.CleanupExpiredRFC9421Replay(context.Background(), 4)
+	if deleted != 0 || !errors.Is(err, storage.ErrWriteAdmissionHard) {
+		t.Fatalf("CleanupExpiredRFC9421Replay() = (%d, %v), want hard-limit rejection", deleted, err)
+	}
+	var count int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM replay_reservations`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("replay reservation count = %d, %v", count, err)
+	}
+}
+
+type writeAdmissionError struct{ err error }
+
+func (admission writeAdmissionError) AcquireWrite(context.Context) (storage.WriteLease, error) {
+	return nil, admission.err
 }

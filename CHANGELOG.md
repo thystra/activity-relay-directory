@@ -4,6 +4,11 @@
 
 ### Added
 
+- Schema version 7 bounded database-growth state plus a non-destructive 1 GiB
+  default SQLite family budget, common pre-write admission, fixed 90/100
+  critical/hard thresholds, readiness refusal, local storage status/check/test
+  commands, bounded WAL/page-allocation policy, and opt-in no-shell administrator
+  notification with restart-safe transition/reminder/retry state.
 - Schema version 6 inactive-record retention with a persistent database identity,
   indexed active-inactive candidate reads, strict default-zero policy parsing,
   identity-free local dry-run, backup-gated confirmed purge, bounded

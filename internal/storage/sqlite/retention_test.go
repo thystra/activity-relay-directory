@@ -295,7 +295,7 @@ func TestVerifyRetentionBackupAndRestorePrePurgeDatabase(t *testing.T) {
 			t.Fatalf("backup verification created sidecar %s: %v", suffix, err)
 		}
 	}
-	repository, _ = NewRelayRepository(live)
+	repository, _ = NewRelayRepository(live, storage.AllowWrites)
 	page, err := repository.PurgeCandidates(ctx, storage.PurgeCandidateQuery{
 		Limit: 1, CutoffAt: time.Unix(100, 0),
 	})
@@ -620,4 +620,52 @@ func beginTestRetentionRun(t *testing.T, repository *RelayRepository, cutoffUnix
 		t.Fatalf("BeginRetentionRun() error = %v", err)
 	}
 	return runID
+}
+
+func TestRetentionMutationsFailClosedBehindHardGrowthAdmission(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	allowRepository := newTestRelayRepository(t, database)
+	actor := "https://growth-retention.example/actor"
+	insertRetentionRelay(t, database, actor, lifecycleUnregistered, administrativeActive, 100, 90)
+	page, err := allowRepository.PurgeCandidates(context.Background(), storage.PurgeCandidateQuery{
+		Limit: 1, CutoffAt: time.Unix(100, 0),
+	})
+	if err != nil || len(page.Candidates) != 1 {
+		t.Fatalf("PurgeCandidates() = %#v, %v", page, err)
+	}
+	runID := beginTestRetentionRun(t, allowRepository, 100)
+
+	hardRepository, err := NewRelayRepository(database, writeAdmissionError{err: storage.ErrWriteAdmissionHard})
+	if err != nil {
+		t.Fatalf("NewRelayRepository(hard) error = %v", err)
+	}
+	if _, err := hardRepository.BeginRetentionRun(context.Background(), storage.RetentionRunStart{
+		PolicyVersion: storage.RetentionPolicyVersion,
+		RetentionDays: 1,
+		ObservedUnix:  86_500,
+		CutoffUnix:    100,
+		BackupSHA256:  strings.Repeat("b", 64),
+		StartedUnix:   86_500,
+	}); !errors.Is(err, storage.ErrWriteAdmissionHard) {
+		t.Fatalf("BeginRetentionRun(hard) error = %v", err)
+	}
+	if _, err := hardRepository.PurgeBatch(
+		context.Background(), runID, page.Candidates, time.Unix(100, 0),
+	); !errors.Is(err, storage.ErrWriteAdmissionHard) {
+		t.Fatalf("PurgeBatch(hard) error = %v", err)
+	}
+	if err := hardRepository.FinishRetentionRun(context.Background(), storage.RetentionRunFinish{
+		RunID: runID, Outcome: storage.RetentionCanceled, FinishedUnix: 86_501,
+	}); !errors.Is(err, storage.ErrWriteAdmissionHard) {
+		t.Fatalf("FinishRetentionRun(hard) error = %v", err)
+	}
+
+	var relayCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM relays WHERE relay_actor=?`, actor).Scan(&relayCount); err != nil || relayCount != 1 {
+		t.Fatalf("hard retention gate changed relay count = %d, %v", relayCount, err)
+	}
+	var outcome string
+	if err := database.QueryRow(`SELECT outcome FROM retention_runs WHERE retention_run_id=?`, runID).Scan(&outcome); err != nil || outcome != "running" {
+		t.Fatalf("hard retention gate changed run outcome = %q, %v", outcome, err)
+	}
 }

@@ -397,3 +397,50 @@ func TestEnabledHumanDirectoryWithMissingGraphFailsClosed(t *testing.T) {
 		t.Fatalf("POST response = status %d Allow %q", post.Code, post.Header().Get("Allow"))
 	}
 }
+
+func TestGrowthHardLimitFailsReadinessButKeepsLivenessAndPublicReadsAvailable(t *testing.T) {
+	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{Relays: []storage.HealthProjectionRelay{}}}
+	listing, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+	handler := NewHandlerWithRuntime(
+		config.Config{PublicBaseURL: "https://directory.example", PublicListingEnabled: true},
+		"test-version",
+		func(context.Context) error { return storage.ErrWriteAdmissionHard },
+		nil,
+		nil,
+		listing,
+	)
+
+	for _, test := range []struct {
+		path string
+		want int
+	}{
+		{"/healthz", http.StatusOK},
+		{"/readyz", http.StatusServiceUnavailable},
+		{"/v1/relays", http.StatusOK},
+		{"/", http.StatusOK},
+		{directoryStylesheetPath, http.StatusOK},
+	} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != test.want {
+			t.Fatalf("GET %s = %d body=%q, want %d", test.path, response.Code, response.Body.String(), test.want)
+		}
+	}
+}
+
+func TestStorageGrowthAdministrationHasNoHTTPSurface(t *testing.T) {
+	handler := NewHandler(config.Config{}, "test", func(context.Context) error { return nil })
+	for _, path := range []string{"/admin/storage", "/v1/storage", "/v1/storage/status", "/v1/storage/test-alert"} {
+		for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodDelete} {
+			request := httptest.NewRequest(method, path, nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("%s %s status = %d, want 404", method, path, response.Code)
+			}
+		}
+	}
+}
