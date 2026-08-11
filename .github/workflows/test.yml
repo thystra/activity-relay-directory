@@ -15,8 +15,8 @@ jobs:
       fail-fast: false
       matrix:
         go:
-          - "1.23.x"
-          - "1.25.x"
+          - "1.26.0"
+          - "1.26.5"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -33,3 +33,67 @@ jobs:
         run: go test -race -count=1 ./...
       - name: Build
         run: go build ./cmd/activity-relay-directory
+
+  # Keep forward-compatibility semantics equivalent to the authoritative
+  # Forgejo workflow: blocking stable lanes first, then non-blocking prerelease
+  # validation with explicit raw outcome reporting.
+  forward:
+    name: Go 1.27rc2 (forward)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go 1.27rc2
+        id: setup
+        continue-on-error: true
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.27.0-rc.2"
+          cache: true
+
+      - name: Formatting
+        id: formatting
+        continue-on-error: true
+        run: test -z "$(gofmt -l .)"
+
+      - name: Vet
+        id: vet
+        continue-on-error: true
+        run: go vet ./...
+
+      - name: Tests
+        id: tests
+        continue-on-error: true
+        run: go test -count=1 ./...
+
+      - name: Race tests
+        id: race
+        continue-on-error: true
+        run: go test -race -count=1 ./...
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: go build ./cmd/activity-relay-directory
+
+      - name: Forward compatibility summary
+        if: ${{ always() }}
+        run: |
+          echo "Go 1.27rc2 forward-compatibility outcomes:"
+          echo "  setup=${{ steps.setup.outcome }}"
+          echo "  formatting=${{ steps.formatting.outcome }}"
+          echo "  vet=${{ steps.vet.outcome }}"
+          echo "  tests=${{ steps.tests.outcome }}"
+          echo "  race=${{ steps.race.outcome }}"
+          echo "  build=${{ steps.build.outcome }}"
+          if [[ "${{ steps.setup.outcome }}" == "failure" ||
+                "${{ steps.formatting.outcome }}" == "failure" ||
+                "${{ steps.vet.outcome }}" == "failure" ||
+                "${{ steps.tests.outcome }}" == "failure" ||
+                "${{ steps.race.outcome }}" == "failure" ||
+                "${{ steps.build.outcome }}" == "failure" ]]; then
+            echo "FORWARD_COMPATIBILITY_TRIAGE_REQUIRED=YES"
+          else
+            echo "FORWARD_COMPATIBILITY_TRIAGE_REQUIRED=NO"
+          fi

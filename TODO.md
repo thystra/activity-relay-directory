@@ -613,11 +613,15 @@ Required evidence:
    failure paths are captured without sending to an unintended recipient; and
 14. logs, JSON, HTML, metrics, alerts, and release artifacts are scanned for
    private or attacker-controlled data leakage; and
-15. preserve the development Go 1.23/1.25 matrix, then at RC run full Directory
-   validation on Go 1.26 and the latest Go 1.27 RC, treating 1.26 failures as
-   blockers and 1.27-RC failures as individually triaged compatibility evidence.
-   After Go 1.27 final, rerun and choose the supported floor/matrix; then perform
-   the same compatibility/floor pass for Activity-Relay.
+15. the pre-RC compatibility pass fixes the Directory module floor at Go 1.26.0
+   with no higher `toolchain` directive. CI blocks on exact Go 1.26.0 and the
+   validated Go 1.26.5 patch lane. Go 1.27rc2 runs afterward as non-blocking
+   forward-compatibility evidence whose failures remain explicit triage items
+   rather than silently changing supported-version claims. Container builds use
+   the validated Go 1.26.5 / Alpine 3.24 builder while preserving the reviewed
+   runtime stage. After Go 1.27 final, rerun full compatibility before changing
+   the documented floor or CI matrix; then perform the same compatibility/floor
+   pass for Activity-Relay.
 
 After a sustained soak, prepare release-candidate metadata, deterministic
 binary/container builds, SBOMs, checksums, rollback instructions, schema notes,
