@@ -5,7 +5,7 @@ discovering public Activity-Relay instances.
 
 ## Current state
 
-This repository currently provides a conservative service scaffold only:
+This repository currently provides a pre-release service implementation:
 
 - `GET /healthz`
 - `GET /readyz`
@@ -71,6 +71,36 @@ moderation transport and release/deployment integration remain later work.
 Their dependency order, review tranches, and completion gates are tracked
 in `TODO.md`.
 
+## Process configuration
+
+The service reads these process settings directly. Compose supplies the same
+values explicitly where appropriate; `.env.example` contains the common Compose-only
+publish, memory, and volume knobs, while `compose.yml` also accepts image/version
+and logging overrides.
+
+| Variable | Default / requirement | Purpose |
+| --- | --- | --- |
+| `DIRECTORY_LISTEN_ADDRESS` | `127.0.0.1:8080` | HTTP listener address |
+| `DIRECTORY_PUBLIC_BASE_URL` | required; HTTPS except loopback development; lifecycle always requires HTTPS | Canonical public authority |
+| `DIRECTORY_DATABASE_PATH` | required absolute secure local path | SQLite database |
+| `DIRECTORY_LIFECYCLE_ENABLED` | `false` | Enable signed register/heartbeat/unregister routes together |
+| `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON and human directory views |
+| `DIRECTORY_SOFT_PRUNING_ENABLED` | `false` | Enable automatic reversible pruning |
+| `DIRECTORY_SOFT_PRUNING_INTERVAL` | `24h`; `0` only while pruning is disabled; otherwise minimum `1h` | Automatic pruning interval |
+| `DIRECTORY_INACTIVE_RETENTION_DAYS` | `0` | Inactive-record retention; `0` means indefinite |
+| `DIRECTORY_DATABASE_MAX_BYTES` | `1073741824` | Managed SQLite-family growth budget |
+| `DIRECTORY_DATABASE_WARNING_PERCENT` | `75` | Warning transition below fixed 90/100 critical/hard boundaries |
+| `DIRECTORY_ADMIN_EMAIL` | empty | Optional administrator alert recipients |
+| `DIRECTORY_MAIL_BACKEND` | `mail` | Reviewed local command-mail backend |
+| `DIRECTORY_MAIL_COMMAND` | `/usr/bin/mail` | Absolute mail command when alerts are enabled |
+| `DIRECTORY_MAIL_TIMEOUT_SECONDS` | `30` | Mail-command timeout |
+| `DIRECTORY_MAX_REQUEST_BODY_BYTES` | `65536`, range 1024..1048576 | Lifecycle request-body limit |
+| `DIRECTORY_TRUSTED_PROXY_PREFIXES` | empty | Comma-separated trusted direct-proxy prefixes |
+
+The retired `DIRECTORY_REGISTRATION_ENABLED` name is rejected rather than
+accepted as an alias. See the topic-specific documents under `docs/` for the
+security and activation requirements attached to each setting.
+
 Enrollment starts closed in durable state. A local operator may inspect or
 change it without enabling a remote administrative endpoint:
 
@@ -126,9 +156,10 @@ activity-relay-directory admin pruning dry-run \
 ```
 
 Automatic maintenance is disabled by default. Operators may explicitly enable
-it with `DIRECTORY_SOFT_PRUNING_ENABLED=true`; the interval defaults to `24h`
-and cannot be less than `1h`. Each run captures one server time, processes at
-most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
+it with `DIRECTORY_SOFT_PRUNING_ENABLED=true`; the interval defaults to `24h`.
+An explicit interval of `0` is valid only while pruning is disabled; when
+pruning is enabled, the interval must be at least `1h`. Each run captures one
+server time, processes at most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
 

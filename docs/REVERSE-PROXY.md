@@ -135,8 +135,8 @@ curl --fail --silent --show-error https://directory.example.org/v1/status |
   python3 -m json.tool
 ```
 
-Registration paths remain unavailable until their security and storage gates
-are constructed and `DIRECTORY_LIFECYCLE_ENABLED=true`. Proxy installation
-alone must not enable lifecycle routes or open enrollment. Before changing
-that flag, verify the
-trusted direct-peer prefix and follow `docs/HANDLERS.md`.
+Lifecycle paths remain unavailable unless the complete security and storage
+graph constructs successfully and `DIRECTORY_LIFECYCLE_ENABLED=true`. Proxy
+installation alone must not enable lifecycle routes or open enrollment. Before
+changing that flag, verify the trusted direct-peer prefix and follow
+`docs/HANDLERS.md`.

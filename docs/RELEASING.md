@@ -1,6 +1,6 @@
 # Releasing
 
-No release workflow is active in the initial scaffold.
+No release workflow is active yet.
 
 Before the first release:
 
@@ -25,8 +25,10 @@ Schema version 3 adds default-closed enrollment policy and private append-only
 enrollment audit events after schema version 2's moderation events. Before
 releasing it, verify supported upgrade preservation, atomic state/event rollback,
 idempotent suspend and restore concurrency, audit backup restoration, and that
-moderator and reason tokens are absent from public output. An operator CLI or
-administrative transport requires its own authorization and audit review.
+moderator and reason tokens are absent from public output. The local operator
+CLI must retain its operating-system authorization and private-audit boundary;
+any network administrative transport requires a separate authorization and
+audit review.
 
 Before replay-protected handlers are released, validate duplicate suppression
 across restart and supported service topology, expiry-boundary replacement,
@@ -41,8 +43,9 @@ nonce rejection across restart, suspension behavior, fixed admission bounds,
 maintenance cancellation, database backup/restore, and logs for data leakage.
 Enabling the server does not activate an Activity-Relay client.
 
-Before actor resolution is wired or released, compare the prohibited-address
-policy with the current IANA IPv4 and IPv6 special-purpose registries. Validate
+Before the first deployment or release of the enabled actor-resolution path,
+compare the prohibited-address policy with the current IANA IPv4 and IPv6
+special-purpose registries. Validate
 mixed public/private DNS answers, direct literals, connection pinning, custom
 HTTPS ports, redirects, proxy exclusion, timeouts, header/body limits,
 ActivityStreams media types, duplicate/deep JSON, actor/key ownership, both RSA
@@ -75,3 +78,18 @@ must not configure recipients, credentials, relay hosts, or enable alerts. Host
 filesystem monitoring remains required independently of the application budget.
 No release/deployment gate may silently raise the configured database budget or
 activate positive inactive retention.
+
+## RC Go compatibility gate
+
+Preserve the existing Go 1.23/1.25 development CI matrix until the release-
+candidate compatibility pass. At RC, run the full validation suite under Go
+1.26 and the latest available Go 1.27 release candidate. Treat Go 1.26 failures
+as RC blockers; triage Go 1.27 RC failures individually rather than changing
+supported-version claims solely for an unreleased toolchain. After Go 1.27 final
+is available, rerun full validation and then choose the documented supported Go
+floor and ongoing CI matrix. Testing a toolchain does not by itself declare it
+supported.
+
+After the Directory pass is complete, apply the same deliberate Go-version
+compatibility/floor review to `thystra/Activity-Relay`, including its
+interoperability fixtures and release/container/package builds.

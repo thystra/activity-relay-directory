@@ -61,7 +61,7 @@ events after a retention period. It is distinct from soft pruning: a pruned
 relay is hidden but remains known, can preserve a suspension, and can safely
 return. Hard-deleted data is recoverable only from backup, and the directory
 loses the deleted acceptance and lifecycle history. Protocol replay-row expiry
-is short-lived housekeeping and is not this proposed hard-retention feature.
+is short-lived housekeeping and is not inactive-record retention.
 
 | Tranche | Primary repository | Result |
 | --- | --- | --- |
@@ -248,7 +248,7 @@ scope. Keep command handling separate from the repository so a future effort
 can add another adapter, but do not add routes, dependencies, authentication
 scaffolding, or placeholder API hooks now.
 
-Proposed commands:
+Implemented commands:
 
 - `activity-relay-directory admin suspend`;
 - `activity-relay-directory admin restore`;
@@ -289,7 +289,7 @@ Add a read model with one indexed server-owned `last_seen_at` value maintained
 by accepted register and heartbeat operations. Migration backfill must be
 deterministic from existing server-owned lifecycle data.
 
-The initial target windows are:
+The fixed version 1 windows are:
 
 | State | Age since `last_seen_at` |
 | --- | --- |
@@ -503,20 +503,24 @@ Acceptance gates:
 
 Repository: `thystra/activity-relay-directory`.
 
-Completed (2026-08-10): the reviewed source implementation adds the bounded
-non-destructive SQLite growth guard, common write admission, readiness behavior,
-local storage inspection, and opt-in no-shell administrator notifications. It
-remains undeployed: the administrator recipient is still empty/default-off, no
-production notification has been sent, and no retention policy or database
-budget was activated by source completion.
+Merged and verified (2026-08-10): Forgejo PR #5 merged as signed commit
+`8b7b8cedc813cfc18793e235b6df83e0b1d1325a` with tree
+`b60901da49f42ac5fba965adf479b6559ff21b04`; native master Test 2/2 and Build
+1/1 passed and the downstream GitHub mirror matched. The bounded non-destructive
+SQLite growth guard, common write admission, readiness behavior, local storage
+inspection, and opt-in no-shell administrator notifications remain undeployed:
+the administrator recipient is still empty/default-off, no production
+notification has been sent, and no positive retention policy or deployment
+activation occurred as part of the source merge.
 
 Retention reduces reusable data only when a positive policy is selected. The
-service also needs a non-destructive upper bound so an unattended instance with
-indefinite retention cannot consume a VPS filesystem without warning. Reaching
-the bound stops new database writes and fails readiness; it never silently
+growth guard provides a non-destructive upper bound so an unattended
+instance with indefinite retention cannot consume a VPS filesystem without
+warning. Reaching the bound stops new database writes and fails readiness; it
+never silently
 deletes records or changes the configured retention policy.
 
-Initial configuration target:
+Configuration contract:
 
 - `DIRECTORY_DATABASE_MAX_BYTES=1073741824` sets a default 1 GiB managed budget
   for the SQLite main file and its WAL/shared-memory sidecars, and must remain a
@@ -608,7 +612,12 @@ Required evidence:
 13. warning, critical, hard-limit, recovery, reminder suppression, and mail
    failure paths are captured without sending to an unintended recipient; and
 14. logs, JSON, HTML, metrics, alerts, and release artifacts are scanned for
-   private or attacker-controlled data leakage.
+   private or attacker-controlled data leakage; and
+15. preserve the development Go 1.23/1.25 matrix, then at RC run full Directory
+   validation on Go 1.26 and the latest Go 1.27 RC, treating 1.26 failures as
+   blockers and 1.27-RC failures as individually triaged compatibility evidence.
+   After Go 1.27 final, rerun and choose the supported floor/matrix; then perform
+   the same compatibility/floor pass for Activity-Relay.
 
 After a sustained soak, prepare release-candidate metadata, deterministic
 binary/container builds, SBOMs, checksums, rollback instructions, schema notes,

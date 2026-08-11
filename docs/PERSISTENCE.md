@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema version 5
+## Schema through version 5
 
 The initial migration creates four owned tables:
 
@@ -92,9 +92,11 @@ state and timestamp combinations.
 Audit events intentionally have no foreign key to the current relay row. This
 permits an idempotent `unregister_absent` event and preserves history across
 later state transitions. Moderation events likewise remain independently
-retained. Updates and deletes are rejected by database triggers. A future
-retention policy must use a reviewed migration rather than bypassing those
-triggers.
+retained. Updates and deletes are rejected by database triggers during normal
+operation. Hard retention uses the separately reviewed version 6 delete scope
+described below: only `relay_events_no_delete` is dropped and recreated inside
+the same immediate purge transaction rather than bypassing append-only
+protection generally.
 
 The schema contains no connected-site identities, followers, user identities,
 raw request bodies, raw nonces, or signing key IDs.
@@ -225,10 +227,11 @@ running single-host service.
 
 ## Administrative moderation transitions
 
-`internal/storage.ModerationRepository` defines dormant operator-owned
-`Suspend` and `Restore` transitions. Both require an existing retained relay
-row. An unknown relay returns the internal absent class and creates no state or
-audit record; this deliberately does not implement a preemptive blocklist.
+`internal/storage.ModerationRepository` defines operator-owned `Suspend` and
+`Restore` transitions used by the local administrative CLI. Both require an
+existing retained relay row. An unknown relay returns the internal absent class
+and creates no state or audit record; this deliberately does not implement a
+preemptive blocklist or a network administrative endpoint.
 
 Suspend changes only administrative state, suspension time, and state-update
 time. It does not alter lifecycle state, registration metadata, or heartbeat
@@ -250,9 +253,10 @@ with a lowercase ASCII letter and otherwise permit lowercase letters, digits,
 underscore, and hyphen. They are classification tokens, not free-form notes.
 Neither value may appear in public responses or listings.
 
-There is no moderation HTTP endpoint, operator CLI, or runtime wiring in this
-tranche. See `docs/MODERATION.md` for the reviewed boundary and the remaining
-operator-surface work.
+The reviewed adapter is the local
+`activity-relay-directory admin suspend|restore|show|audit` CLI operating on the
+same owner-only database. No moderation HTTP endpoint exists. See
+`docs/MODERATION.md` for the authorization and private-audit boundary.
 
 ## Durable replay reservations
 
