@@ -94,7 +94,7 @@ dpkg-deb --info "$PUBLIC_DEB" >"$OUT/evidence/dpkg-deb-info.txt"
 dpkg-deb --contents "$PUBLIC_DEB" >"$OUT/evidence/dpkg-deb-contents.txt"
 
 set +e
-lintian --show-overrides "$PUBLIC_DEB" >"$OUT/evidence/lintian.txt" 2>&1
+lintian --show-overrides --fail-on none "$PUBLIC_DEB" >"$OUT/evidence/lintian.txt" 2>&1
 LINTIAN_RC=$?
 set -e
 if grep -Eq '^[EW]:' "$OUT/evidence/lintian.txt"; then

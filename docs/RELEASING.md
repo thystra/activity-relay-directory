@@ -147,8 +147,16 @@ interoperability fixtures and release/container/package builds.
 ## Debian Lintian exceptions
 
 The project-owned Debian package keeps Lintian strict: every unoverridden
-error or warning is a release-build failure. The package carries four narrow
-binary overrides with comments:
+error or warning is a release-build failure. The release builder explicitly
+invokes `lintian --show-overrides --fail-on none` and owns the policy decision
+itself: captured `E:` or `W:` findings fail the build, while documented `O:`
+override findings remain visible review evidence. With the explicit
+`--fail-on none` selection, any nonzero Lintian exit is treated as a
+runtime/unexpected failure. Lintian exit status `2` is a `--fail-on` policy
+result, not a runtime error; selecting `none` prevents runner-local or
+version/configuration-specific fail-on defaults from changing release behavior.
+
+The package carries four narrow binary overrides with comments:
 
 - `statically-linked-binary` is intentional because the daemon is built with
   `CGO_ENABLED=0` as a self-contained Go release binary;

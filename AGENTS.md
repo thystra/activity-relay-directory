@@ -312,3 +312,9 @@ and deployments, and remain accountable for the software.
   validation. Package removal may stop the service normally.
 - Package removal and purge preserve `/var/lib/activity-relay-directory`; state
   destruction requires a separate explicit operator action after backup review.
+- The release builder owns the Debian Lintian policy gate. Invoke Lintian with
+  `--show-overrides --fail-on none`, capture its output, fail on any
+  unoverridden `E:` or `W:` finding, and fail on any nonzero Lintian exit after
+  that explicit policy selection. Lintian exit status `2` is a `--fail-on`
+  policy result rather than a runtime failure; never let ambient runner/local
+  Lintian configuration choose the release policy implicitly.
