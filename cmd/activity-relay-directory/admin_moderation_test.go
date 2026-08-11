@@ -7,11 +7,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/admincommand"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
@@ -281,13 +283,48 @@ func TestAdminModerationCLIRejectsInvalidInvocationWithoutOpeningDatabase(t *tes
 	}
 }
 
+func TestAdminModerationReadCommandsRemainReadOnlyAtGrowthHardBoundary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+	t.Setenv("DIRECTORY_DATABASE_MAX_BYTES", "")
+	t.Setenv("DIRECTORY_DATABASE_WARNING_PERCENT", "")
+	t.Setenv("DIRECTORY_ADMIN_EMAIL", "")
+	t.Setenv("DIRECTORY_MAIL_BACKEND", "")
+	t.Setenv("DIRECTORY_MAIL_COMMAND", "")
+	t.Setenv("DIRECTORY_MAIL_TIMEOUT_SECONDS", "")
+	t.Setenv("DIRECTORY_INACTIVE_RETENTION_DAYS", "0")
+	seedAdminRelay(t, path, 100)
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(database) error = %v", err)
+	}
+	t.Setenv("DIRECTORY_DATABASE_MAX_BYTES", strconv.FormatInt(info.Size(), 10))
+	before := adminGrowthStateRow(t, path)
+
+	for _, action := range []string{"show", "audit"} {
+		var stdout, stderr bytes.Buffer
+		code := runAdmin(
+			[]string{"activity-relay-directory", "admin", action, "--actor", cliTestActor},
+			&stdout, &stderr, func() time.Time { return time.Unix(200, 0) },
+		)
+		if code != admincommand.ExitSuccess || stderr.Len() != 0 || stdout.Len() == 0 {
+			t.Fatalf("admin %s at hard = code:%d stdout:%q stderr:%q", action, code, stdout.String(), stderr.String())
+		}
+	}
+	after := adminGrowthStateRow(t, path)
+	if before != after {
+		t.Fatalf("read-only moderation commands mutated growth state: before=%q after=%q", before, after)
+	}
+}
+
 func seedAdminRelay(t *testing.T, path string, acceptedAt int64) {
 	t.Helper()
 	database, err := initializeDatabase(context.Background(), path)
 	if err != nil {
 		t.Fatalf("initializeDatabase() error = %v", err)
 	}
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, storageContract.AllowWrites)
 	if err != nil {
 		_ = database.Close()
 		t.Fatalf("NewRelayRepository() error = %v", err)
@@ -322,7 +359,7 @@ func unregisterAdminRelay(t *testing.T, path string, acceptedAt int64) {
 		t.Fatalf("initializeDatabase() error = %v", err)
 	}
 	defer database.Close()
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, storageContract.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}

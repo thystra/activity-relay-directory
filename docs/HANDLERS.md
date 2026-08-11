@@ -131,3 +131,17 @@ Roadmap Tranche 16 adds only local `admin retention dry-run` and backup-gated
 `/v1/purge`, and `/admin/retention` are not routes and must remain `404` for
 GET, HEAD, POST, and DELETE. A positive retention policy never authorizes a
 remote caller or request path to start maintenance. See `docs/RETENTION.md`.
+
+## Database hard state is not a new HTTP administration surface
+
+Roadmap Tranche 17 adds no storage-management HTTP endpoint. At growth `hard`,
+`GET`/`HEAD` `/healthz` remains live and `/readyz` returns unavailable. Enabled
+public `GET`/`HEAD` `/v1/relays`, `/`, and the bundled stylesheet continue
+through their existing bounded read-only paths. Signed lifecycle mutations fail
+closed and map the storage hard limit to the existing redacted
+`lifecycle_unavailable` protocol class; SQLite paths and capacity details are
+not returned.
+
+Storage metrics and test notification remain local-only under
+`activity-relay-directory admin storage ...`; there is no `/admin/storage` or
+public growth-control route. See `docs/STORAGE-GROWTH.md`.

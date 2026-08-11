@@ -493,9 +493,9 @@ func TestRelayRepositorySerializesConcurrentRegistrationAndHeartbeat(t *testing.
 }
 
 func TestRelayRepositoryConfigurationAndCanceledContext(t *testing.T) {
-	if repository, err := NewRelayRepository(nil); repository != nil ||
+	if repository, err := NewRelayRepository(nil, storage.AllowWrites); repository != nil ||
 		!errors.Is(err, storage.ErrRepositoryConfiguration) {
-		t.Fatalf("NewRelayRepository(nil) = (%v, %v)", repository, err)
+		t.Fatalf("NewRelayRepository(nil, storage.AllowWrites) = (%v, %v)", repository, err)
 	}
 	var nilRepository *RelayRepository
 	_, err := nilRepository.Unregister(
@@ -546,7 +546,7 @@ func newTestRelayRepository(t *testing.T, database *sql.DB) *RelayRepository {
 	); err != nil {
 		t.Fatalf("open test enrollment: %v", err)
 	}
-	repository, err := NewRelayRepository(database)
+	repository, err := NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}
@@ -641,4 +641,74 @@ func equalStrings(left, right []string) bool {
 		}
 	}
 	return true
+}
+
+func TestAllRelayRepositoryMutatorsHonorHardGrowthAdmissionBeforeTransaction(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	allowRepository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	registeredAt := time.Unix(100, 0)
+	if outcome, err := allowRepository.Register(ctx, storage.RegisterIntent{
+		RelayActor: testRelayActor, PublicBaseURL: testPublicBase,
+	}, registeredAt); err != nil || outcome != v1.OutcomeCreated {
+		t.Fatalf("setup Register() = (%q, %v)", outcome, err)
+	}
+	beforeEvents := readTestEventKinds(t, database, testRelayActor)
+
+	hardRepository, err := NewRelayRepository(database, writeAdmissionError{err: storage.ErrWriteAdmissionHard})
+	if err != nil {
+		t.Fatalf("NewRelayRepository(hard) error = %v", err)
+	}
+	assertHard := func(name string, err error) {
+		t.Helper()
+		if !errors.Is(err, storage.ErrWriteAdmissionHard) {
+			t.Fatalf("%s error = %v, want hard-limit rejection", name, err)
+		}
+	}
+	_, err = hardRepository.Register(ctx, storage.RegisterIntent{
+		RelayActor: "https://growth-new.example/actor", PublicBaseURL: "https://growth-new.example",
+	}, registeredAt.Add(time.Second))
+	assertHard("Register", err)
+	_, err = hardRepository.Heartbeat(ctx, storage.IdentityIntent{RelayActor: testRelayActor}, registeredAt.Add(time.Second))
+	assertHard("Heartbeat", err)
+	_, err = hardRepository.Unregister(ctx, storage.IdentityIntent{RelayActor: testRelayActor}, registeredAt.Add(time.Second))
+	assertHard("Unregister", err)
+	_, err = hardRepository.SetEnrollment(ctx, false, storage.EnrollmentIntent{OperatorID: "growth-test"}, registeredAt.Add(time.Second))
+	assertHard("SetEnrollment", err)
+	_, err = hardRepository.Suspend(ctx, storage.ModerationIntent{
+		RelayActor: testRelayActor, ModeratorID: "growth-test", ReasonCode: "storage_guard",
+	}, registeredAt.Add(time.Second))
+	assertHard("Suspend", err)
+	_, err = hardRepository.Restore(ctx, storage.ModerationIntent{
+		RelayActor: testRelayActor, ModeratorID: "growth-test", ReasonCode: "storage_guard",
+	}, registeredAt.Add(time.Second))
+	assertHard("Restore", err)
+	_, err = hardRepository.SoftPrune(
+		ctx,
+		storage.IdentityIntent{RelayActor: testRelayActor},
+		registeredAt.Add(storage.DeadBefore),
+	)
+	assertHard("SoftPrune", err)
+
+	if got := readTestEventKinds(t, database, testRelayActor); !equalStrings(got, beforeEvents) {
+		t.Fatalf("hard-limit attempts changed relay events: before=%#v after=%#v", beforeEvents, got)
+	}
+	relay := readTestRelay(t, database, testRelayActor)
+	if relay.lifecycleState != lifecycleRegistered || relay.administrativeState != administrativeActive || relay.updatedAtUnix != registeredAt.Unix() {
+		t.Fatalf("hard-limit attempts changed relay state: %#v", relay)
+	}
+	open, err := hardRepository.EnrollmentOpen(ctx)
+	if err != nil || !open {
+		t.Fatalf("EnrollmentOpen() after hard attempts = (%t, %v), want open", open, err)
+	}
+	var moderationEvents, enrollmentEvents int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM moderation_events`).Scan(&moderationEvents); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT COUNT(*) FROM enrollment_events`).Scan(&enrollmentEvents); err != nil {
+		t.Fatal(err)
+	}
+	if moderationEvents != 0 || enrollmentEvents != 0 {
+		t.Fatalf("hard-limit attempts wrote private events: moderation=%d enrollment=%d", moderationEvents, enrollmentEvents)
+	}
 }

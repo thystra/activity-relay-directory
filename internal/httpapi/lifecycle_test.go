@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -725,5 +727,30 @@ func assertProtocolError(
 	if response.Header().Get("Cache-Control") != "no-store" ||
 		response.Header().Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatalf("response headers = %#v", response.Header())
+	}
+}
+
+func TestLifecycleGrowthHardLimitMapsToUnavailableWithoutBackendDetail(t *testing.T) {
+	verifier := &recordingLifecycleVerifier{}
+	repository := &recordingRelayRepository{
+		err: fmt.Errorf("private growth detail: %w", storage.ErrWriteAdmissionHard),
+	}
+	handler, _ := lifecycleTestHTTPHandler(
+		t,
+		verifier,
+		repository,
+		generousLifecycleLimiter(t),
+		4096,
+	)
+	request := httptest.NewRequest(
+		http.MethodPost,
+		v1.RegisterEndpointPath,
+		bytes.NewBufferString("{}"),
+	)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	assertProtocolError(t, response, http.StatusServiceUnavailable, v1.ErrorLifecycleUnavailable)
+	if strings.Contains(response.Body.String(), "growth") || strings.Contains(response.Body.String(), "private") {
+		t.Fatalf("hard-limit response leaked backend detail: %q", response.Body.String())
 	}
 }

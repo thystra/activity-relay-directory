@@ -13,7 +13,7 @@ import (
 
 func TestEnrollmentDefaultsClosedAndRejectsNeverSeenRelay(t *testing.T) {
 	database := openMigratedTestDatabase(t)
-	repository, err := NewRelayRepository(database)
+	repository, err := NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}
@@ -45,7 +45,7 @@ func TestEnrollmentDefaultsClosedAndRejectsNeverSeenRelay(t *testing.T) {
 
 func TestClosedEnrollmentPreservesAcceptedRelayLifecycle(t *testing.T) {
 	database := openMigratedTestDatabase(t)
-	repository, err := NewRelayRepository(database)
+	repository, err := NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}
@@ -97,7 +97,7 @@ func TestClosedEnrollmentPreservesAcceptedRelayLifecycle(t *testing.T) {
 
 func TestEnrollmentDecisionsAreIdempotentAuditedAndTransactional(t *testing.T) {
 	database := openMigratedTestDatabase(t)
-	repository, err := NewRelayRepository(database)
+	repository, err := NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestEnrollmentDecisionsAreIdempotentAuditedAndTransactional(t *testing.T) {
 
 func TestEnrollmentAndRegistrationSerialize(t *testing.T) {
 	database := openMigratedTestDatabase(t)
-	repository, err := NewRelayRepository(database)
+	repository, err := NewRelayRepository(database, storage.AllowWrites)
 	if err != nil {
 		t.Fatalf("NewRelayRepository() error = %v", err)
 	}

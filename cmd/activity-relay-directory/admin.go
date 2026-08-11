@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/admincommand"
+	"github.com/thystra/activity-relay-directory/internal/adminnotify"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/prunecommand"
 	"github.com/thystra/activity-relay-directory/internal/retentioncommand"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
+	"github.com/thystra/activity-relay-directory/internal/storagecommand"
 )
 
 const (
@@ -45,6 +47,9 @@ func runAdminWithInput(
 	if arguments[2] == "retention" {
 		return runRetentionAdmin(arguments, stdin, stdout, stderr, now)
 	}
+	if arguments[2] == "storage" {
+		return runStorageAdmin(arguments, stdout, stderr, now)
+	}
 
 	request, err := admincommand.Parse(arguments[2:])
 	if err != nil {
@@ -60,6 +65,27 @@ func runAdminWithInput(
 		fmt.Fprintln(stderr, "invalid configuration")
 		return admincommand.ExitUsage
 	}
+	if request.Action == admincommand.ActionShow || request.Action == admincommand.ActionAudit {
+		ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+		defer cancel()
+		database, err := initializeReadOnlyDatabase(ctx, databasePath)
+		if err != nil {
+			fmt.Fprintln(stderr, "database initialization failed")
+			return admincommand.ExitOperational
+		}
+		defer database.Close()
+		repository, err := storageSQLite.NewRelayRepository(database, storage.DenyWrites)
+		if err != nil {
+			fmt.Fprintln(stderr, "moderation repository initialization failed")
+			return admincommand.ExitOperational
+		}
+		return admincommand.Execute(ctx, request, repository, stdout, stderr, now)
+	}
+	growthConfig, retentionDays, growthMailer, err := loadAdminGrowthDependencies()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth configuration")
+		return admincommand.ExitUsage
+	}
 	if err := admincommand.Confirm(request, stdin, stderr); err != nil {
 		fmt.Fprintln(stderr)
 		fmt.Fprintln(stderr, "moderation confirmation failed")
@@ -67,13 +93,15 @@ func runAdminWithInput(
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
 	defer cancel()
-	database, err := initializeDatabase(ctx, databasePath)
+	database, growthGuard, err := initializeGuardedDatabase(
+		ctx, databasePath, growthConfig, retentionDays, growthMailer, now,
+	)
 	if err != nil {
 		fmt.Fprintln(stderr, "database initialization failed")
 		return admincommand.ExitOperational
 	}
 	defer database.Close()
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, growthGuard)
 	if err != nil {
 		fmt.Fprintln(stderr, "moderation repository initialization failed")
 		return admincommand.ExitOperational
@@ -112,7 +140,7 @@ func runPruningAdmin(
 		return prunecommand.ExitOperational
 	}
 	defer database.Close()
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, storage.DenyWrites)
 	if err != nil {
 		fmt.Fprintln(stderr, "soft-pruning repository initialization failed")
 		return prunecommand.ExitOperational
@@ -158,7 +186,7 @@ func runRetentionAdmin(
 			return retentioncommand.ExitOperational
 		}
 		defer database.Close()
-		repository, err := storageSQLite.NewRelayRepository(database)
+		repository, err := storageSQLite.NewRelayRepository(database, storage.DenyWrites)
 		if err != nil {
 			fmt.Fprintln(stderr, "retention repository initialization failed")
 			return retentioncommand.ExitOperational
@@ -172,6 +200,16 @@ func runRetentionAdmin(
 		fmt.Fprintln(stderr, "inactive retention is disabled; DIRECTORY_INACTIVE_RETENTION_DAYS is 0")
 		return retentioncommand.ExitUsage
 	}
+	growthConfig, err := config.LoadDatabaseGrowthConfig()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth configuration")
+		return retentioncommand.ExitUsage
+	}
+	growthMailer, err := newAdminGrowthMailer(growthConfig)
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth mailer")
+		return retentioncommand.ExitUsage
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), retentionPurgeTimeout)
 	defer cancel()
 	preflight, err := initializeReadOnlyDatabase(ctx, databasePath)
@@ -183,7 +221,9 @@ func runRetentionAdmin(
 		fmt.Fprintln(stderr, "database initialization failed")
 		return retentioncommand.ExitOperational
 	}
-	database, err := initializeDatabase(ctx, databasePath)
+	database, growthGuard, err := initializeGuardedDatabase(
+		ctx, databasePath, growthConfig, retentionDays, growthMailer, now,
+	)
 	if err != nil {
 		fmt.Fprintln(stderr, "database initialization failed")
 		return retentioncommand.ExitOperational
@@ -208,7 +248,7 @@ func runRetentionAdmin(
 		fmt.Fprintln(stderr, "verified pre-retention backup changed after confirmation")
 		return retentioncommand.ExitOperational
 	}
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, growthGuard)
 	if err != nil {
 		fmt.Fprintln(stderr, "retention repository initialization failed")
 		return retentioncommand.ExitOperational
@@ -260,15 +300,22 @@ func runEnrollmentAdmin(
 		fmt.Fprintf(stderr, "invalid configuration: %v\n", err)
 		return 2
 	}
+	growthConfig, retentionDays, growthMailer, err := loadAdminGrowthDependencies()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth configuration")
+		return 2
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
 	defer cancel()
-	database, err := initializeDatabase(ctx, databasePath)
+	database, growthGuard, err := initializeGuardedDatabase(
+		ctx, databasePath, growthConfig, retentionDays, growthMailer, now,
+	)
 	if err != nil {
 		fmt.Fprintln(stderr, "database initialization failed")
 		return 1
 	}
 	defer database.Close()
-	repository, err := storageSQLite.NewRelayRepository(database)
+	repository, err := storageSQLite.NewRelayRepository(database, growthGuard)
 	if err != nil {
 		fmt.Fprintln(stderr, "enrollment repository initialization failed")
 		return 1
@@ -311,6 +358,134 @@ func runEnrollmentAdmin(
 	return 0
 }
 
+func runStorageAdmin(
+	arguments []string,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	if len(arguments) < 4 {
+		writeStorageUsage(stderr)
+		return storagecommand.ExitUsage
+	}
+	request, err := storagecommand.Parse(arguments[3:])
+	if err != nil {
+		writeStorageUsage(stderr)
+		return storagecommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return storagecommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return storagecommand.ExitUsage
+	}
+	growthConfig, err := config.LoadDatabaseGrowthConfig()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth configuration")
+		return storagecommand.ExitUsage
+	}
+	retentionDays, err := config.LoadInactiveRetentionDays()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid retention configuration")
+		return storagecommand.ExitUsage
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+	defer cancel()
+	database, err := initializeReadOnlyDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return storagecommand.ExitOperational
+	}
+	defer database.Close()
+
+	sample, err := storageSQLite.InspectDatabaseGrowth(
+		ctx,
+		database,
+		databasePath,
+		growthConfig.MaxBytes,
+		growthConfig.WarningPercent,
+		retentionDays,
+	)
+	if err != nil {
+		fmt.Fprintln(stderr, storageSQLite.RedactedGrowthError(err))
+		return storagecommand.ExitOperational
+	}
+	sample.ObservedUnix = now().UTC().Unix()
+	if sample.ObservedUnix < 0 {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return storagecommand.ExitOperational
+	}
+
+	if request.Action == storagecommand.ActionTestAlert {
+		if !growthConfig.EmailEnabled() {
+			fmt.Fprintln(stderr, "administrator email is disabled")
+			return storagecommand.ExitUsage
+		}
+		mailer, err := newAdminGrowthMailer(growthConfig)
+		if err != nil || mailer == nil {
+			fmt.Fprintln(stderr, "administrator mailer is unavailable")
+			return storagecommand.ExitOperational
+		}
+		subject, body := storageSQLite.RenderGrowthAlert(
+			storage.DatabaseGrowthAlertTest,
+			sample,
+		)
+		if err := mailer.Send(ctx, subject, body); err != nil {
+			fmt.Fprintln(stderr, "test alert failed")
+			return storagecommand.ExitOperational
+		}
+	}
+
+	if err := storagecommand.Render(stdout, request, sample); err != nil {
+		fmt.Fprintln(stderr, "storage output failed")
+		return storagecommand.ExitOperational
+	}
+	return storagecommand.ExitForSample(request.Action, sample)
+}
+
+func loadAdminGrowthDependencies() (
+	config.DatabaseGrowthConfig,
+	int,
+	storageSQLite.GrowthMailer,
+	error,
+) {
+	growthConfig, err := config.LoadDatabaseGrowthConfig()
+	if err != nil {
+		return config.DatabaseGrowthConfig{}, 0, nil, err
+	}
+	retentionDays, err := config.LoadInactiveRetentionDays()
+	if err != nil {
+		return config.DatabaseGrowthConfig{}, 0, nil, err
+	}
+	mailer, err := newAdminGrowthMailer(growthConfig)
+	if err != nil {
+		return config.DatabaseGrowthConfig{}, 0, nil, err
+	}
+	return growthConfig, retentionDays, mailer, nil
+}
+
+func newAdminGrowthMailer(
+	growthConfig config.DatabaseGrowthConfig,
+) (storageSQLite.GrowthMailer, error) {
+	if !growthConfig.EmailEnabled() {
+		return nil, nil
+	}
+	return adminnotify.NewCommandMailer(
+		growthConfig.MailCommand,
+		growthConfig.AdministratorEmails,
+		growthConfig.MailTimeout,
+	)
+}
+
+func writeStorageUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin storage status [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin storage check [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin storage test-alert [--format human|json]")
+}
+
 func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
 	fmt.Fprintln(output, "       activity-relay-directory admin suspend --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
@@ -320,6 +495,7 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin storage status|check|test-alert [--format human|json]")
 }
 
 func writePruningUsage(output io.Writer) {

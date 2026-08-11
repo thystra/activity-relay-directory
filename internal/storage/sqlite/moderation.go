@@ -53,10 +53,11 @@ func (repository *RelayRepository) moderate(
 		return "", err
 	}
 
-	transaction, err := repository.begin(ctx)
+	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
 		return "", err
 	}
+	defer lease.Release()
 	defer func() { _ = transaction.Rollback() }()
 
 	relay, err := selectRelay(ctx, transaction, intent.RelayActor)

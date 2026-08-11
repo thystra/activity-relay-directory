@@ -193,15 +193,44 @@ delete. Keep pages <=100 and one run <=1,000 candidates.
 
 Never delete `moderation_events` in inactive retention. `relay_events` deletion
 may bypass its append-only trigger only transaction-locally, with the trigger
-recreated before commit and rollback restoring it on every failure. Keep the aggregate retention audit identity-free: create it before scanning,
-checkpoint committed destructive counts in the same purge transaction, and make
-it immutable when finalized. No public HTTP handler
-or automatic scheduler may invoke hard purge. Purge must preflight an existing
-current-schema database read-only and must not create or migrate its target. Every destructive local run must
-verify a secure same-database current-schema backup before confirmation and
-re-verify the same digest immediately after confirmation; `--yes` must not bypass
-those checks. `VACUUM`/manual checkpoint work remains explicit
-operator maintenance outside purge/request transactions.
+recreated before commit and rollback restoring it on every failure. Keep the
+aggregate retention audit identity-free: create it before scanning, checkpoint
+committed destructive counts in the same purge transaction, and make it
+immutable when finalized. No public HTTP handler or automatic scheduler may
+invoke hard purge. Purge must preflight an existing current-schema database
+read-only and must not create or migrate its target. Every destructive local run
+must verify a secure same-database current-schema backup before confirmation and
+re-verify the same digest immediately after confirmation; `--yes` must not
+bypass those checks. `VACUUM`/manual checkpoint work remains explicit operator
+maintenance outside purge/request transactions.
+
+Database-growth safeguards are non-destructive. Keep the default family budget
+at 1 GiB unless a separately reviewed compatibility change alters it; warning is
+configurable, while critical/hard remain fixed at 90/100. All production runtime
+mutators must receive the real `WriteAdmission` guard and acquire it before
+`BeginTx`/direct mutation; `storage.AllowWrites` is test-only and read-only
+repositories use `storage.DenyWrites`. Hard state must not trigger retention,
+pruning, replay deletion, `VACUUM`, or any other automatic data removal. It must
+fail readiness and domain/application writes while preserving `/healthz`, allowed
+public reads, and local read-only storage inspection. Sampling failure is also a
+readiness/write-admission failure until a successful authoritative sample.
+
+The only reviewed post-hard SQLite control/storage operations are: an `UPDATE`
+of the bounded singleton `storage_growth_state` row used to persist growth/mail
+transition bookkeeping, and `PRAGMA wal_checkpoint(PASSIVE)`. Neither changes
+logical domain data. The singleton must contain no relay/operator/audit identity
+and may only be updated by the growth guard; the passive checkpoint may only
+flush already-committed WAL pages and must never become a truncating checkpoint
+or `VACUUM` in the runtime path. These exceptions do not authorize any relay,
+enrollment, moderation, pruning, retention, replay, migration, or other domain
+mutation after hard state. Static review must keep them narrow.
+
+Growth notifications are opt-in only. Never invoke a shell, accept option-like
+or control-character recipients, expose command output in operator errors, or
+persist relay/audit identities in alert state. Keep reminder/retry state bounded
+and restart-safe. The stock container/package must not invent a recipient,
+credentials, relay host, or notification enablement. See
+`docs/STORAGE-GROWTH.md`.
 
 Public directory presentation must use the same `httpapi.PublicListingHandler`
 projection for JSON and human-readable output. Do not add a second HTML-specific

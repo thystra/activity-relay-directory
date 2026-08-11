@@ -158,10 +158,11 @@ func (repository *RelayRepository) PurgeBatch(
 		}
 	}
 
-	transaction, err := repository.begin(ctx)
+	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
 		return storage.PurgeBatchResult{}, err
 	}
+	defer lease.Release()
 	defer func() { _ = transaction.Rollback() }()
 
 	var runOutcome string
@@ -353,6 +354,11 @@ func (repository *RelayRepository) BeginRetentionRun(
 	if retentionSeconds > start.ObservedUnix || start.ObservedUnix-retentionSeconds != start.CutoffUnix {
 		return 0, storage.ErrRetentionWriteInput
 	}
+	lease, err := repository.acquireWrite(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer lease.Release()
 	result, err := repository.database.ExecContext(
 		ctx,
 		`INSERT INTO retention_runs (
@@ -464,6 +470,12 @@ func (repository *RelayRepository) FinishRetentionRun(
 				finish.Batches != checkpoint.Batches)) {
 		return storage.ErrRetentionWriteInput
 	}
+
+	lease, err := repository.acquireWrite(ctx)
+	if err != nil {
+		return err
+	}
+	defer lease.Release()
 
 	truncated := 0
 	if finish.Truncated {

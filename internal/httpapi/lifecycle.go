@@ -335,6 +335,8 @@ func writeLifecycleError(
 		writeProtocolError(response, request, http.StatusForbidden, v1.ErrorEnrollmentClosed)
 	case errors.Is(err, storage.ErrRelayAbsent):
 		writeProtocolError(response, request, http.StatusConflict, v1.ErrorRelayNotRegistered)
+	case errors.Is(err, storage.ErrWriteAdmissionHard):
+		writeProtocolError(response, request, http.StatusServiceUnavailable, v1.ErrorLifecycleUnavailable)
 	case errors.Is(err, v1.ErrRegisterRequest),
 		errors.Is(err, v1.ErrHeartbeatRequest),
 		errors.Is(err, v1.ErrUnregisterRequest),

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/mail"
 	"net/netip"
 	"net/url"
 	"os"
@@ -20,7 +21,28 @@ const (
 	defaultMaxRequestBodyBytes = int64(64 * 1024)
 	maxRequestBodyBytes        = int64(1024 * 1024)
 	maximumTrustedProxies      = 32
+	defaultMailBackend         = "mail"
+	defaultMailCommand         = "/usr/bin/mail"
+	defaultMailTimeoutSeconds  = 30
+	maximumMailTimeoutSeconds  = 300
+	maximumAdministratorEmails = 8
 )
+
+// DatabaseGrowthConfig is the process-independent Tranche 17 storage budget
+// and optional administrator notification configuration used by the service and
+// local storage commands.
+type DatabaseGrowthConfig struct {
+	MaxBytes            int64
+	WarningPercent      int
+	AdministratorEmails []string
+	MailBackend         string
+	MailCommand         string
+	MailTimeout         time.Duration
+}
+
+func (cfg DatabaseGrowthConfig) EmailEnabled() bool {
+	return len(cfg.AdministratorEmails) > 0
+}
 
 // Config is the directory service's process configuration.
 type Config struct {
@@ -32,6 +54,7 @@ type Config struct {
 	SoftPruningEnabled    bool
 	SoftPruningInterval   time.Duration
 	InactiveRetentionDays int
+	DatabaseGrowth        DatabaseGrowthConfig
 	MaxRequestBodyBytes   int64
 	TrustedProxyPrefixes  []netip.Prefix
 }
@@ -47,6 +70,7 @@ func Load() (Config, error) {
 		SoftPruningEnabled:    false,
 		SoftPruningInterval:   storage.DefaultSoftPruningInterval,
 		InactiveRetentionDays: 0,
+		DatabaseGrowth:        defaultDatabaseGrowthConfig(),
 		MaxRequestBodyBytes:   defaultMaxRequestBodyBytes,
 	}
 
@@ -104,6 +128,12 @@ func Load() (Config, error) {
 	}
 	cfg.InactiveRetentionDays = retentionDays
 
+	growth, err := loadDatabaseGrowthConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.DatabaseGrowth = growth
+
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_MAX_REQUEST_BODY_BYTES")); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil {
@@ -145,6 +175,154 @@ func LoadDatabasePath() (string, error) {
 // local retention commands. It does not require public HTTP configuration.
 func LoadInactiveRetentionDays() (int, error) {
 	return parseInactiveRetentionDays(os.Getenv("DIRECTORY_INACTIVE_RETENTION_DAYS"))
+}
+
+// LoadDatabaseGrowthConfig reads the Tranche 17 storage budget and optional
+// local-command notification settings without requiring HTTP configuration.
+func LoadDatabaseGrowthConfig() (DatabaseGrowthConfig, error) {
+	return loadDatabaseGrowthConfig()
+}
+
+func defaultDatabaseGrowthConfig() DatabaseGrowthConfig {
+	return DatabaseGrowthConfig{
+		MaxBytes:       storage.DefaultDatabaseMaxBytes,
+		WarningPercent: storage.DefaultDatabaseWarningPercent,
+		MailBackend:    defaultMailBackend,
+		MailCommand:    defaultMailCommand,
+		MailTimeout:    defaultMailTimeoutSeconds * time.Second,
+	}
+}
+
+func loadDatabaseGrowthConfig() (DatabaseGrowthConfig, error) {
+	cfg := defaultDatabaseGrowthConfig()
+
+	if raw := os.Getenv("DIRECTORY_DATABASE_MAX_BYTES"); raw != "" {
+		value, err := parseStrictPositiveInt64(raw, storage.MaximumDatabaseMaxBytes)
+		if err != nil {
+			return DatabaseGrowthConfig{}, fmt.Errorf("DIRECTORY_DATABASE_MAX_BYTES is invalid: %w", err)
+		}
+		cfg.MaxBytes = value
+	}
+	if raw := os.Getenv("DIRECTORY_DATABASE_WARNING_PERCENT"); raw != "" {
+		value, err := parseStrictPositiveInt64(raw, storage.DatabaseCriticalPercent-1)
+		if err != nil {
+			return DatabaseGrowthConfig{}, fmt.Errorf("DIRECTORY_DATABASE_WARNING_PERCENT is invalid: %w", err)
+		}
+		cfg.WarningPercent = int(value)
+	}
+
+	emails, err := parseAdministratorEmails(os.Getenv("DIRECTORY_ADMIN_EMAIL"))
+	if err != nil {
+		return DatabaseGrowthConfig{}, err
+	}
+	cfg.AdministratorEmails = emails
+
+	if raw := os.Getenv("DIRECTORY_MAIL_BACKEND"); raw != "" {
+		cfg.MailBackend = raw
+	}
+	if raw := os.Getenv("DIRECTORY_MAIL_COMMAND"); raw != "" {
+		cfg.MailCommand = raw
+	}
+	if raw := os.Getenv("DIRECTORY_MAIL_TIMEOUT_SECONDS"); raw != "" {
+		value, err := parseStrictPositiveInt64(raw, maximumMailTimeoutSeconds)
+		if err != nil {
+			return DatabaseGrowthConfig{}, fmt.Errorf("DIRECTORY_MAIL_TIMEOUT_SECONDS is invalid: %w", err)
+		}
+		cfg.MailTimeout = time.Duration(value) * time.Second
+	}
+	if err := cfg.Validate(); err != nil {
+		return DatabaseGrowthConfig{}, err
+	}
+	return cfg, nil
+}
+
+func (cfg DatabaseGrowthConfig) Validate() error {
+	if cfg.MaxBytes <= 0 || cfg.MaxBytes > storage.MaximumDatabaseMaxBytes {
+		return fmt.Errorf(
+			"DIRECTORY_DATABASE_MAX_BYTES must be between 1 and %d",
+			storage.MaximumDatabaseMaxBytes,
+		)
+	}
+	if cfg.WarningPercent <= 0 || cfg.WarningPercent >= storage.DatabaseCriticalPercent {
+		return fmt.Errorf(
+			"DIRECTORY_DATABASE_WARNING_PERCENT must be between 1 and %d",
+			storage.DatabaseCriticalPercent-1,
+		)
+	}
+	if len(cfg.AdministratorEmails) > maximumAdministratorEmails {
+		return errors.New("too many DIRECTORY_ADMIN_EMAIL recipients")
+	}
+	for _, recipient := range cfg.AdministratorEmails {
+		if !validAdministratorEmail(recipient) {
+			return errors.New("DIRECTORY_ADMIN_EMAIL contains an invalid recipient")
+		}
+	}
+	if cfg.MailBackend != defaultMailBackend {
+		return errors.New("DIRECTORY_MAIL_BACKEND must be mail")
+	}
+	if !filepath.IsAbs(cfg.MailCommand) || filepath.Clean(cfg.MailCommand) != cfg.MailCommand ||
+		strings.ContainsRune(cfg.MailCommand, '\x00') || containsControl(cfg.MailCommand) {
+		return errors.New("DIRECTORY_MAIL_COMMAND must be a clean absolute path")
+	}
+	if cfg.MailTimeout <= 0 || cfg.MailTimeout > maximumMailTimeoutSeconds*time.Second {
+		return fmt.Errorf(
+			"DIRECTORY_MAIL_TIMEOUT_SECONDS must be between 1 and %d",
+			maximumMailTimeoutSeconds,
+		)
+	}
+	return nil
+}
+
+func parseStrictPositiveInt64(raw string, maximum int64) (int64, error) {
+	if raw == "" || strings.HasPrefix(raw, "+") || (len(raw) > 1 && raw[0] == '0') {
+		return 0, errors.New("must be a canonical positive integer")
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 || value > maximum || strconv.FormatInt(value, 10) != raw {
+		return 0, errors.New("must be a canonical positive bounded integer")
+	}
+	return value, nil
+}
+
+func parseAdministratorEmails(raw string) ([]string, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	if len(parts) > maximumAdministratorEmails {
+		return nil, errors.New("too many DIRECTORY_ADMIN_EMAIL recipients")
+	}
+	result := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, value := range parts {
+		if !validAdministratorEmail(value) {
+			return nil, errors.New("DIRECTORY_ADMIN_EMAIL contains an invalid recipient")
+		}
+		if _, exists := seen[value]; exists {
+			return nil, errors.New("DIRECTORY_ADMIN_EMAIL contains a duplicate recipient")
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result, nil
+}
+
+func validAdministratorEmail(value string) bool {
+	if value == "" || len(value) > 254 || strings.HasPrefix(value, "-") ||
+		containsControl(value) || strings.ContainsAny(value, " 	\r\n") {
+		return false
+	}
+	parsed, err := mail.ParseAddress(value)
+	return err == nil && parsed.Name == "" && parsed.Address == value
+}
+
+func containsControl(value string) bool {
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
 }
 
 func parseInactiveRetentionDays(raw string) (int, error) {
@@ -243,6 +421,19 @@ func (cfg Config) Validate() error {
 			"DIRECTORY_INACTIVE_RETENTION_DAYS must be between 0 and %d",
 			storage.MaximumInactiveRetentionDays,
 		)
+	}
+
+	growthConfig := cfg.DatabaseGrowth
+	if growthConfig.MaxBytes == 0 &&
+		growthConfig.WarningPercent == 0 &&
+		len(growthConfig.AdministratorEmails) == 0 &&
+		growthConfig.MailBackend == "" &&
+		growthConfig.MailCommand == "" &&
+		growthConfig.MailTimeout == 0 {
+		growthConfig = defaultDatabaseGrowthConfig()
+	}
+	if err := growthConfig.Validate(); err != nil {
+		return err
 	}
 
 	if cfg.MaxRequestBodyBytes < 1024 ||

@@ -201,6 +201,29 @@ append-only guard. Supplied backups must be secure current-schema SQLite files,
 pass `quick_check`, and match the live persistent database identity before
 confirmation. See `docs/RETENTION.md`.
 
+## Database-growth threat boundary
+
+The storage-growth guard is a refusal/notification mechanism, not a deletion
+policy. It never changes `DIRECTORY_INACTIVE_RETENTION_DAYS`, invokes purge, or
+runs `VACUUM`. All runtime mutation repositories receive one common
+pre-transaction write-admission boundary; at hard state existing records remain
+readable while mutations fail before transaction effects. Read-only public/local
+adapters are explicitly write-denied. Failure to obtain an authoritative storage
+sample also fails readiness/write admission rather than trusting stale state.
+
+The physical database-family measurement rejects symlink/non-regular main, WAL,
+or SHM paths. The SQLite page-allocation backstop is page-size-rounded below the
+total family budget, while host filesystem free space/inodes/snapshots remain a
+separate operator responsibility.
+
+Administrator email is default-off. When explicitly configured, recipients are
+canonical bounded addresses without controls, whitespace, display names,
+duplicates, or option-like prefixes; the mail command is an absolute path resolved once at startup to a regular
+executable, invoked directly without a shell, with bounded timeout/body/output.
+Command stdout/stderr is never surfaced in notification failures. Alert state is
+one identity-free bounded singleton, and transition/reminder/retry behavior is
+bounded across restart. See `docs/STORAGE-GROWTH.md`.
+
 Before production deployment, backup/restore and the disabled/enabled lifecycle
 boundary must be exercised. Database errors must continue to fail closed
 without reaching clients. See `docs/HANDLERS.md` for the reviewed handler order,
