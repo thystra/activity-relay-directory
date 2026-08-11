@@ -1,0 +1,39 @@
+name: Debian Package
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  debian:
+    name: Debian package validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up exact Go 1.26.5
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+
+      - name: Install Debian packaging tools
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             debhelper fakeroot lintian
+
+      - name: Validate source and build package artifacts
+        run: |
+          set -Eeuo pipefail
+          export RELEASE_COMMIT="$(git rev-parse HEAD)"
+          export RELEASE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race -count=1 ./...
+          scripts/release/build-debian-artifacts.sh "$RUNNER_TEMP/activity-relay-directory-package"
+
+      - name: Verify public checksums
+        run: |
+          set -Eeuo pipefail
+          cd "$RUNNER_TEMP/activity-relay-directory-package/public"
+          sha256sum -c SHA256SUMS

@@ -1,0 +1,10 @@
+activity-relay-directory (0.1.0~rc1-1) unstable; urgency=medium
+
+  * First pre-1.0 release candidate.
+  * Package the Directory daemon with a dedicated system account and private
+    state directory, safe loopback/default-off configuration, and hardened
+    systemd unit.
+  * Keep installation separate from service enablement, startup, reverse-proxy
+    exposure, and lifecycle/public-listing activation.
+
+ -- Alan Johnson <alan@argentwolf.org>  Tue, 11 Aug 2026 14:23:58 -0400

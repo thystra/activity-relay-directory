@@ -1,0 +1,27 @@
+# Activity-Relay Directory package defaults.
+#
+# Package installation does NOT enable or start the service. These defaults are
+# intentionally loopback-only and keep every externally meaningful feature off.
+
+DIRECTORY_LISTEN_ADDRESS=127.0.0.1:8080
+DIRECTORY_PUBLIC_BASE_URL=http://127.0.0.1:8080
+DIRECTORY_DATABASE_PATH=/var/lib/activity-relay-directory/directory.sqlite
+
+DIRECTORY_LIFECYCLE_ENABLED=false
+DIRECTORY_PUBLIC_LISTING_ENABLED=false
+DIRECTORY_SOFT_PRUNING_ENABLED=false
+DIRECTORY_SOFT_PRUNING_INTERVAL=24h
+DIRECTORY_INACTIVE_RETENTION_DAYS=0
+
+DIRECTORY_DATABASE_MAX_BYTES=1073741824
+DIRECTORY_DATABASE_WARNING_PERCENT=75
+
+# Administrator email is opt-in. Installing this package never configures a
+# recipient, SMTP relay, credentials, or automatic alert destination.
+DIRECTORY_ADMIN_EMAIL=
+DIRECTORY_MAIL_BACKEND=mail
+DIRECTORY_MAIL_COMMAND=/usr/bin/mail
+DIRECTORY_MAIL_TIMEOUT_SECONDS=30
+
+DIRECTORY_MAX_REQUEST_BODY_BYTES=65536
+DIRECTORY_TRUSTED_PROXY_PREFIXES=

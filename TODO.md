@@ -587,6 +587,14 @@ Deliverables and gates:
 
 ## Tranche 18: Cross-repository staging and release-candidate gate
 
+First-release version policy (approved 2026-08-11): release candidates use
+`v0.1.0-rcN` / `0.1.0-rcN` with Debian `0.1.0~rcN-<revision>`. After candidate
+soak and final approval, the first stable release jumps directly to
+`v1.0.0` / `1.0.0` with Debian `1.0.0-1`; there is no `v0.1.0`
+final release. Forgejo produces the canonical artifact bytes once; GitHub is a
+downstream distribution/mirror surface for those same bytes.
+
+
 Repositories: both projects.
 
 Run a layered staging soak only after the relevant source tranches are reviewed,

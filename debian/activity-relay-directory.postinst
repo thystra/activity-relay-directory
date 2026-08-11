@@ -1,0 +1,38 @@
+#!/bin/sh
+set -e
+
+account="activity-relay-directory"
+state="/var/lib/activity-relay-directory"
+
+if ! getent group "$account" >/dev/null 2>&1; then
+    addgroup --system --quiet "$account"
+fi
+
+if ! getent passwd "$account" >/dev/null 2>&1; then
+    adduser \
+        --system \
+        --quiet \
+        --ingroup "$account" \
+        --home "$state" \
+        --no-create-home \
+        --shell /usr/sbin/nologin \
+        --gecos "Activity-Relay Directory" \
+        "$account"
+fi
+
+passwd_entry="$(getent passwd "$account")"
+home="$(printf '%s\n' "$passwd_entry" | cut -d: -f6)"
+shell="$(printf '%s\n' "$passwd_entry" | cut -d: -f7)"
+primary_gid="$(printf '%s\n' "$passwd_entry" | cut -d: -f4)"
+expected_gid="$(getent group "$account" | cut -d: -f3)"
+
+if [ "$home" != "$state" ] || [ "$shell" != "/usr/sbin/nologin" ] || [ "$primary_gid" != "$expected_gid" ]; then
+    echo "existing activity-relay-directory account is incompatible with package policy" >&2
+    exit 1
+fi
+
+install -d -m 0700 -o "$account" -g "$account" "$state"
+
+#DEBHELPER#
+
+exit 0

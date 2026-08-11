@@ -1,0 +1,18 @@
+# The release binary is intentionally built with CGO_ENABLED=0 as a
+# self-contained Go daemon. It does not statically embed a separately managed
+# system C library whose security updates would otherwise be missed.
+activity-relay-directory binary: statically-linked-binary [usr/bin/activity-relay-directory]
+
+# This package is published by the Activity-Relay project, not uploaded as a
+# first Debian archive package, so there is no Debian BTS upload bug to close.
+activity-relay-directory binary: initial-upload-closes-no-bugs [usr/share/doc/activity-relay-directory/changelog.Debian.gz:1]
+
+# Upstream uses a repository-level AGPL-3.0-only licence and contributor
+# ownership rather than repeating copyright notices in each source file.
+activity-relay-directory binary: copyright-without-copyright-notice
+
+# This systemd EnvironmentFile is intentionally root-owned and mode 0640. It is
+# operator-editable after installation and may contain deployment-local values
+# that should not be exposed to unprivileged local users. debian/rules runs the
+# normal dh_fixperms pass first, then narrowly restores this one file to 0640.
+activity-relay-directory binary: non-standard-file-perm 0640 != 0644 [etc/default/activity-relay-directory]

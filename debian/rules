@@ -1,0 +1,46 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/pkg-info.mk
+
+APP_VERSION := $(subst ~,-,$(DEB_VERSION_UPSTREAM))
+
+export CGO_ENABLED := 0
+export GOFLAGS := -mod=readonly
+
+%:
+	dh $@
+
+override_dh_auto_clean:
+	rm -rf _build
+	dh_auto_clean
+
+override_dh_auto_build:
+	@case "$$(go env GOVERSION)" in \
+	  go1.26.0|go1.26.5) ;; \
+	  *) echo "unsupported release-build Go version: $$(go env GOVERSION)" >&2; exit 1 ;; \
+	esac
+	mkdir -p _build
+	go build \
+	  -trimpath \
+	  -buildvcs=false \
+	  -ldflags "-s -w -buildid= -X github.com/thystra/activity-relay-directory/internal/buildinfo.Version=$(APP_VERSION)" \
+	  -o _build/activity-relay-directory \
+	  ./cmd/activity-relay-directory
+
+override_dh_auto_test:
+	go test -count=1 ./...
+
+override_dh_auto_install:
+	install -D -m 0755 \
+	  _build/activity-relay-directory \
+	  debian/activity-relay-directory/usr/bin/activity-relay-directory
+	install -D -m 0640 \
+	  debian/activity-relay-directory.default \
+	  debian/activity-relay-directory/etc/default/activity-relay-directory
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start --no-stop-on-upgrade
+
+override_dh_fixperms:
+	dh_fixperms
+	chmod 0640 debian/activity-relay-directory/etc/default/activity-relay-directory
