@@ -253,10 +253,14 @@ type recordingReplayCleaner struct {
 }
 
 func (cleaner *recordingReplayCleaner) CleanupExpiredRFC9421Replay(
-	_ context.Context,
+	ctx context.Context,
 	maximum int,
 ) (int64, error) {
-	cleaner.calls <- maximum
+	select {
+	case cleaner.calls <- maximum:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 	return 0, cleaner.err
 }
 
