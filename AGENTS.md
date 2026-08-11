@@ -300,6 +300,15 @@ and deployments, and remain accountable for the software.
   release bytes are produced once by the manually dispatched Forgejo release
   workflow from an exact reviewed commit, then those same bytes are promoted to
   Forgejo and downstream GitHub release surfaces.
+- The canonical RC artifact set must include both supported installation
+  paths from that same exact commit: the Debian `.deb` and a Docker-loadable
+  `linux/amd64` image archive tagged with the exact application version. The
+  archive, `.deb`, standalone binary, SBOM, build metadata, and checksum file
+  are one canonical set; do not rebuild the container separately for GitHub or
+  publication.
+- Before an RC tag or release is published, independently install-test the
+  exact canonical `.deb` and container archive. Use separate writable state
+  for the two tests; never point both installations at the same SQLite file.
 - Installation, service activation, reverse-proxy exposure, lifecycle/public
   listing activation, tagging, and release publication are separate gates.
 - Debian package installation must not enable/start the service, invent a mail
