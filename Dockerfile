@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM public.ecr.aws/docker/library/golang:1.25.0-alpine3.22 AS build
+FROM docker.io/library/golang:1.26.5-alpine3.24 AS build
 
 ARG VERSION=development
 ARG GO_BUILD_PARALLELISM=2

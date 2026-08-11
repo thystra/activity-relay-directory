@@ -81,14 +81,19 @@ activate positive inactive retention.
 
 ## RC Go compatibility gate
 
-Preserve the existing Go 1.23/1.25 development CI matrix until the release-
-candidate compatibility pass. At RC, run the full validation suite under Go
-1.26 and the latest available Go 1.27 release candidate. Treat Go 1.26 failures
-as RC blockers; triage Go 1.27 RC failures individually rather than changing
-supported-version claims solely for an unreleased toolchain. After Go 1.27 final
-is available, rerun full validation and then choose the documented supported Go
-floor and ongoing CI matrix. Testing a toolchain does not by itself declare it
-supported.
+The pre-RC compatibility pass establishes Go 1.26.0 as the minimum supported
+Directory module floor. `go.mod` must declare `go 1.26.0` and must not add a
+higher `toolchain` directive. The blocking CI matrix runs exact Go 1.26.0 and
+the validated Go 1.26.5 patch lane. A separate Go 1.27rc2 forward-compatibility
+job runs only after the blocking matrix succeeds; prerelease validation failures
+must remain visible for individual triage but do not silently redefine the
+supported floor or stable blocking lanes.
+
+Container builds use the validated
+`docker.io/library/golang:1.26.5-alpine3.24` builder while preserving the
+reviewed runtime stage. After Go 1.27 final is available, rerun full
+compatibility before changing the documented supported floor or ongoing CI
+matrix.
 
 After the Directory pass is complete, apply the same deliberate Go-version
 compatibility/floor review to `thystra/Activity-Relay`, including its
