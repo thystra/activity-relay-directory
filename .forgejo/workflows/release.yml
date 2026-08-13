@@ -8,44 +8,63 @@ on:
         required: true
         type: string
       version:
-        description: Candidate application version
+        description: Exact source candidate version, for example 0.1.0-rc2
         required: true
-        default: "0.1.0-rc1"
         type: string
       confirm:
-        description: Type BUILD 0.1.0-rc1
+        description: Type BUILD followed by the exact candidate version
         required: true
         type: string
 
 jobs:
   canonical:
-    name: Canonical 0.1.0-rc1 artifact set
+    name: Canonical candidate artifact set
     runs-on: forgejo-build
+    env:
+      RELEASE_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_CONFIRMATION: ${{ inputs.confirm }}
     steps:
       - uses: https://data.forgejo.org/actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: "false"
 
-      - name: Require exact reviewed release input
+      - name: Require exact reviewed dispatch identity
         run: |
           set -Eeuo pipefail
-          test "${{ inputs.version }}" = "0.1.0-rc1"
-          test "${{ inputs.confirm }}" = "BUILD 0.1.0-rc1"
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_commit }}"
-          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          VERSION="$RELEASE_VERSION"
 
-      - name: Set up exact Go 1.26.5
-        uses: https://data.forgejo.org/actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
-        with:
-          go-version: "1.26.5"
+          [[ "$VERSION" =~ ^0\.1\.0-rc[1-9][0-9]*$ ]]
+          test "$RELEASE_CONFIRMATION" = "BUILD $VERSION"
+          test "$(git rev-parse HEAD)" = "$RELEASE_EXPECTED_COMMIT"
+          test -z "$(git status --porcelain=v1 --untracked-files=all)"
+          test -f "docs/releases/v${VERSION}.md"
+          grep -Fq "# Activity-Relay Directory ${VERSION}" "docs/releases/v${VERSION}.md"
+          grep -Fq -- "- Application version: \`${VERSION}\`" "docs/releases/v${VERSION}.md"
 
       - name: Install Debian packaging tools
         run: |
           set -Eeuo pipefail
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            debhelper fakeroot lintian
+            debhelper dpkg-dev fakeroot lintian
           rm -rf /var/lib/apt/lists/*
+
+      - name: Require exact source package version
+        run: |
+          set -Eeuo pipefail
+          VERSION="$RELEASE_VERSION"
+          DEB_VERSION="$(dpkg-parsechangelog -SVersion)"
+          DEB_UPSTREAM="${DEB_VERSION%%-*}"
+          SOURCE_VERSION="${DEB_UPSTREAM//\~/-}"
+
+          test "$VERSION" = "$SOURCE_VERSION"
+          grep -Fq -- "- Debian package version: \`${DEB_VERSION}\`" "docs/releases/v${VERSION}.md"
+
+      - name: Set up exact Go 1.26.5
+        uses: https://data.forgejo.org/actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: "1.26.5"
 
       - name: Release validation
         run: |
@@ -58,12 +77,19 @@ jobs:
       - name: Build canonical Debian, binary, SBOM, and metadata bytes once
         run: |
           set -Eeuo pipefail
+          VERSION="$RELEASE_VERSION"
+          DEB_VERSION="$(dpkg-parsechangelog -SVersion)"
+          PUBLIC_DEB_VERSION="${DEB_VERSION//\~/-}"
+
           export RELEASE_COMMIT="$(git rev-parse HEAD)"
           export RELEASE_TREE="$(git rev-parse 'HEAD^{tree}')"
           scripts/release/build-debian-artifacts.sh "$RUNNER_TEMP/canonical-release"
+
           cd "$RUNNER_TEMP/canonical-release/public"
           sha256sum -c SHA256SUMS
-          test "$(./activity-relay-directory_0.1.0-rc1_linux_amd64 --version)" = "0.1.0-rc1"
+          test -s "activity-relay-directory_${PUBLIC_DEB_VERSION}_amd64.deb"
+          test -s "activity-relay-directory_${VERSION}_amd64.cdx.json"
+          test "$(./activity-relay-directory_${VERSION}_linux_amd64 --version)" = "$VERSION"
 
       - name: Set up Buildx
         uses: https://data.forgejo.org/docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
@@ -75,28 +101,34 @@ jobs:
           platforms: linux/amd64
           push: "false"
           provenance: "false"
-          tags: activity-relay-directory:0.1.0-rc1
+          tags: activity-relay-directory:${{ inputs.version }}
           build-args: |
-            VERSION=0.1.0-rc1
-          outputs: type=docker,dest=${{ runner.temp }}/canonical-release/public/activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar
+            VERSION=${{ inputs.version }}
+          outputs: type=docker,dest=${{ runner.temp }}/canonical-release/public/activity-relay-directory_${{ inputs.version }}_linux_amd64.docker.tar
 
       - name: Finalize one checksummed canonical artifact set
         run: |
           set -Eeuo pipefail
+          VERSION="$RELEASE_VERSION"
+          DEB_VERSION="$(dpkg-parsechangelog -SVersion)"
+          PUBLIC_DEB_VERSION="${DEB_VERSION//\~/-}"
+          ARCHIVE="activity-relay-directory_${VERSION}_linux_amd64.docker.tar"
+
           cd "$RUNNER_TEMP/canonical-release/public"
-          test -s activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar
+          test -s "$ARCHIVE"
           {
             echo "container_format=docker-archive"
-            echo "container_image=activity-relay-directory:0.1.0-rc1"
+            echo "container_image=activity-relay-directory:${VERSION}"
             echo "container_platform=linux/amd64"
-            echo "container_archive=activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar"
+            echo "container_archive=${ARCHIVE}"
           } >> BUILD-METADATA.txt
+
           sha256sum \
-            activity-relay-directory_0.1.0-rc1-1_amd64.deb \
-            activity-relay-directory_0.1.0-rc1_amd64.cdx.json \
-            activity-relay-directory_0.1.0-rc1_linux_amd64 \
+            "activity-relay-directory_${PUBLIC_DEB_VERSION}_amd64.deb" \
+            "activity-relay-directory_${VERSION}_amd64.cdx.json" \
+            "activity-relay-directory_${VERSION}_linux_amd64" \
             BUILD-METADATA.txt \
-            activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar \
+            "$ARCHIVE" \
             > SHA256SUMS
           test "$(wc -l < SHA256SUMS)" -eq 5
           sha256sum -c SHA256SUMS
@@ -104,7 +136,7 @@ jobs:
       - name: Upload canonical candidate artifact set
         uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
-          name: activity-relay-directory-0.1.0-rc1-canonical-${{ inputs.expected_commit }}
+          name: activity-relay-directory-${{ inputs.version }}-canonical-${{ inputs.expected_commit }}
           path: ${{ runner.temp }}/canonical-release/
           if-no-files-found: error
           retention-days: 30

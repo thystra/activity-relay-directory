@@ -1,3 +1,12 @@
+activity-relay-directory (0.1.0~rc2-1) unstable; urgency=medium
+
+  * Fix reverse-proxy CSP handling so the public stylesheet is not blocked.
+  * Refresh the human public Directory and add color-independent health cues.
+  * Add operator-centric release-candidate acceptance guidance.
+  * Generalize and harden the canonical release-candidate artifact workflow.
+
+ -- Alan Johnson <alan@argentwolf.org>  Wed, 12 Aug 2026 20:42:00 -0400
+
 activity-relay-directory (0.1.0~rc1-1) unstable; urgency=medium
 
   * First pre-1.0 release candidate.
