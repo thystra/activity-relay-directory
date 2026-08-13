@@ -12,16 +12,52 @@ package workflow are validation only. `.forgejo/workflows/release.yml` is a
 manual, exact-commit artifact gate: it builds the canonical candidate bytes
 once and stores them as one Forgejo Actions artifact. That set includes both
 supported installation paths: the Debian package and a Docker-loadable
-`linux/amd64` image archive tagged `activity-relay-directory:0.1.0-rc1`.
-After the exact artifact set is independently install-tested through both
-paths, a later publication gate tags the same commit and promotes those exact
-bytes to Forgejo and GitHub release surfaces. GitHub runners do not manufacture
-a second official release set or rebuild the container image.
+`linux/amd64` image archive tagged
+`activity-relay-directory:<application-version>`. After the exact artifact set
+is independently install-tested through both paths, a later publication gate
+tags the same commit and promotes those exact bytes to Forgejo and GitHub
+release surfaces. GitHub runners do not manufacture a second official release
+set or rebuild the container image.
+
+## Release-candidate source identity
+
+Every new release candidate is a new source state and new immutable version; do
+not move or rebuild an already-published RC tag. The top `debian/changelog`
+entry is the source of truth for the current candidate's Debian version. The
+embedded/public application version is that upstream Debian version with the
+literal prerelease `~` translated to `-`.
+
+The manually dispatched Forgejo canonical workflow is candidate-generic but
+fail-closed. Its `version` input must:
+
+- match `0.1.0-rcN`;
+- equal the application version derived from the top Debian changelog entry;
+- have a matching `docs/releases/v<version>.md` draft;
+- use exact confirmation `BUILD <version>`; and
+- build the exact reviewed `expected_commit`.
+
+The workflow derives candidate filenames and the Docker image/archive identity
+from that validated source version. A later RC therefore requires a normal
+reviewed source/version-preparation commit, but does not require editing the
+workflow merely to replace one hard-coded RC number with another.
+
+Treat manual dispatch strings as data rather than shell source. Map
+`workflow_dispatch` input expressions into workflow environment variables and
+quote those variables in every `run:` body. Candidate/commit validation must
+occur on those environment values; do not embed raw `${{ inputs.* }}` text in
+trusted release shell scripts.
+
+The canonical workflow must not depend on ambient runner packaging tools.
+Validate dispatch identity first, explicitly install the Debian tools it uses
+(including `dpkg-dev` for `dpkg-parsechangelog`), then validate the changelog
+candidate version before Go setup, package construction, or container work.
+
 
 ## Debian package contract
 
-The first candidate package is `activity-relay-directory` version `0.1.0~rc1-1` for
-application `0.1.0-rc1`. It installs a dedicated system account, owner-only
+Release-candidate packages use `activity-relay-directory` with Debian version
+`0.1.0~rcN-<revision>` for application `0.1.0-rcN`. The package installs a
+dedicated system account, owner-only
 `/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked
 with `dh_installsystemd --no-enable --no-start --no-stop-on-upgrade`.
@@ -43,13 +79,12 @@ a verified backup and explicit operator action. In-place database downgrade is
 unsupported and requires restoring the backup matching the older binary.
 
 The public candidate artifact set consists of the `.deb`, the exact packaged
-standalone binary, CycloneDX JSON SBOM, build metadata, the Docker-loadable
-`activity-relay-directory_0.1.0-rc1_linux_amd64.docker.tar`, and one
-`SHA256SUMS` covering all five public assets. Loading the archive with
-`docker load` must produce image tag `activity-relay-directory:0.1.0-rc1`.
-`.changes`, `.buildinfo`, package control scripts, Lintian output, and package
-inventory are retained as build evidence rather than promoted as end-user
-release assets.
+standalone binary, CycloneDX JSON SBOM, build metadata, a Docker-loadable
+`activity-relay-directory_<application-version>_linux_amd64.docker.tar`, and
+one `SHA256SUMS` covering all five public assets. Loading the archive must
+produce image tag `activity-relay-directory:<application-version>`. `.changes`,
+`.buildinfo`, package control scripts, Lintian output, and package inventory
+are retained as build evidence rather than promoted as end-user release assets.
 
 RC acceptance requires independent installation tests of the exact canonical
 `.deb` and the exact canonical Docker archive before tagging or publication.

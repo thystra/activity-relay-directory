@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+_No changes yet._
+
+## 0.1.0-rc2 - 2026-08-12
+
 - Fix reverse-proxy examples so they do not override the Directory's
   route-specific Content-Security-Policy and block its bundled stylesheet.
 - Refresh the human public directory with the Activity-Relay visual language,
@@ -13,6 +17,15 @@
   review diagnostics so status meaning never depends on hue alone.
 - Document operator-centric RC acceptance: noncritical `FAIL`/`NO` results are
   recorded and normally continue, while explicitly critical failures abort.
+- Generalize the canonical release-candidate workflow so an exact `0.1.0-rcN`
+  input must match the source-controlled Debian changelog and versioned release
+  draft instead of hard-coding a previously published candidate.
+- Harden manual release-workflow input handling by passing dispatch strings as
+  quoted environment data instead of interpolating them directly into shell
+  script bodies before candidate/commit confirmation.
+- Make canonical release preflight independent of ambient runner packages by
+  explicitly installing `dpkg-dev` before parsing the Debian changelog and
+  validating the source candidate version before build work.
 
 ## 0.1.0-rc1 - 2026-08-11
 

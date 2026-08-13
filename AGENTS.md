@@ -304,6 +304,19 @@ and deployments, and remain accountable for the software.
   release bytes are produced once by the manually dispatched Forgejo release
   workflow from an exact reviewed commit, then those same bytes are promoted to
   Forgejo and downstream GitHub release surfaces.
+- Keep the canonical RC workflow candidate-generic rather than hard-coding a
+  previously published `rcN`. Its requested `0.1.0-rcN` must match the top
+  Debian changelog version after the reviewed literal `~` to `-` translation,
+  must have a matching `docs/releases/v<version>.md` draft, and must require an
+  exact `BUILD <version>` confirmation plus exact reviewed commit identity.
+- Treat `workflow_dispatch` strings as shell data, never shell source. Map
+  `${{ inputs.* }}` expressions into workflow environment variables and quote
+  those variables inside `run:` scripts; do not interpolate dispatch inputs
+  directly into trusted release shell bodies before validation.
+- Keep release-workflow tool preflight self-contained. Validate dispatch
+  identity before dependency installation, explicitly install the Debian tools
+  used by the workflow (including `dpkg-dev` for `dpkg-parsechangelog`), then
+  validate the source package version before Go/build/package work.
 - The canonical RC artifact set must include both supported installation
   paths from that same exact commit: the Debian `.deb` and a Docker-loadable
   `linux/amd64` image archive tagged with the exact application version. The
