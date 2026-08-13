@@ -62,7 +62,7 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`href="#directory">Skip to directory</a>`,
 		`<main id="directory"`,
 		`<nav class="pagination" aria-label="Directory pages">`,
-		`<section class="health-help" aria-labelledby="health-heading">`,
+		`<section class="health-help panel" aria-labelledby="health-heading">`,
 		`<dt>healthy</dt>`,
 		`<dt>stale</dt>`,
 		`<dt>dead</dt>`,
@@ -125,7 +125,7 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjection(t *testing.T) {
 	if htmlResponse.Code != http.StatusOK {
 		t.Fatalf("HTML status = %d body = %q", htmlResponse.Code, htmlResponse.Body.String())
 	}
-	next := extractHTMLAttribute(t, htmlResponse.Body.String(), `class="button-link" href="`, `"`)
+	next := extractHTMLAttribute(t, htmlResponse.Body.String(), `rel="next" href="`, `"`)
 	nextURL, err := url.Parse(next)
 	if err != nil {
 		t.Fatalf("url.Parse(next) error = %v", err)
@@ -172,7 +172,7 @@ func TestHumanDirectoryRejectsTamperedCursorAndBackendFailureWithoutDisclosure(t
 	}
 	first := httptest.NewRecorder()
 	handler.serveHumanDirectory(first, httptest.NewRequest(http.MethodGet, "/", nil))
-	next := extractHTMLAttribute(t, first.Body.String(), `class="button-link" href="`, `"`)
+	next := extractHTMLAttribute(t, first.Body.String(), `rel="next" href="`, `"`)
 	nextURL, err := url.Parse(next)
 	if err != nil {
 		t.Fatalf("url.Parse(next) error = %v", err)
@@ -214,7 +214,7 @@ func TestHumanDirectoryEmptyStateAndStylesheet(t *testing.T) {
 	}
 	response := httptest.NewRecorder()
 	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(response.Body.String(), "No relays are currently available") ||
+	if !strings.Contains(response.Body.String(), "No relays are listed yet") ||
 		!strings.Contains(response.Body.String(), "End of directory") {
 		t.Fatalf("empty state body = %q", response.Body.String())
 	}

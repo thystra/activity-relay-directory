@@ -140,3 +140,21 @@ graph constructs successfully and `DIRECTORY_LIFECYCLE_ENABLED=true`. Proxy
 installation alone must not enable lifecycle routes or open enrollment. Before
 changing that flag, verify the trusted direct-peer prefix and follow
 `docs/HANDLERS.md`.
+
+## Application-owned Content-Security-Policy
+
+The Directory application owns `Content-Security-Policy` because its policy is
+route-specific. In particular, the human `GET /` page permits the bundled
+same-origin stylesheet with `style-src 'self'`, while non-HTML surfaces can
+remain stricter.
+
+The generic reverse-proxy examples therefore must not replace or add a generic CSP.
+A proxy-level `default-src 'none'` policy without `style-src 'self'` can allow
+the HTML document itself to load while causing browsers to refuse the bundled
+`/assets/directory.css`, producing an unstyled page.
+
+Keep transport-level headers such as `X-Content-Type-Options`,
+`Referrer-Policy`, and `X-Frame-Options` at the proxy if desired. If an operator
+chooses to add CSP at another layer, it must preserve the application's
+route-specific policy and must be browser-tested against the human page and
+bundled stylesheet.

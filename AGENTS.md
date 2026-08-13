@@ -244,7 +244,11 @@ repository query, health classifier, moderation filter, or eligibility rule.
 `DIRECTORY_PUBLIC_LISTING_ENABLED` gate as `/v1/relays`. HTML must use Go
 `html/template`, automatic escaping, local assets only, a strict CSP, the same
 bounded authenticated cursor and one-minute cache policy, and no relay-provided
-HTML, scripts, fonts, analytics, or relay-controlled image fetches.
+HTML, scripts, fonts, analytics, or relay-controlled image fetches. Health-state
+meaning must never depend on hue alone: retain a visible state word plus a
+distinct non-color visual cue, preserve automated light/dark text-contrast
+coverage, and treat color-vision-deficiency simulation as a review diagnostic
+rather than a substitute for operator browser review.
 
 The container workflow must use the reviewed Node-24-compatible Docker action
 majors `docker/setup-buildx-action@v4` and `docker/build-push-action@v7`. Keep the
@@ -349,3 +353,31 @@ and deployments, and remain accountable for the software.
   runner labels and required workflow/job outcomes rather than repeatedly
   re-auditing runner UUIDs, PIDs, restart counters, journals, or DinD
   internals without a new reason to suspect them.
+
+## Release-candidate operator acceptance
+
+- Development validation and release-candidate acceptance are different
+  activities. Development validation should be automated, implementation-aware,
+  and exhaustive; RC acceptance should be an operator-guided checklist focused
+  on real commands, assembled behavior, and human-visible outcomes.
+- RC checklist outcomes are `PASS`/`YES`, `FAIL`/`NO`, `RETRY`, optional
+  `SKIP`/`N/A`, and `ABORT`. A retry reruns only the current check.
+- `FAIL`/`NO` is evidence, not automatically an abort. Unless a check is
+  explicitly marked critical, record the failure and supporting evidence, then
+  allow the operator to retry, continue, or abort so one session can discover
+  the complete set of RC issues.
+- Critical checks are identified before execution and stop automatically when
+  continuing would be unsafe or meaningless, such as wrong artifact identity,
+  service-start/state-open failure, wrong TLS authority, corruption, or a
+  destructive/security boundary failure.
+- Checklist execution success and RC disposition are separate. A completed
+  checklist may still end `NO-GO`; final reports must summarize critical
+  failures, noncritical failures, retries, skips, operator notes, and the final
+  disposition.
+- Human-facing surfaces require human review during RC acceptance even when
+  development tests already prove HTTP status, CSS/CSP delivery, DOM markers,
+  or API state. Integration RCs should walk the documented real command
+  sequence and ask the operator to confirm the resulting public/admin behavior.
+- Keep host-neutral checklist semantics in `docs/RC-ACCEPTANCE.md`; private
+  hostnames, credentials, and operational transcripts remain outside the public
+  repository.
