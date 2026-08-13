@@ -186,3 +186,15 @@ The package carries four narrow binary overrides with comments:
 Do not add a Lintian override merely to make a release gate green. Resolve a
 finding normally when the package can reasonably comply, as with the packaged
 manual page and Debian changelog line wrapping in the first RC.
+
+## Operator acceptance
+
+Development validation and RC operator acceptance are separate gates.
+Development automation should prove low-level implementation contracts first.
+For an assembled release candidate, follow `docs/RC-ACCEPTANCE.md` and record
+operator-visible outcomes, retries, noncritical failures, critical aborts, and
+the final `GO` / `GO WITH NOTES` / `NO-GO` disposition.
+
+Do not treat successful checklist execution as automatic release approval, and
+do not convert every recorded noncritical `FAIL` / `NO` result into a script
+abort.

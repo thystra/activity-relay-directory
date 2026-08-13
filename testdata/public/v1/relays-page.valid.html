@@ -3,27 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A public directory of participating Activity-Relay instances.">
   <title>Activity-Relay Directory</title>
   <link rel="stylesheet" href="/assets/directory.css">
 </head>
 <body>
   <a class="skip-link" href="#directory">Skip to directory</a>
+
   <header class="site-header">
-    <div class="shell">
-      <p class="eyebrow">Activity-Relay Directory</p>
-      <h1>Public relay directory</h1>
-      <p class="lede">Relays shown here are registered, active, and recently seen by this directory.</p>
+    <div class="shell header-row">
+      <a class="site-name" href="/">Activity-Relay Directory</a>
+      <nav aria-label="Directory navigation">
+        <a href="/v1/relays?limit=50">JSON API</a>
+      </nav>
     </div>
   </header>
 
   <main id="directory" class="shell" tabindex="-1">
-    <section aria-labelledby="relay-list-heading">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">ActivityPub infrastructure</p>
+      <h1 id="page-title">Public relay directory</h1>
+      <p class="lede">Discover participating Activity-Relay instances that are registered, publicly eligible, and recently seen by this directory.</p>
+    </section>
+
+    <section class="panel directory-panel" aria-labelledby="relay-list-heading">
       <div class="section-heading">
         <div>
-          <h2 id="relay-list-heading">Relays</h2>
-          <p>Relays on this page: 1.</p>
+          <p class="eyebrow">Directory</p>
+          <h2 id="relay-list-heading">Participating relays</h2>
+          <p class="muted">1 public relay on this page.</p>
         </div>
-        <a class="secondary-link" href="/v1/relays?limit=50">View JSON</a>
+        <a class="button-link" href="/v1/relays?limit=50">View JSON API</a>
       </div>
 
 
@@ -31,15 +42,14 @@
 
         <li>
           <article class="relay-card">
-            <h3><a href="https://relay.example" rel="noreferrer">https://relay.example</a></h3>
-            <dl>
+            <div class="relay-card-heading">
+              <h3><a href="https://relay.example" rel="noreferrer">https://relay.example</a></h3>
+              <span class="health health-healthy">healthy</span>
+            </div>
+            <dl class="relay-meta">
               <div>
                 <dt>Actor</dt>
                 <dd><code>https://relay.example/a&amp;b</code></dd>
-              </div>
-              <div>
-                <dt>Health</dt>
-                <dd><span class="health health-healthy">healthy</span></dd>
               </div>
               <div>
                 <dt>Last seen</dt>
@@ -51,34 +61,46 @@
 
       </ul>
 
+
+      <nav class="pagination" aria-label="Directory pages">
+        <span class="muted">End of directory</span>
+      </nav>
     </section>
 
-    <nav class="pagination" aria-label="Directory pages">
-      <span>End of directory</span>
-    </nav>
-
-    <section class="health-help" aria-labelledby="health-heading">
-      <h2 id="health-heading">Health definitions</h2>
-      <dl>
+    <section class="health-help panel" aria-labelledby="health-heading">
+      <div class="section-heading">
         <div>
+          <p class="eyebrow">Availability</p>
+          <h2 id="health-heading">Health definitions</h2>
+        </div>
+      </div>
+      <dl class="health-grid">
+        <div class="health-definition healthy-definition">
           <dt>healthy</dt>
           <dd>Last seen by the directory no more than 36 hours ago.</dd>
         </div>
-        <div>
+        <div class="health-definition stale-definition">
           <dt>stale</dt>
           <dd>Last seen more than 36 hours ago but less than 7 days ago.</dd>
         </div>
-        <div>
+        <div class="health-definition dead-definition">
           <dt>dead</dt>
           <dd>Last seen at least 7 days ago but less than 30 days ago.</dd>
         </div>
       </dl>
     </section>
+
+    <section class="panel privacy-note" aria-labelledby="public-data-heading">
+      <p class="eyebrow">Privacy boundary</p>
+      <h2 id="public-data-heading">Public metadata only</h2>
+      <p>This view exposes only the bounded public relay projection. Administrative, moderation, suspension, and internal storage details are not published here.</p>
+    </section>
   </main>
 
   <footer class="site-footer">
-    <div class="shell">
-      <p>Public data only. Administrative and moderation details are not exposed here.</p>
+    <div class="shell footer-row">
+      <span>Activity-Relay Directory</span>
+      <a href="/v1/relays?limit=50">Public JSON API</a>
     </div>
   </footer>
 </body>

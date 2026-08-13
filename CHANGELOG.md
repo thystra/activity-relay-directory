@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-_No changes yet._
+- Fix reverse-proxy examples so they do not override the Directory's
+  route-specific Content-Security-Policy and block its bundled stylesheet.
+- Refresh the human public directory with the Activity-Relay visual language,
+  responsive relay cards, clearer health context, and an intentional empty
+  state while preserving the shared public projection and no-JavaScript
+  privacy boundary.
+- Reinforce public health states with visible text, distinct symbols and border
+  styles, automated light/dark contrast coverage, and color-vision-deficiency
+  review diagnostics so status meaning never depends on hue alone.
+- Document operator-centric RC acceptance: noncritical `FAIL`/`NO` results are
+  recorded and normally continue, while explicitly critical failures abort.
 
 ## 0.1.0-rc1 - 2026-08-11
 

@@ -73,3 +73,51 @@ semantics as JSON. The HTML page overrides the common deny-by-default CSP only
 to allow its same-origin stylesheet; scripts, images, fonts, connections,
 frames, objects, media, forms, and base-URI changes remain denied. Error
 responses are fixed, redacted, and `no-store`.
+
+## Public-facing presentation
+
+`GET /` is a public product surface, not an administrative diagnostic. It uses
+the same bounded, filtered projection as `GET /v1/relays`, but presents that
+data in an Activity-Relay-family layout with a branded header, responsive relay
+cards, human-readable health context, an intentional empty state, and a
+secondary link to the JSON API.
+
+The view remains dependency-free and privacy-bounded:
+
+- no JavaScript is required;
+- no remote fonts, analytics, images, third-party scripts, or relay-controlled
+  resources are fetched;
+- the stylesheet is embedded in the binary and served at
+  `/assets/directory.css`;
+- the HTML route's CSP permits that same-origin stylesheet with
+  `style-src 'self'`; and
+- reverse proxies must not override the application's route-specific CSP.
+
+Development tests verify HTML, CSS delivery, CSP compatibility, accessibility
+markers, escaping, caching, and the shared JSON/HTML projection automatically.
+Release-candidate acceptance separately includes a human browser review of the
+rendered public page.
+
+### Color-vision accessibility
+
+Health state meaning must not depend on hue alone. Every public relay badge
+retains the visible text `healthy`, `stale`, or `dead`. The stylesheet also
+reinforces those states with distinct non-color cues: a check mark and solid
+border for healthy, an exclamation mark and dashed border for stale, and a
+multiplication mark and double border for dead.
+
+Development validation maintains at least 4.5:1 text contrast for the reviewed
+light and dark palette combinations and regression-tests the visible text plus
+non-color cues. Color-vision-deficiency simulation is useful as a design
+diagnostic, including protanopia, deuteranopia, and tritanopia review, but it is
+not a substitute for the color-independent semantic cues or for human RC
+browser review.
+
+Relevant references:
+
+- WCAG 2.2, Success Criterion 1.4.1, Use of Color:
+  https://www.w3.org/WAI/WCAG22/Understanding/use-of-color
+- WCAG 2.2, Success Criterion 1.4.3, Contrast (Minimum):
+  https://www.w3.org/TR/WCAG22/#contrast-minimum
+- Machado, Oliveira, and Fernandes (2009), *A physiologically-based model for
+  simulation of color vision deficiency*, DOI `10.1109/TVCG.2009.113`.
