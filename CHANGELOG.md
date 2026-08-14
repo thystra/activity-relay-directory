@@ -4,6 +4,18 @@
 
 _No changes yet._
 
+## 0.1.0-rc3 - 2026-08-13
+
+- Add optional public operator website, email, and explicit Fediverse contact
+  links from a strict presentation-only `config.yml`; absent values are fully
+  suppressed and the public admin email is never inferred.
+- Keep `GET /v1/relays` as the supported bounded JSON API while removing JSON
+  navigation from the human page.
+- Remove the standalone privacy-boundary presentation panel while retaining the
+  same bounded public projection and privacy tests.
+- Carry forward the accepted RC2 application-owned CSP, bundled stylesheet,
+  color-independent health cues, and operator-centric acceptance contract.
+
 ## 0.1.0-rc2 - 2026-08-12
 
 - Fix reverse-proxy examples so they do not override the Directory's

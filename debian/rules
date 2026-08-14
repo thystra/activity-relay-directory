@@ -31,12 +31,17 @@ override_dh_auto_test:
 	go test -count=1 ./...
 
 override_dh_auto_install:
+	install -d -m 0755 \
+	  debian/activity-relay-directory/etc/activity-relay-directory
 	install -D -m 0755 \
 	  _build/activity-relay-directory \
 	  debian/activity-relay-directory/usr/bin/activity-relay-directory
 	install -D -m 0640 \
 	  debian/activity-relay-directory.default \
 	  debian/activity-relay-directory/etc/default/activity-relay-directory
+	install -D -m 0644 \
+	  config.yml.example \
+	  debian/activity-relay-directory/usr/share/doc/activity-relay-directory/examples/config.yml.example
 
 override_dh_installsystemd:
 	dh_installsystemd --no-enable --no-start --no-stop-on-upgrade

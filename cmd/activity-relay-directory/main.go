@@ -78,6 +78,12 @@ func run(arguments []string) int {
 		return 2
 	}
 
+	operatorMetadata, err := config.LoadOperatorMetadata()
+	if err != nil {
+		logger.Error("invalid operator presentation configuration", "error", err)
+		return 2
+	}
+
 	var growthMailer storage.GrowthMailer
 	if cfg.DatabaseGrowth.EmailEnabled() {
 		growthMailer, err = adminnotify.NewCommandMailer(
@@ -180,6 +186,7 @@ func run(arguments []string) int {
 			logger.Error("public-listing initialization failed", "error", err)
 			return 1
 		}
+		publicListingHandler = publicListingHandler.WithOperatorMetadata(operatorMetadata)
 	}
 
 	server := &http.Server{

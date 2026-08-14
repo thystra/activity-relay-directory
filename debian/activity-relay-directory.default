@@ -5,6 +5,13 @@
 
 DIRECTORY_LISTEN_ADDRESS=127.0.0.1:8080
 DIRECTORY_PUBLIC_BASE_URL=http://127.0.0.1:8080
+
+# Optional HTML-only operator metadata.
+# Blank uses /etc/activity-relay-directory/config.yml when that file exists;
+# a missing default file is allowed and suppresses all operator links.
+# Set an explicit clean absolute path for container/alternate deployments.
+DIRECTORY_CONFIG_PATH=
+
 DIRECTORY_DATABASE_PATH=/var/lib/activity-relay-directory/directory.sqlite
 
 DIRECTORY_LIFECYCLE_ENABLED=false

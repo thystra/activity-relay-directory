@@ -82,6 +82,7 @@ and logging overrides.
 | --- | --- | --- |
 | `DIRECTORY_LISTEN_ADDRESS` | `127.0.0.1:8080` | HTTP listener address |
 | `DIRECTORY_PUBLIC_BASE_URL` | required; HTTPS except loopback development; lifecycle always requires HTTPS | Canonical public authority |
+| `DIRECTORY_CONFIG_PATH` | empty; uses optional `/etc/activity-relay-directory/config.yml` | Alternate public operator-metadata YAML path |
 | `DIRECTORY_DATABASE_PATH` | required absolute secure local path | SQLite database |
 | `DIRECTORY_LIFECYCLE_ENABLED` | `false` | Enable signed register/heartbeat/unregister routes together |
 | `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON and human directory views |
@@ -289,3 +290,44 @@ GNU Affero General Public License version 3. See `LICENCE`.
 Development may use AI-assisted tooling for drafting, analysis, testing, and
 review support. A human maintainer reviews and approves changes, runs release
 gates, controls deployments, and remains accountable for the project.
+
+## Optional public operator contact
+
+The human Directory page can show operator-owned links without exposing
+administrative mail settings. The Debian package creates the empty
+`/etc/activity-relay-directory/` parent directory and installs the example at
+`/usr/share/doc/activity-relay-directory/examples/config.yml.example`, but does
+not install an active `config.yml`. Copy that example to
+`/etc/activity-relay-directory/config.yml`; from a source checkout, use the
+repository-root `config.yml.example`. Set `DIRECTORY_CONFIG_PATH` to an alternate
+clean absolute path when needed.
+
+```yaml
+OPERATOR-WEBSITE: "https://operator.example/"
+OPERATOR-EMAIL: "operator@example.org"
+FEDIVERSE-OPERATOR-ID: "@operator@social.example"
+FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
+```
+
+Empty/absent values are suppressed. The Fediverse identifier and explicit HTTPS
+profile URL must be configured together; profile URLs are never guessed from a
+handle. This file controls only public presentation and is not returned by the
+JSON/status APIs. `DIRECTORY_ADMIN_EMAIL` remains operational/private and is
+never reused as a public address automatically.
+
+The stock container image likewise creates an empty
+`/etc/activity-relay-directory/` directory and includes the example at
+`/usr/share/doc/activity-relay-directory/examples/config.yml.example`; it does
+not bake in an active `config.yml`. The base `compose.yml` forwards
+`DIRECTORY_CONFIG_PATH` but intentionally does not bind any host operator file.
+To use the default path with Compose, add an operator-owned override such as:
+
+```yaml
+services:
+  directory:
+    volumes:
+      - ./config.yml:/etc/activity-relay-directory/config.yml:ro
+```
+
+If an alternate in-container path is mounted instead, set
+`DIRECTORY_CONFIG_PATH` to that absolute path in `.env` or the Compose override.

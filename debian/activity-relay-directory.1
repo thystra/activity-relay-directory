@@ -1,4 +1,4 @@
-.TH ACTIVITY-RELAY-DIRECTORY 1 "11 August 2026" "Activity-Relay Directory 0.1.0-rc1" "User Commands"
+.TH ACTIVITY-RELAY-DIRECTORY 1 "13 August 2026" "Activity-Relay Directory" "User Commands"
 .SH NAME
 activity-relay-directory \- signed relay directory service for Activity-Relay
 .SH SYNOPSIS
@@ -21,11 +21,21 @@ Print the embedded application version and exit.
 .SH CONFIGURATION
 The packaged systemd service reads
 .BR /etc/default/activity-relay-directory .
-Review that file before enabling or starting the service.
+Optional public operator metadata is read from
+.BR /etc/activity-relay-directory/config.yml
+when that file is present, or from the clean absolute path selected by
+.BR DIRECTORY_CONFIG_PATH .
+Review configuration before enabling or starting the service.
 .SH FILES
 .TP
 .B /etc/default/activity-relay-directory
 Package-managed runtime environment.
+.TP
+.B /etc/activity-relay-directory/config.yml
+Optional operator-owned public contact metadata; absent by default.
+.TP
+.B /usr/share/doc/activity-relay-directory/examples/config.yml.example
+Packaged operator-metadata example.
 .TP
 .B /var/lib/activity-relay-directory/directory.sqlite
 Default SQLite database path. The state directory is intentionally preserved

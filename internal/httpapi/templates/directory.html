@@ -14,9 +14,6 @@
   <header class="site-header">
     <div class="shell header-row">
       <a class="site-name" href="/">Activity-Relay Directory</a>
-      <nav aria-label="Directory navigation">
-        <a href="{{.JSONURL}}">JSON API</a>
-      </nav>
     </div>
   </header>
 
@@ -34,7 +31,6 @@
           <h2 id="relay-list-heading">Participating relays</h2>
           <p class="muted">{{len .Listing.Relays}} public {{if eq (len .Listing.Relays) 1}}relay{{else}}relays{{end}} on this page.</p>
         </div>
-        <a class="button-link" href="{{.JSONURL}}">View JSON API</a>
       </div>
 
 {{if .Listing.Relays}}
@@ -94,18 +90,16 @@
         </div>
       </dl>
     </section>
-
-    <section class="panel privacy-note" aria-labelledby="public-data-heading">
-      <p class="eyebrow">Privacy boundary</p>
-      <h2 id="public-data-heading">Public metadata only</h2>
-      <p>This view exposes only the bounded public relay projection. Administrative, moderation, suspension, and internal storage details are not published here.</p>
-    </section>
   </main>
 
   <footer class="site-footer">
     <div class="shell footer-row">
-      <span>Activity-Relay Directory</span>
-      <a href="{{.JSONURL}}">Public JSON API</a>
+      <span>Activity-Relay Directory</span>{{if .HasOperator}}
+      <nav class="operator-links" aria-label="Operator contact">
+        {{if .OperatorWebsite}}<a href="{{.OperatorWebsite}}" rel="noreferrer">Operator website</a>{{end}}
+        {{if .OperatorEmail}}<a href="{{.OperatorEmailURL}}">{{.OperatorEmail}}</a>{{end}}
+        {{if .FediverseID}}<a href="{{.FediverseURL}}" rel="me noreferrer">{{.FediverseID}}</a>{{end}}
+      </nav>{{end}}
     </div>
   </footer>
 </body>

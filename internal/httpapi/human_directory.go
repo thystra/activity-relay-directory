@@ -24,10 +24,15 @@ var (
 )
 
 type humanDirectoryPage struct {
-	Listing    publicListingResponse
-	NextURL    string
-	JSONURL    string
-	Stylesheet string
+	Listing          publicListingResponse
+	NextURL          string
+	Stylesheet       string
+	HasOperator      bool
+	OperatorWebsite  string
+	OperatorEmail    string
+	OperatorEmailURL string
+	FediverseID      string
+	FediverseURL     string
 }
 
 func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), error) {
@@ -74,18 +79,22 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		nextURL = "/?" + values.Encode()
 	}
 
-	jsonValues := url.Values{}
-	jsonValues.Set("limit", strconv.Itoa(listing.Pagination.Limit))
-	if listing.Pagination.CurrentCursor != "" {
-		jsonValues.Set("cursor", listing.Pagination.CurrentCursor)
+	operator := handler.operator
+	operatorEmailURL := ""
+	if operator.Email != "" {
+		operatorEmailURL = (&url.URL{Scheme: "mailto", Opaque: operator.Email}).String()
 	}
-	jsonURL := "/v1/relays?" + jsonValues.Encode()
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
-		Listing:    listing,
-		NextURL:    nextURL,
-		JSONURL:    jsonURL,
-		Stylesheet: directoryStylesheetPath,
+		Listing:          listing,
+		NextURL:          nextURL,
+		Stylesheet:       directoryStylesheetPath,
+		HasOperator:      !operator.Empty(),
+		OperatorWebsite:  operator.Website,
+		OperatorEmail:    operator.Email,
+		OperatorEmailURL: operatorEmailURL,
+		FediverseID:      operator.FediverseID,
+		FediverseURL:     operator.FediverseURL,
 	})
 	if err != nil {
 		writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")

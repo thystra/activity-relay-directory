@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/config"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
@@ -40,6 +41,7 @@ type PublicListingHandler struct {
 	semaphore            chan struct{}
 	cursorKey            []byte
 	renderHumanDirectory func(humanDirectoryPage) ([]byte, error)
+	operator             config.OperatorMetadata
 }
 
 // NewPublicListingHandler validates the production public-listing dependency graph.
@@ -73,6 +75,17 @@ func newPublicListingHandler(
 		cursorKey:            cursorKey,
 		renderHumanDirectory: renderHumanDirectory,
 	}, nil
+}
+
+// WithOperatorMetadata returns a shallow immutable presentation clone.  The
+// repository, cursor key, concurrency budget, and JSON projection are unchanged.
+func (handler *PublicListingHandler) WithOperatorMetadata(metadata config.OperatorMetadata) *PublicListingHandler {
+	if handler == nil {
+		return nil
+	}
+	cloned := *handler
+	cloned.operator = metadata
+	return &cloned
 }
 
 func (handler *PublicListingHandler) serve(response http.ResponseWriter, request *http.Request) {
