@@ -4,8 +4,11 @@ Activity-Relay Directory for Debian/Ubuntu
 Installation is deliberately separate from activation.
 
 The package installs a dedicated activity-relay-directory system account,
-owner-only state directory, /etc/default/activity-relay-directory, and a
-hardened systemd unit. The service is not enabled or started automatically.
+owner-only state directory, /etc/default/activity-relay-directory, an empty
+/etc/activity-relay-directory/ operator-config directory, a config.yml example
+under /usr/share/doc/activity-relay-directory/examples/, and a hardened systemd
+unit. It does not install an active /etc/activity-relay-directory/config.yml.
+The service is not enabled or started automatically.
 
 Fresh package defaults bind only to 127.0.0.1:8080 and keep lifecycle,
 public listing, automatic soft pruning, positive inactive retention, and

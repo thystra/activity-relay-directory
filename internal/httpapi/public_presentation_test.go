@@ -57,7 +57,6 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		"Participating relays",
 		"No relays are listed yet",
 		"Health definitions",
-		"Public metadata only",
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("human directory body missing %q", required)

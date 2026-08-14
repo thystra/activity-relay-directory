@@ -1,3 +1,15 @@
+activity-relay-directory (0.1.0~rc3-1) unstable; urgency=medium
+
+  * Add optional config.yml operator website, email, and explicit Fediverse
+    links.
+  * Suppress absent operator details and keep operator metadata out of JSON
+    APIs.
+  * Remove JSON API navigation from the human Directory while retaining the API.
+  * Remove the standalone privacy-boundary panel without widening public data.
+  * Preserve the RC2 reverse-proxy CSP and accessibility corrections.
+
+ -- Alan Johnson <alan@argentwolf.org>  Thu, 13 Aug 2026 16:36:00 +0000
+
 activity-relay-directory (0.1.0~rc2-1) unstable; urgency=medium
 
   * Fix reverse-proxy CSP handling so the public stylesheet is not blocked.

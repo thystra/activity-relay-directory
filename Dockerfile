@@ -32,15 +32,29 @@ FROM public.ecr.aws/docker/library/alpine:3.22.1
 RUN apk add --no-cache ca-certificates && \
     addgroup -S directory && \
     adduser -S -G directory -h /nonexistent -s /sbin/nologin directory && \
-    mkdir -p /var/lib/activity-relay-directory && \
+    mkdir -p \
+      /var/lib/activity-relay-directory \
+      /etc/activity-relay-directory \
+      /usr/share/licenses/activity-relay-directory \
+      /usr/share/doc/activity-relay-directory/examples && \
     chown directory:directory /var/lib/activity-relay-directory && \
-    chmod 0700 /var/lib/activity-relay-directory
+    chmod 0700 /var/lib/activity-relay-directory && \
+    chmod 0755 \
+      /etc/activity-relay-directory \
+      /usr/share \
+      /usr/share/licenses \
+      /usr/share/licenses/activity-relay-directory \
+      /usr/share/doc \
+      /usr/share/doc/activity-relay-directory \
+      /usr/share/doc/activity-relay-directory/examples
 
 COPY --from=build \
   /rootfs/usr/bin/activity-relay-directory \
   /usr/bin/activity-relay-directory
 
-COPY LICENCE /usr/share/licenses/activity-relay-directory/LICENCE
+COPY --chown=0:0 --chmod=0644 LICENCE /usr/share/licenses/activity-relay-directory/LICENCE
+
+COPY --chown=0:0 --chmod=0644 config.yml.example /usr/share/doc/activity-relay-directory/examples/config.yml.example
 
 USER directory:directory
 

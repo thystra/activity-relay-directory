@@ -1,0 +1,18 @@
+# Optional public operator metadata for the human Activity-Relay Directory page.
+#
+# Debian operators may copy this file to:
+#   /etc/activity-relay-directory/config.yml
+#
+# Container operators may mount a file and set DIRECTORY_CONFIG_PATH to its
+# absolute path. Empty values are not rendered. FEDIVERSE-OPERATOR-ID and
+# FEDIVERSE-OPERATOR-URL must either both be set or both be empty; the URL is
+# explicit because profile URL shapes differ between Fediverse applications.
+#
+# This file is presentation-only. Runtime policy remains in the existing
+# DIRECTORY_* process environment, and DIRECTORY_ADMIN_EMAIL is never made
+# public implicitly.
+
+OPERATOR-WEBSITE: ""
+OPERATOR-EMAIL: ""
+FEDIVERSE-OPERATOR-ID: ""
+FEDIVERSE-OPERATOR-URL: ""

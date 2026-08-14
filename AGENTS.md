@@ -394,3 +394,336 @@ and deployments, and remain accountable for the software.
 - Keep host-neutral checklist semantics in `docs/RC-ACCEPTANCE.md`; private
   hostnames, credentials, and operational transcripts remain outside the public
   repository.
+
+## Applicator and verifier defect prevention
+
+Applicators, validators, and release verifiers are part of the release-safety
+boundary. A false failure is still operationally expensive, and a brittle
+verifier can encourage unnecessary rebuilds or repeated mutation. Treat defects
+in these tools as durable engineering lessons rather than one-off script fixes.
+
+- **Record every newly discovered applicator/verifier defect in `AGENTS.md`.**
+  When an applicator, validator, builder, or release verifier causes a false
+  failure, misses a required failure, mutates more than intended, or requires a
+  corrective retry, classify the defect and add the lesson here before that
+  corrective work is considered complete. Record at least the failure
+  signature, root cause, prevention rule, and a focused regression guard.
+  Do not rely on chat/session memory. If the affected candidate/source is
+  already frozen and must remain immutable, carry the documentation update in
+  the next legitimate source-changing candidate rather than modifying frozen
+  bytes.
+- **Preserve literal bytes across language/escaping layers.** When Python,
+  shell, YAML, Make, or heredocs generate or match another language, reason
+  about every parser involved. In particular, a backslash immediately followed
+  by a physical newline inside a normal Python string literal is consumed as a
+  Python source-line continuation. Do not use such a non-raw triple-quoted
+  string to match Makefile or shell continuation bytes. Use a raw string,
+  explicit escaped bytes, or a structural parser/edit, and add a focused
+  self-test proving the generated matcher contains the intended literal
+  backslash/newline sequence.
+- **The Bash Debian-tilde rule remains mandatory.** The existing
+  `${value//\~/-}` requirement and focused `0.1.0~rcN` -> `0.1.0-rcN`
+  regression guard apply to every applicator/builder that performs that
+  translation. Do not reintroduce bare `${value//~/-}`.
+- **Prefer structural edits over presentation-sensitive text anchors.** Avoid
+  whitespace-, indentation-, wrapping-, or prose-sensitive multiline matchers
+  when a parser, AST boundary, keyed YAML field, exact line, or other stable
+  structure is available. If exact-text replacement is genuinely appropriate,
+  require exactly one match against the pinned base before writing and fail
+  closed without leaving a partial source mutation.
+- **Do not couple version identity to incidental changelog dates.** A prior
+  RC3-preparation applicator correctly pinned the RC2 source commit but then
+  falsely required the RC2 `CHANGELOG.md` heading to use a guessed date. The
+  pinned source used a different valid date, causing a pre-mutation false
+  failure. When a prior release heading is needed as an anchor, select exactly
+  one heading by release/version identity and validate only the date *shape*
+  unless the calendar date itself is part of the contract. Add a regression
+  that proves the matcher accepts the pinned base heading without hard-coding a
+  guessed date.
+- **Normalize generated text file endings.** A later RC3-preparation retry
+  appended `"\n"` to raw triple-quoted Markdown additions that already ended in
+  a newline, producing `git diff --check` failures for "new blank line at EOF".
+  When generating or appending text, normalize to exactly one final newline
+  unless the file format explicitly requires otherwise. Run `git diff --check`
+  immediately after the source transform, before dependency downloads or
+  expensive builds, and add a focused regression for the affected generated
+  files so the same extra-EOF-newline defect cannot recur.
+- **Normalize prose before semantic verifier assertions.** An RC3-preparation
+  static verifier required the sentence fragment `failure signature, root
+  cause, prevention rule, and a focused regression guard` to occur on one
+  physical Markdown line even though the generated `AGENTS.md` wrapped that
+  sentence across lines. This caused a false failure after the source transform
+  and whitespace checks had already passed. For documentation/prose semantics,
+  normalize runs of whitespace before matching or use a parser/section-aware
+  assertion. Reserve exact byte/line matching for syntax whose physical layout
+  is itself part of the contract. Add a focused regression proving semantically
+  identical wrapped prose passes the verifier.
+- **Do not exact-match formatter-owned source spacing.** An RC3-preparation
+  verifier looked for `defaultOperatorConfigPath = "..."` as an exact Go source
+  substring after `gofmt`. Because `gofmt` aligned assignments inside the
+  `const` block with additional spaces, the semantic constant was present but
+  the verifier falsely failed. For Go or other formatter-owned source, prefer a
+  language parser/AST; when a focused lexical check is sufficient, tolerate
+  insignificant whitespace around tokens and anchor the complete construct.
+  Add a regression using the formatter's actual aligned output.
+- **Verifier self-tests must inspect real state and must not be vacuous.** While
+  reviewing the same RC3 static gate, a latent assertion was found that built a
+  string containing the very hard-coded changelog date it then asserted was
+  absent, which would have guaranteed a later false failure. Another assertion
+  checked an empty synthetic collection and therefore always passed without
+  validating anything. Do not use tautological, contradictory, or vacuous
+  self-tests. Assertions must inspect the actual file/tree/data they claim to
+  validate, and focused regression tests must prove both a known-good case and,
+  where practical, the historical bad case.
+- **Embedded interpreter syntax checks are not runtime dependency checks.**
+  An RC3-preparation verifier introduced `re.search()`/`re.findall()` into an
+  embedded Python block but forgot `import re`. The block compiled successfully,
+  so compile-only applicator self-validation did not detect the runtime
+  `NameError`. Every embedded Python/Perl/Ruby/etc. verifier must declare the
+  modules/names it uses and receive a focused dependency-closure check. At
+  minimum, inspect each embedded block for module-qualified calls and require
+  the matching import; when practical, execute the verifier against the
+  prospective tree or a representative fixture before handing the applicator to
+  the operator. Do not describe `compile()` as proof that an embedded verifier
+  is runnable.
+- **Historical failure evidence must use reachable, prevalidated markers.**
+  An RC3-preparation retry attempted to classify a prior embedded-Python
+  `NameError` by requiring a `...=PASS` line that would only have been printed
+  *after* the statement that raised the exception. The historical classifier
+  therefore failed before any source work even though the prior defect
+  diagnosis was correct. When binding a failed report, require only markers
+  that were actually reachable at or before the recorded failure point. Before
+  handing a retry to the operator, evaluate every proposed evidence marker
+  against the exact report being bound; do not ship an untested historical
+  marker list. Where order matters, also verify that the failure signature
+  follows the prerequisite markers rather than inferring reachability from
+  source code alone.
+- **Do not invent or abbreviate source symbols in verifier checks.** An
+  RC3-preparation verifier checked for a guessed `TestReleaseWorkflow` symbol,
+  while the pinned Go source actually declared the more specific
+  `TestCanonicalReleaseWorkflowDispatchInputsAreShellData` and
+  `TestCanonicalReleaseWorkflowInstallsDebianToolsBeforeUse` tests. The
+  verifier therefore failed despite inspecting the real file. Before asserting
+  a function/type/key/field name, derive it from the pinned source or a
+  language-aware symbol inventory; do not infer a plausible umbrella name from
+  memory. For Go source, extract real `func` declarations or use the parser/AST
+  and assert the exact reviewed symbols. Add a regression that proves the
+  historical guessed symbol is absent while the reviewed real symbols are
+  present.
+- **Do not make terminal-captured report bytes an authority boundary.** Exact
+  SHA-256 binding is appropriate for deliberately generated immutable
+  artifacts, patches, manifests, and stable evidence files. Terminal captures
+  may contain OSC/control sequences, presentation bytes, or other environment
+  noise even when their semantic content is unchanged. For such reports, bind
+  stable semantic markers and independently re-prove the current authority,
+  security, data-integrity, or pristine-state boundary before mutation. Use a
+  raw report-byte hash as a blocking gate only when the report format itself is
+  deliberately deterministic.
+- **Avoid early-consumer pipelines under `set -o pipefail`.** A producer such
+  as `dpkg-deb --contents` can receive SIGPIPE when a downstream `head`, early
+  `grep`, or similar consumer exits successfully. Capture complete producer
+  output first, verify the producer status, then parse the retained output.
+- **Keep machine-readable stdout clean.** If a helper's stdout is consumed by
+  command substitution or another parser, progress/status logging must go to
+  stderr. Do not let network/progress text contaminate captured SHA, ID, JSON,
+  or other machine-readable values.
+- **Self-validate the applicator before handing it to the operator.** At
+  minimum run shell syntax checks on the outer script and generated shell
+  bodies, compile embedded Python, and add focused regression checks for any
+  escaping, matcher, parser, or report-evidence behavior that previously
+  failed. When practical, apply the exact transform first to a detached
+  prospective tree and require the resulting tree/patch to match the staged
+  worktree exactly.
+
+A retry caused by an applicator/verifier bug is not complete merely because the
+next script works. The durable prevention rule and regression guard must be
+captured here so future applicators can avoid repeating the same class of
+failure.
+
+### R2K transaction, anchor, and diagnostic regression
+
+- **Preflight every transform before the first source write.** R2K wrote six
+  real-worktree files and only then reached a line-wrap-sensitive
+  `docs/PUBLIC-LISTING.md` anchor whose semantic text was present but whose
+  physical wrapping differed. For a multi-file transform, resolve and validate
+  every source anchor and expected output in memory or in a detached prospective
+  tree before writing any real source path. Documentation prose anchors must use
+  whitespace-normalized semantics or stable section boundaries rather than
+  incidental line wrapping. A focused regression must accept the historical R2J
+  `does` / `not install` line break and prove a failed preflight leaves the
+  source tree byte-identical.
+
+- **An `EXIT` cleanup trap is not a source transaction by itself.** R2K
+  correctly preserved the original exit status and cleaned Docker/tmp resources,
+  but it had no source rollback after direct writes to the real feature
+  worktree. Once real source mutation begins, the transaction guard must be able
+  to restore the exact verified starting index and worktree, including an
+  explicitly accepted dirty/partial state. Prefer to complete all transformation
+  and validation in a detached prospective tree, self-test the resulting patch,
+  and make the real worktree mutation one final transactional step.
+
+- **Failing assertions must identify the invariant that failed.** R2K's bare
+  Python `assert` produced only `AssertionError` plus an embedded line number,
+  forcing a second source-level reconstruction to identify the bad
+  `PUBLIC-LISTING.md` matcher. Applicator/verifier failures must name the file or
+  subsystem, the expected invariant, and useful observed state such as match
+  count or value. Focused historical-failure tests should verify the diagnostic
+  itself as well as the pass/fail result.
+
+### R2L recovery-fixture reconstruction regression
+
+- **Recovery fixtures must reproduce historical bytes, not intended semantics.**
+  R2L correctly refused to overwrite an unauthenticated dirty worktree, but its
+  manually retyped model of R2K's `README.md` mutation omitted one blank line.
+  R2K had concatenated an anchor ending in a newline with a triple-quoted string
+  beginning with two physical newlines, so the current on-disk README was the
+  exact historical R2K output and R2L falsely rejected it. When authenticating a
+  failed applicator's partial state, replay the exact historical transformation
+  when it is available and compare byte-for-byte; do not simplify whitespace
+  because the expected mutation bytes are the contract.
+
+- **Inventory the full current dirty state before rejecting recovery.** A
+  recovery gate must report every accepted dirty path plus expected and actual
+  hashes, and on mismatch should identify all differing paths rather than stop at
+  the first one. Current on-disk bytes are evidence to authenticate and preserve,
+  not something to normalize speculatively. Any mismatch outside an explicitly
+  recognized historical state still fails closed before source mutation.
+
+### R2M generated-text whitespace regression
+
+- **Generated text has an explicit whitespace contract.** R2M correctly
+  authenticated the historical R2K partial state and completed its detached
+  transform preflight, but its `AGENTS.md` append produced a second newline at
+  EOF and `git diff --check` rejected the prospective tree. For normal LF text
+  files generated or rewritten by an applicator, require exactly one final
+  newline, reject trailing spaces/tabs, and reject unexpected CR bytes unless
+  the file's established format explicitly requires otherwise. Validate these
+  invariants in memory before the first write and run `git diff --check`
+  immediately after writing the detached prospective result.
+
+- **Use explicit newline helpers instead of visually ambiguous concatenation.**
+  Do not combine `rstrip()` with triple-quoted additions and an extra `"\n"`.
+  Bare `rstrip()` can also remove spaces or tabs that were not intended to be
+  normalized. Use `rstrip("\n")` when only EOF newlines are being normalized,
+  and use a reviewed helper for section appends that deliberately constructs the
+  required blank line between sections plus exactly one final newline. Focused
+  helper regressions must cover zero, one, and multiple final newlines, wrapped
+  prose, trailing horizontal whitespace, and blank-line-at-EOF rejection.
+
+- **Whitespace significance depends on the artifact.** Normalize Markdown and
+  other prose for semantic matching, but do not normalize byte-sensitive shell,
+  Make, patch, checksum, fixture, or recovery evidence. Exact-byte and semantic
+  comparisons are separate tools; choose the one that matches the actual
+  contract rather than treating all whitespace as either significant or
+  insignificant.
+
+### Repository-state authority and Git checkpoints
+
+- **Never guess the state of a repository.** Before a transform or recovery,
+  inspect the actual checkout, branch, HEAD, index tree, staged patch, unstaged
+  paths, untracked paths, and any remote authority state that matters to the
+  gate. Chat/session memory, a different checkout, a previously uploaded source
+  archive, or the expected result of a failed applicator is not a substitute for
+  current repository evidence. If the required checkout cannot be inspected, or
+  the observed state does not match an explicitly accepted state, stop and ask
+  the operator for a fresh source snapshot/report rather than reconstructing or
+  guessing the missing bytes.
+
+- **Use Git as the recovery boundary after validation, not before it.** Detached
+  worktrees and prospective trees remain the preferred place for unvalidated
+  transforms. After an exact tree has passed the required validation and human
+  review, a local commit may be used as an explicit rollback/checkpoint boundary;
+  a bad later commit can then be abandoned, reset, or reverted according to the
+  reviewed workflow. Do not commit merely to make an unvalidated transform
+  easier to recover, and do not push, tag, publish, or deploy a checkpoint until
+  the corresponding release gate explicitly authorizes it.
+
+- **Different checkouts are different evidence.** A clean primary `master`
+  checkout proves the base checkout only; it does not prove the state of a
+  separate feature worktree. Always name which checkout supplied each branch,
+  tree, index, or worktree observation.
+
+### Cross-interpreter byte semantics
+
+- **Do not assume shell-visible text equals bytes written to a file.** Shell
+  parsing, quoted versus unquoted heredocs, command substitution, Python string
+  escapes, raw strings, Make continuations, YAML quoting, and formatter behavior
+  can all alter bytes between the applicator source and the target file. Model
+  every interpretation layer explicitly and keep file generation in one language
+  where practical.
+
+- **Quoted heredocs are the default for literal embedded source.** Use a quoted
+  delimiter such as `<<'PY'` or `<<'EOF'` when the body must not undergo shell
+  expansion. If expansion is intentionally required, make that boundary narrow
+  and add a byte-level regression for the resulting file. Embedded interpreter
+  blocks must compile, declare/import their runtime dependencies, and when they
+  generate byte-sensitive syntax must be exercised against a focused fixture.
+
+- **Round-trip byte tests belong next to historical escaping failures.** The
+  existing Debian-tilde and Python raw-string/backslash-newline lessons remain
+  mandatory. Applicators that cross shell/Python/heredoc/Make boundaries must
+  add focused tests proving the intended literal bytes survive those layers;
+  successful display in a terminal is not sufficient evidence.
+
+### R2N container-copy mode and diagnostic regression
+
+- **Declare final-image file modes explicitly when the mode is part of the contract.**
+  R2N built its detached worktree under `umask 077`; Git records only executable
+  versus non-executable for ordinary files, while `git worktree add` may create a
+  non-executable file as mode `0600` under that umask. Docker `COPY` can preserve
+  the build-context filesystem mode, so a plain copy made the packaged operator
+  example environment-dependent even though the intended image contract was
+  `0644`. Use `COPY --chmod=...` or an explicit `RUN chmod` for final-image files
+  whose permissions matter, and test the resulting image mode. Do not assume a
+  Git mode of `100644` proves the checkout file is physically `0644`.
+
+- **Post-build container assertions must report observed values.** R2N used a
+  single `docker run ... /bin/sh -c` block containing bare `test` commands under
+  `set -e`; when the example mode differed, the report stopped after a successful
+  image build without naming the failed path or observed mode. Capture the
+  container observations as machine-readable evidence and validate each invariant
+  in the outer applicator with a named `die` message. A fail-closed verifier is
+  only operationally useful when its failure identifies what must be investigated.
+
+
+### R2O / R2P container visibility and source-authority regression
+
+- **Do not rely on implicitly created container destination parents.** R2O
+  explicitly set copied documentation files to mode `0644`, and the build showed
+  both COPY layers succeeding, yet the configured non-root runtime user could not
+  see either copied file. When a runtime-visible image path is part of the
+  contract, explicitly create every relevant destination parent, set its
+  traversal mode (normally `0755` for public documentation), and explicitly set
+  file ownership/mode. Verify the final image both as root and as the configured
+  runtime user; a successful COPY layer alone is not sufficient evidence.
+
+- **A diagnostic must consume the authenticated current source, not replay an
+  assumed predecessor.** R2P correctly authenticated the live RC3 worktree and
+  then falsely attempted to add a config-example COPY that the current Dockerfile
+  already contained. If the current repository is small enough to snapshot,
+  capture the complete tracked working-tree bytes plus branch, HEAD, index tree,
+  staged patch, unstaged patch, physical modes, and checksums after each gate.
+  The next applicator must compare the live checkout against that snapshot before
+  relying on historical reconstruction.
+
+- **Emit a fresh source-of-truth bundle after every applicator.** For this
+  repository, each gate should automatically produce a compact source tarball
+  containing all tracked working-tree files and Git-state evidence, regardless
+  of success or fail-closed exit. Review and subsequent transforms should prefer
+  that exact snapshot over chat memory, intended transforms, or manually retyped
+  fixtures. Historical applicators remain useful as regression evidence, not as
+  substitutes for current source authority.
+
+
+### R2Q bespoke-runtime environment regression
+
+- **A bespoke runtime probe must start from the application's minimum required
+  process contract.** R2Q passed source authority, generated-text, static,
+  Compose, Debian, and container-layout validation, then its operator-link
+  `docker run` helper omitted `DIRECTORY_DATABASE_PATH`; the application
+  correctly failed before serving HTTP. When a verifier launches the binary
+  outside Compose/systemd, explicitly provide every required baseline process
+  setting and compare the launch contract against the maintained deployment
+  surface. A focused regression must prove the runtime helper supplies
+  `DIRECTORY_DATABASE_PATH=/var/lib/activity-relay-directory/directory.sqlite`
+  before exercising optional operator configuration.

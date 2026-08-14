@@ -62,8 +62,10 @@ bounds as JSON, so ordering, observation time, health classification, and the
 30-day public-eligibility cutoff cannot drift between representations. A cursor
 issued by one representation is accepted by the other while it remains valid.
 
-The initial HTML page contains only the public JSON relay fields plus explanatory
-labels and health definitions. Go templates provide automatic HTML escaping.
+The relay-listing portion of the HTML page contains only the public JSON relay
+fields plus explanatory labels and health definitions. Optional operator contact
+links are separate operator-owned presentation metadata described below and do
+not widen the relay projection. Go templates provide automatic HTML escaping.
 Relay public base URLs are the only relay-controlled outbound links; relay HTML,
 images, scripts, styles, fonts, and other remote resources are never fetched.
 The page uses a bundled same-origin stylesheet and no JavaScript.
@@ -79,8 +81,9 @@ responses are fixed, redacted, and `no-store`.
 `GET /` is a public product surface, not an administrative diagnostic. It uses
 the same bounded, filtered projection as `GET /v1/relays`, but presents that
 data in an Activity-Relay-family layout with a branded header, responsive relay
-cards, human-readable health context, an intentional empty state, and a
-secondary link to the JSON API.
+cards, human-readable health context, and an intentional empty state. The
+versioned JSON API remains available at `GET /v1/relays`, but the human page
+does not advertise or link to it.
 
 The view remains dependency-free and privacy-bounded:
 
@@ -121,3 +124,41 @@ Relevant references:
   https://www.w3.org/TR/WCAG22/#contrast-minimum
 - Machado, Oliveira, and Fernandes (2009), *A physiologically-based model for
   simulation of color vision deficiency*, DOI `10.1109/TVCG.2009.113`.
+
+## Optional public operator contact
+
+The human `GET /` page may display operator-owned contact links from the optional
+YAML file `/etc/activity-relay-directory/config.yml`. The Debian package owns the
+empty parent directory and installs an example at
+`/usr/share/doc/activity-relay-directory/examples/config.yml.example`; it does not install an active `config.yml`. The stock container image follows the
+same model: it creates the empty default parent and includes the example under
+`/usr/share/doc/activity-relay-directory/examples/`, while the base Compose file
+forwards `DIRECTORY_CONFIG_PATH` without binding any host file. Set
+`DIRECTORY_CONFIG_PATH` to a clean absolute path to use another file, such as a
+read-only container mount. When the default path is absent, or all supported
+values are empty, no operator-contact label or placeholder is rendered.
+
+Supported keys are:
+
+```yaml
+OPERATOR-WEBSITE: "https://operator.example/"
+OPERATOR-EMAIL: "operator@example.org"
+FEDIVERSE-OPERATOR-ID: "@operator@social.example"
+FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
+```
+
+`OPERATOR-WEBSITE` and `OPERATOR-EMAIL` are independently optional. The two
+Fediverse values are a pair: either both are present or both are absent. The
+displayed `@user@host` identifier links to the explicit HTTPS profile URL; the
+Directory never derives a profile URL because Friendica, Mastodon, and other
+Fediverse applications use different URL layouts.
+
+This YAML is public-presentation metadata only. It does not replace the
+`DIRECTORY_*` runtime environment, is not emitted by `/v1/relays` or
+`/v1/status`, and does not make `DIRECTORY_ADMIN_EMAIL` public. Unknown YAML
+fields, unsafe URLs, ambiguous email syntax, and incomplete Fediverse pairs fail
+startup when the file is explicitly configured.
+
+The absence of the former on-page "Privacy boundary" panel does not widen the
+projection. The public data boundary remains enforced by the same repository,
+eligibility, moderation, health, and serialization contracts described above.
