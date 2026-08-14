@@ -83,6 +83,9 @@ func run(arguments []string) int {
 		logger.Error("invalid operator presentation configuration", "error", err)
 		return 2
 	}
+	for _, diagnostic := range operatorMetadata.Diagnostics {
+		logger.Warn("operator presentation configuration warning", "diagnostic", diagnostic)
+	}
 
 	var growthMailer storage.GrowthMailer
 	if cfg.DatabaseGrowth.EmailEnabled() {

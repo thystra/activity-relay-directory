@@ -59,6 +59,18 @@ acceptance. The final report should summarize at least:
 - operator notes; and
 - final disposition such as `GO`, `GO WITH NOTES`, or `NO-GO`.
 
+## Configuration-state acceptance
+
+Release candidates that expose configurable operator/user presentation must be
+reviewed as a state matrix rather than only in one fully configured state. Use
+the classifications in `CONFIGURATION.md` to decide which failures are critical
+and which should be recorded while the service continues.
+
+For Nice-to-have multi-key presentation objects, acceptance should include all
+valid visibility combinations plus each single missing/malformed member. Assert
+that valid independent fields remain visible, partial/unsafe links are absent,
+and the human-facing diagnostic names the exact key that needs attention.
+
 ## Human-facing and integration checks
 
 Machine checks can prove that HTML returned `200`, CSS returned the expected

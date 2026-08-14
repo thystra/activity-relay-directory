@@ -315,7 +315,14 @@ code {
 
 
 
-.operator-links {
+.operator-contact {
+  display: grid;
+  justify-items: end;
+  gap: 0.45rem;
+}
+
+.operator-links,
+.operator-diagnostics {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -323,6 +330,15 @@ code {
 }
 
 .operator-links a { font-weight: 650; }
+
+.operator-diagnostics {
+  justify-content: flex-end;
+  color: var(--warning);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.operator-diagnostic { max-width: 34rem; }
 
 .site-footer {
   border-top: 1px solid var(--border);
@@ -345,4 +361,8 @@ code {
 
   .header-row,
   .footer-row { padding-block: 1rem; }
+
+  .operator-contact { justify-items: start; }
+
+  .operator-diagnostics { justify-content: flex-start; }
 }
