@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,17 +18,30 @@ import (
 const (
 	defaultOperatorConfigPath  = "/etc/activity-relay-directory/config.yml"
 	maximumOperatorConfigBytes = 64 * 1024
+
+	operatorWebsiteMalformedDiagnostic = "OPERATOR-WEBSITE is malformed in config.yml."
+	operatorEmailMalformedDiagnostic   = "OPERATOR-EMAIL is malformed in config.yml."
+	fediverseIDMalformedDiagnostic     = "FEDIVERSE-OPERATOR-ID is malformed in config.yml."
+	fediverseURLMalformedDiagnostic    = "FEDIVERSE-OPERATOR-URL is malformed in config.yml."
+	fediverseIDMissingDiagnostic       = "Please configure FEDIVERSE-OPERATOR-ID in config.yml."
+	fediverseURLMissingDiagnostic      = "Please configure FEDIVERSE-OPERATOR-URL in config.yml."
 )
 
-var fediverseOperatorID = regexp.MustCompile(`^@[^@\s/]+@[^@\s/]+$`)
+var (
+	fediverseOperatorID = regexp.MustCompile(`^@[^@\s/]+@[^@\s/]+$`)
+	operatorEmail       = regexp.MustCompile(`^[^@\s<>]+@[^@\s<>.]+(?:\.[^@\s<>.]+)+$`)
+)
 
 // OperatorMetadata is optional public contact information for the human
-// Directory page.  It is never copied into the JSON directory or status API.
+// Directory page. It is never copied into the JSON directory or status API.
+// Diagnostics describe non-blocking presentation-value problems without
+// publishing the malformed or incomplete value itself.
 type OperatorMetadata struct {
 	Website      string
 	Email        string
 	FediverseID  string
 	FediverseURL string
+	Diagnostics  []string
 }
 
 type operatorConfigFile struct {
@@ -41,8 +53,10 @@ type operatorConfigFile struct {
 
 // LoadOperatorMetadata reads the optional presentation-only YAML configuration.
 // When DIRECTORY_CONFIG_PATH is unset, a missing default file means that no
-// operator links are rendered.  An explicitly configured path is required to
-// exist and be a clean absolute path.
+// operator links are rendered. An explicitly configured path is required to
+// exist and be a clean absolute path. Structural file/YAML failures remain
+// startup errors; malformed nice-to-have field values are converted to human-
+// visible diagnostics and never prevent the core service from running.
 func LoadOperatorMetadata() (OperatorMetadata, error) {
 	raw := strings.TrimSpace(os.Getenv("DIRECTORY_CONFIG_PATH"))
 	path := raw
@@ -91,63 +105,86 @@ func loadOperatorMetadataFile(path string, explicit bool) (OperatorMetadata, err
 		return OperatorMetadata{}, fmt.Errorf("decode trailing operator config %q: %w", path, err)
 	}
 
-	metadata := OperatorMetadata{
+	return sanitizeOperatorMetadata(operatorConfigFile{
 		Website:      strings.TrimSpace(decoded.Website),
 		Email:        strings.TrimSpace(decoded.Email),
 		FediverseID:  strings.TrimSpace(decoded.FediverseID),
 		FediverseURL: strings.TrimSpace(decoded.FediverseURL),
-	}
-	if err := metadata.Validate(); err != nil {
-		return OperatorMetadata{}, err
-	}
-	return metadata, nil
+	}), nil
 }
 
-// Validate prevents unsafe or misleading public links.  Fediverse profile URLs
-// are explicit because profile URL shapes differ among Fediverse applications;
-// the URL is never derived from the displayed @user@host identifier.
-func (metadata OperatorMetadata) Validate() error {
-	for name, value := range map[string]string{
-		"OPERATOR-WEBSITE":       metadata.Website,
-		"OPERATOR-EMAIL":         metadata.Email,
-		"FEDIVERSE-OPERATOR-ID":  metadata.FediverseID,
-		"FEDIVERSE-OPERATOR-URL": metadata.FediverseURL,
-	} {
-		if strings.IndexFunc(value, unicode.IsControl) >= 0 {
-			return fmt.Errorf("%s must not contain control characters", name)
+// sanitizeOperatorMetadata implements the nice-to-have presentation contract:
+// invalid values are not published and do not prevent the service from running.
+// Each invalid or missing member gets a deterministic diagnostic so multi-key
+// logical objects cannot fail silently.
+func sanitizeOperatorMetadata(raw operatorConfigFile) OperatorMetadata {
+	metadata := OperatorMetadata{}
+
+	if raw.Website != "" {
+		if containsOperatorControl(raw.Website) || validatePublicHTTPSURL("OPERATOR-WEBSITE", raw.Website) != nil {
+			metadata.Diagnostics = append(metadata.Diagnostics, operatorWebsiteMalformedDiagnostic)
+		} else {
+			metadata.Website = raw.Website
 		}
 	}
 
-	if metadata.Website != "" {
-		if err := validatePublicHTTPSURL("OPERATOR-WEBSITE", metadata.Website); err != nil {
-			return err
-		}
-	}
-	if metadata.Email != "" {
-		address, err := mail.ParseAddress(metadata.Email)
-		if err != nil || address.Name != "" || address.Address != metadata.Email ||
-			strings.Count(metadata.Email, "@") != 1 {
-			return errors.New("OPERATOR-EMAIL must be one plain email address")
+	if raw.Email != "" {
+		if !validOperatorEmail(raw.Email) {
+			metadata.Diagnostics = append(metadata.Diagnostics, operatorEmailMalformedDiagnostic)
+		} else {
+			metadata.Email = raw.Email
 		}
 	}
 
-	if (metadata.FediverseID == "") != (metadata.FediverseURL == "") {
-		return errors.New("FEDIVERSE-OPERATOR-ID and FEDIVERSE-OPERATOR-URL must be configured together")
-	}
-	if metadata.FediverseID != "" {
-		if !fediverseOperatorID.MatchString(metadata.FediverseID) {
-			return errors.New("FEDIVERSE-OPERATOR-ID must use @user@host form")
+	idProvided := raw.FediverseID != ""
+	urlProvided := raw.FediverseURL != ""
+	idValid := false
+	urlValid := false
+
+	if idProvided {
+		if containsOperatorControl(raw.FediverseID) || !fediverseOperatorID.MatchString(raw.FediverseID) {
+			metadata.Diagnostics = append(metadata.Diagnostics, fediverseIDMalformedDiagnostic)
+		} else {
+			idValid = true
 		}
-		if err := validatePublicHTTPSURL("FEDIVERSE-OPERATOR-URL", metadata.FediverseURL); err != nil {
-			return err
+	}
+	if urlProvided {
+		if containsOperatorControl(raw.FediverseURL) || validatePublicHTTPSURL("FEDIVERSE-OPERATOR-URL", raw.FediverseURL) != nil {
+			metadata.Diagnostics = append(metadata.Diagnostics, fediverseURLMalformedDiagnostic)
+		} else {
+			urlValid = true
 		}
 	}
-	return nil
+
+	if !idProvided && urlProvided {
+		metadata.Diagnostics = append(metadata.Diagnostics, fediverseIDMissingDiagnostic)
+	}
+	if idProvided && !urlProvided {
+		metadata.Diagnostics = append(metadata.Diagnostics, fediverseURLMissingDiagnostic)
+	}
+	if idProvided && urlProvided && idValid && urlValid {
+		metadata.FediverseID = raw.FediverseID
+		metadata.FediverseURL = raw.FediverseURL
+	}
+
+	return metadata
+}
+
+func validOperatorEmail(value string) bool {
+	return value != "" && len(value) <= 254 &&
+		!containsOperatorControl(value) && operatorEmail.MatchString(value)
+}
+
+func containsOperatorControl(value string) bool {
+	return strings.IndexFunc(value, unicode.IsControl) >= 0
+}
+
+func (metadata OperatorMetadata) HasLinks() bool {
+	return metadata.Website != "" || metadata.Email != "" || metadata.FediverseID != ""
 }
 
 func (metadata OperatorMetadata) Empty() bool {
-	return metadata.Website == "" && metadata.Email == "" &&
-		metadata.FediverseID == "" && metadata.FediverseURL == ""
+	return !metadata.HasLinks() && len(metadata.Diagnostics) == 0
 }
 
 func validatePublicHTTPSURL(name, value string) error {

@@ -395,6 +395,42 @@ and deployments, and remain accountable for the software.
   hostnames, credentials, and operational transcripts remain outside the public
   repository.
 
+## Configuration classification and error-state design
+
+Every configuration surface must have an explicit operational category and an
+error-state matrix. `docs/CONFIGURATION.md` is the maintained inventory for
+service/process settings and operator-presentation keys. Update that matrix in
+the same source change that adds or materially changes a key.
+
+- **Classify every key before implementation.** Use `Critical` for values whose
+  absence or invalidity makes safe operation impossible, `Optional` for values
+  with an explicit default/disabled state but strict supplied-value validation,
+  and `Nice-to-have` for nonessential presentation metadata whose value errors
+  must not prevent core operation. Retired/forbidden compatibility guards may be
+  recorded separately when absence itself is the contract.
+- **Specify absent, valid, malformed, dependency, and exposure states.** A key is
+  not fully designed until each state has a documented behavior. Tests must prove
+  both the expected positive behavior and the absence of unsafe or misleading
+  side effects.
+- **Enumerate multi-key logical objects.** For a logical field composed of two
+  or more keys, do not test only all-present and all-absent. Enumerate every
+  practical present/absent combination, every single-member malformed state, and
+  mixed states in which unrelated valid configuration must continue working. A
+  missing member must identify the exact missing key rather than collapse into a
+  generic error.
+- **Nice-to-have value errors are non-blocking but visible.** Malformed or partial
+  operator-presentation values must be suppressed, never converted into unsafe
+  links, and represented by deterministic diagnostics on the human Directory
+  page. Valid independent presentation values remain visible. Operator values and
+  diagnostics must not leak into JSON/status APIs or private operational email
+  configuration. Structural file/YAML failures remain fail-closed unless a
+  future design explicitly changes that boundary.
+- **Do not hard-code public email TLDs.** For Nice-to-have public operator email,
+  use a deliberately loose structural check: a nonempty local part, one `@`, a
+  dotted domain, and a nonempty suffix, plus existing control/length safety. Do
+  not maintain `.com`/`.org`/`.net` or other TLD allowlists. Keep operational
+  administrator-mail validation separate from the public presentation contract.
+
 ## Applicator and verifier defect prevention
 
 Applicators, validators, and release verifiers are part of the release-safety
@@ -727,3 +763,36 @@ failure.
   surface. A focused regression must prove the runtime helper supplies
   `DIRECTORY_DATABASE_PATH=/var/lib/activity-relay-directory/directory.sqlite`
   before exercising optional operator configuration.
+
+### R2U downstream-mirror state-assumption regression
+
+- **A downstream mirror may legitimately acquire an authoritative feature ref
+  without a direct push.** R2U correctly reauthenticated the exact Forgejo RC3
+  checkpoint but falsely required the GitHub feature branch to remain absent
+  after R2T had pushed only Forgejo. Automatic mirror propagation later created
+  the same exact feature ref on GitHub, so absence was not a stable invariant.
+  When validating a mirrored remote, accept either absence or the exact
+  authoritative commit when mirror propagation is allowed; fail only on
+  divergence. Preserve separate evidence showing whether the release tooling
+  itself performed an explicit downstream push. Add a focused regression with
+  three states: downstream absent = pass, downstream exact authoritative SHA =
+  pass, downstream different SHA = fail.
+
+### R2Y Debian native-tilde/public-filename boundary regression
+
+- **Debian build-evidence filenames and public release filenames are different
+  namespaces.** R2Y verified the canonical RC3 `.deb` bytes, then falsely looked
+  up the public normalized filename `0.1.0-rc3-1` inside `.changes`/`.buildinfo`,
+  where Debian correctly records the native version filename containing
+  `0.1.0~rc3-1`. The checksum was correct; the lookup key was wrong. When
+  cross-checking Debian RFC822 build evidence, derive filenames from the native
+  Debian version and compare the recorded checksum to the public artifact bytes.
+  Treat `${value//\~/-}` normalization as an explicit distribution-boundary
+  transform, not a universal filename identity. Add a focused regression proving
+  native `~` evidence and normalized public filenames can refer to the same bytes.
+
+### R3B embedded-payload framing / early-failure snapshot regression
+
+- **Hash the exact bytes an applicator will materialize, including terminal newline framing.** R3B embedded an already-reviewed patch inside a quoted heredoc but inserted one additional blank line before the heredoc terminator. The source hunks were unchanged, yet the materialized patch SHA no longer matched the reviewed patch SHA and the gate correctly failed closed. When an applicator embeds an authenticated payload, generate the handoff from the exact payload bytes, re-extract the payload from the finished applicator, and prove its checksum before distribution. Add a focused regression for zero, one, and two terminal newlines so presentation framing cannot silently alter an authority hash.
+
+- **Early fail-closed exits still owe a fresh source-of-truth snapshot.** R3B failed before its prospective worktree existed and therefore skipped the repository's standard failure snapshot even though the source remained untouched. Applicators must choose a snapshot authority before mutation begins: use the validated prospective/current worktree once it exists, otherwise emit from the authenticated base checkout/snapshot. A failure before worktree creation is not an exception to the source-bundle requirement.

@@ -95,11 +95,16 @@
   <footer class="site-footer">
     <div class="shell footer-row">
       <span>Activity-Relay Directory</span>{{if .HasOperator}}
-      <nav class="operator-links" aria-label="Operator contact">
-        {{if .OperatorWebsite}}<a href="{{.OperatorWebsite}}" rel="noreferrer">Operator website</a>{{end}}
-        {{if .OperatorEmail}}<a href="{{.OperatorEmailURL}}">{{.OperatorEmail}}</a>{{end}}
-        {{if .FediverseID}}<a href="{{.FediverseURL}}" rel="me noreferrer">{{.FediverseID}}</a>{{end}}
-      </nav>{{end}}
+      <div class="operator-contact">{{if .HasOperatorLinks}}
+        <nav class="operator-links" aria-label="Operator contact">
+          {{if .OperatorWebsite}}<a href="{{.OperatorWebsite}}" rel="noreferrer">Operator website</a>{{end}}
+          {{if .OperatorEmail}}<a href="{{.OperatorEmailURL}}">{{.OperatorEmail}}</a>{{end}}
+          {{if .FediverseID}}<a href="{{.FediverseURL}}" rel="me noreferrer">{{.FediverseID}}</a>{{end}}
+        </nav>{{end}}{{if .OperatorDiagnostics}}
+        <div class="operator-diagnostics" role="status" aria-label="Operator configuration notice">{{range .OperatorDiagnostics}}
+          <span class="operator-diagnostic">{{.}}</span>{{end}}
+        </div>{{end}}
+      </div>{{end}}
     </div>
   </footer>
 </body>

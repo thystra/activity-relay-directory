@@ -5,8 +5,17 @@
 #
 # Container operators may mount a file and set DIRECTORY_CONFIG_PATH to its
 # absolute path. Empty values are not rendered. FEDIVERSE-OPERATOR-ID and
-# FEDIVERSE-OPERATOR-URL must either both be set or both be empty; the URL is
-# explicit because profile URL shapes differ between Fediverse applications.
+# FEDIVERSE-OPERATOR-URL form one logical contact object. If only one is set,
+# no partial Fediverse link is published and the human page identifies the
+# missing key. Malformed Nice-to-have values are likewise suppressed and shown
+# as operator-facing configuration diagnostics without stopping the core
+# service. The Fediverse URL is explicit because profile URL shapes differ
+# between applications.
+#
+# OPERATOR-EMAIL uses a deliberately loose syntax check: local text, @, a
+# dotted domain, and a nonempty suffix. There is no fixed TLD allowlist.
+# Structural YAML/file errors remain fatal because the file was not parsed
+# successfully.
 #
 # This file is presentation-only. Runtime policy remains in the existing
 # DIRECTORY_* process environment, and DIRECTORY_ADMIN_EMAIL is never made

@@ -99,8 +99,11 @@ and logging overrides.
 | `DIRECTORY_TRUSTED_PROXY_PREFIXES` | empty | Comma-separated trusted direct-proxy prefixes |
 
 The retired `DIRECTORY_REGISTRATION_ENABLED` name is rejected rather than
-accepted as an alias. See the topic-specific documents under `docs/` for the
-security and activation requirements attached to each setting.
+accepted as an alias. `docs/CONFIGURATION.md` classifies every service and
+operator-presentation key as Critical, Optional, or Nice-to-have and records its
+missing, malformed, dependency, and exposure behavior. See the other
+topic-specific documents under `docs/` for the security and activation
+requirements attached to each setting.
 
 Enrollment starts closed in durable state. A local operator may inspect or
 change it without enabling a remote administrative endpoint:
@@ -309,11 +312,26 @@ FEDIVERSE-OPERATOR-ID: "@operator@social.example"
 FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
 ```
 
-Empty/absent values are suppressed. The Fediverse identifier and explicit HTTPS
-profile URL must be configured together; profile URLs are never guessed from a
-handle. This file controls only public presentation and is not returned by the
-JSON/status APIs. `DIRECTORY_ADMIN_EMAIL` remains operational/private and is
-never reused as a public address automatically.
+Empty/absent values are suppressed. Valid Website, Email, and Fediverse contact
+objects are independent, so one absent object does not suppress another. The
+Fediverse identifier and explicit HTTPS profile URL form one paired object;
+profile URLs are never guessed from a handle. If only one member of that pair is
+configured, the human page renders a `Please configure ... in config.yml.`
+diagnostic and publishes no partial Fediverse link.
+
+Malformed Nice-to-have presentation values are likewise suppressed rather than
+preventing the core service from running. The human page identifies the affected
+key, for example `OPERATOR-EMAIL is malformed in config.yml.`. Public operator
+email validation intentionally checks only a loose address shape with a local
+part, `@`, a dotted domain, and a nonempty suffix; it does not maintain a TLD
+allowlist. Structural file failures such as malformed YAML, unknown fields, or an
+invalid explicit `DIRECTORY_CONFIG_PATH` remain startup errors. See
+`docs/CONFIGURATION.md` for the maintained state matrix.
+
+This file controls only public presentation and neither operator values nor
+operator diagnostics are returned by the JSON/status APIs.
+`DIRECTORY_ADMIN_EMAIL` remains operational/private and is never reused as a
+public address automatically.
 
 The stock container image likewise creates an empty
 `/etc/activity-relay-directory/` directory and includes the example at
