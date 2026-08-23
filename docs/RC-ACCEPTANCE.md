@@ -95,3 +95,15 @@ A representative Directory plus Activity-Relay RC sequence is:
 Development automation should already have proven the low-level contracts.
 The RC checklist exists to verify that the assembled candidate behaves the way
 an operator and user expect.
+
+## Clean-room baseline and recovery boundary
+
+The acceptance host may be shared by unrelated project validation. A release-candidate test therefore begins from a project-neutral, independently authenticated host state rather than from the assumed result of a prior cleanup.
+
+For ZFS-root test systems with a separate boot pool, a reusable clean-room baseline is a paired root/boot baseline plus explicit treatment of any non-ZFS EFI System Partition. Before candidate artifacts are staged, verify that the host has completed any intended operating-system update, booted normally into a kernel with matching initrd/modules, has healthy pools and no unexpected failed units, and contains no candidate package/container/state from this or another project.
+
+Do not perform rollback of mounted root or nested datasets from the live operating system. If restoration is needed, use an offline or alternate-boot procedure that proves the affected datasets are inactive before rollback. After a partially successful stateful gate, inspect and continue from current authority rather than replaying the previous mutation.
+
+Snapshot creation and rollback are different risk boundaries: taking a snapshot of a mounted dataset is normal, while replacing the live filesystem underneath the running kernel is not. Because separate pools cannot be snapshotted atomically together, record the exact paired snapshot tag, membership, creation times, and any EFI evidence used to define the reusable baseline.
+
+Acceptance verifiers should validate the objects owned by the acceptance gate. Pre-existing defects elsewhere in a repository or shared host are separate findings unless the gate explicitly declares whole-repository or whole-host cleanliness as an invariant.
