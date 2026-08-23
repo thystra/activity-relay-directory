@@ -796,3 +796,62 @@ failure.
 - **Hash the exact bytes an applicator will materialize, including terminal newline framing.** R3B embedded an already-reviewed patch inside a quoted heredoc but inserted one additional blank line before the heredoc terminator. The source hunks were unchanged, yet the materialized patch SHA no longer matched the reviewed patch SHA and the gate correctly failed closed. When an applicator embeds an authenticated payload, generate the handoff from the exact payload bytes, re-extract the payload from the finished applicator, and prove its checksum before distribution. Add a focused regression for zero, one, and two terminal newlines so presentation framing cannot silently alter an authority hash.
 
 - **Early fail-closed exits still owe a fresh source-of-truth snapshot.** R3B failed before its prospective worktree existed and therefore skipped the repository's standard failure snapshot even though the source remained untouched. Applicators must choose a snapshot authority before mutation begins: use the validated prospective/current worktree once it exists, otherwise emit from the authenticated base checkout/snapshot. A failure before worktree creation is not an exception to the source-bundle requirement.
+
+### Forgejo verifier authority / historical-evidence regression
+
+- **Bind gates to authoritative objects, not to verifier lineage.** The security
+  boundary is the immutable technical state being evaluated: exact commit SHA,
+  tree SHA, merge parents when relevant, reviewed workflow bytes and dispatch
+  inputs, repository-scoped Actions run identity, job/task/step state, and
+  artifact checksums/metadata. Re-authenticate those objects directly from Git,
+  Forgejo, and the artifact bytes at each gate instead of requiring a chain of
+  earlier verifier reports to parse successfully.
+
+- **Historical verifier reports are audit provenance by default, not execution
+  prerequisites.** Record earlier report names/checksums when useful for the
+  audit trail, but a later gate must not fail merely because an older report was
+  renamed, absent, reformatted, or contained a verifier-only false failure when
+  the current authoritative state can be reconstructed independently. A failed
+  verifier should almost never become a load-bearing input to its replacement;
+  fix the verifier and rerun it against the same authoritative object.
+
+- **Make prior evidence load-bearing only when it carries non-reconstructable
+  authority.** Legitimate examples include a human-reviewed patch decision, an
+  explicitly granted exception, or evidence from a destructive/irreversible
+  operation whose pre-state cannot be recovered. When a gate depends on prior
+  evidence for one of these reasons, name that reason explicitly and bind only
+  the minimum necessary fields rather than the previous report's presentation
+  format.
+
+- **Do not recursively parse nested historical state as current state.** Source
+  snapshots may include older state for audit context, but current authority
+  fields must be clearly scoped/versioned and parsed as exactly one record.
+  Regression tests must cover duplicate/nested field names so an `awk`/grep
+  multi-match cannot turn valid identical history into a false mismatch.
+
+- **Forgejo Actions URLs expose a repository-scoped run number, not the database
+  primary key.** A target such as `/actions/runs/127/...` identifies
+  `action_run.index` within the repository. Diagnostics that query Forgejo's
+  SQLite database must resolve `(repo_id, action_run.index)` first, validate the
+  commit/workflow/event/ref, and only then use the resulting internal
+  `action_run.id`. Never compare the UI run number directly to `action_run.id`.
+
+- **Preserve matrix rows by row identity/name, not only by workflow job key.**
+  Matrix expansions can share the same logical `job_id` (for example `test`)
+  while representing distinct required rows such as Go 1.26.0 and Go 1.26.5.
+  Verifiers must retain every row by stable database row plus expected display
+  name/attempt, and must prove every required matrix row and its latest task
+  separately.
+
+- **Respect Forgejo log-storage metadata.** `action_task.log_filename` does not
+  imply that the file is presently resident in filesystem storage.
+  `log_in_storage=0` makes a historical log optional unless that log is itself
+  necessary evidence. Require an exact filesystem log path only when Forgejo
+  metadata says the log is resident; do not let an unavailable old successful
+  log block inspection of a current failed or successful task.
+
+- **Regression requirement for verifier independence.** For a gate whose
+  authoritative commit/tree/run/artifact bytes are unchanged, renaming or
+  removing a non-load-bearing historical verifier report must not change the
+  gate result. Changing the authoritative commit, tree, run identity, dispatch
+  inputs, required job/task state, or artifact bytes/checksums must fail closed.
