@@ -107,3 +107,7 @@ Do not perform rollback of mounted root or nested datasets from the live operati
 Snapshot creation and rollback are different risk boundaries: taking a snapshot of a mounted dataset is normal, while replacing the live filesystem underneath the running kernel is not. Because separate pools cannot be snapshotted atomically together, record the exact paired snapshot tag, membership, creation times, and any EFI evidence used to define the reusable baseline.
 
 Acceptance verifiers should validate the objects owned by the acceptance gate. Pre-existing defects elsewhere in a repository or shared host are separate findings unless the gate explicitly declares whole-repository or whole-host cleanliness as an invariant.
+
+### Shared-host baseline history
+
+Before selecting or restoring a reusable `ubuntuzfstest` baseline, consult `docs/VM-ubuntuzfstest-changelog.md`. Snapshot existence alone does not establish that the baseline contains every generic capability currently expected by other projects.

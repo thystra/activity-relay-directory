@@ -871,3 +871,9 @@ Release validation infrastructure is part of the release-safety boundary. Treat 
 * Validation scope must match the gate's ownership. A change-scoped gate should validate the files or objects it changes; unrelated pre-existing repository defects should be reported separately unless whole-repository cleanliness is an explicit acceptance requirement.
 * Every destructive or stateful assertion must name the invariant and useful observed state. A bare `AssertionError` after persistent mutation is insufficient operational evidence; diagnostics must identify the dataset/path/object and expected versus observed condition.
 * Recovery and acceptance scripts must separate phases explicitly: current-state proof, authorization/confirmation, mutation, post-mutation proof, reboot when required, and final authority proof. Never let a later failed check obscure whether an earlier mutation completed.
+
+## Shared validation VM change control
+
+`ubuntuzfstest` is shared validation infrastructure, not project-owned disposable state. Record every reusable-baseline change and every cross-project capability change in `docs/VM-ubuntuzfstest-changelog.md`.
+
+The changelog must distinguish state actually contained in a baseline from state changed afterward. In particular, do not assume a host capability survives rollback unless the selected baseline is proven to contain it. Before creating a preferred shared baseline, verify the generic capabilities required by all known consumers and exclude project-specific test residue.
