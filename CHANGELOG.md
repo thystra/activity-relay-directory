@@ -4,6 +4,16 @@
 
 _No changes yet._
 
+## 0.1.0-rc4 - 2026-08-22
+
+- Correct stale `docs/PUBLIC-LISTING.md` wording so semantic Nice-to-have
+  operator-value failures and incomplete Fediverse pairs are documented as
+  non-blocking suppression plus human-page diagnostics, matching the already
+  accepted implementation.
+- Record RC3 as an accepted-runtime but unpublished NO-GO candidate and carry
+  its machine/browser acceptance evidence forward to focused RC4 revalidation.
+- No Go runtime behavior changes from the accepted RC3 source.
+
 ## 0.1.0-rc3 - 2026-08-13
 
 - Add optional public operator website, email, and explicit Fediverse contact

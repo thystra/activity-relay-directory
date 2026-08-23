@@ -156,8 +156,10 @@ Fediverse applications use different URL layouts.
 This YAML is public-presentation metadata only. It does not replace the
 `DIRECTORY_*` runtime environment, is not emitted by `/v1/relays` or
 `/v1/status`, and does not make `DIRECTORY_ADMIN_EMAIL` public. Unknown YAML
-fields, unsafe URLs, ambiguous email syntax, and incomplete Fediverse pairs fail
-startup when the file is explicitly configured.
+fields and structural file failures remain startup errors. Once the file parses
+successfully, malformed Nice-to-have values and incomplete Fediverse pairs are
+non-blocking: unsafe or partial values are suppressed and the human page shows
+deterministic configuration diagnostics.
 
 The absence of the former on-page "Privacy boundary" panel does not widen the
 projection. The public data boundary remains enforced by the same repository,
