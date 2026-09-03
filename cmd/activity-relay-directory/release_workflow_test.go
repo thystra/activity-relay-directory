@@ -59,6 +59,24 @@ func TestCanonicalReleaseWorkflowDispatchInputsAreShellData(t *testing.T) {
 	}
 }
 
+func TestCanonicalReleaseWorkflowAcceptsRCAndStableVersions(t *testing.T) {
+	workflow := canonicalReleaseWorkflow(t)
+
+	required := []string{
+		`[[ "$VERSION" =~ ^0\.1\.0-rc[1-9][0-9]*$ ]]`,
+		`[[ "$VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]`,
+		`echo "unsupported release version: $VERSION" >&2`,
+	}
+	for _, marker := range required {
+		if !strings.Contains(workflow, marker) {
+			t.Fatalf("canonical release workflow missing release-version marker %q", marker)
+		}
+	}
+	if strings.Contains(workflow, `^[0-9]+\.[0-9]+\.[0-9]+-`) {
+		t.Fatal("canonical stable release workflow unexpectedly accepts arbitrary prerelease versions")
+	}
+}
+
 func TestCanonicalReleaseWorkflowInstallsDebianToolsBeforeUse(t *testing.T) {
 	workflow := canonicalReleaseWorkflow(t)
 

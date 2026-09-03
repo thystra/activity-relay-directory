@@ -4,7 +4,7 @@
 
 The pre-1.0 release-candidate series is `v0.1.0-rcN`, with embedded version
 `0.1.0-rcN` and Debian version `0.1.0~rcN-<revision>`. The first stable release
-will jump directly to `v1.0.0` / `1.0.0` with Debian
+jumps directly to `v1.0.0` / `1.0.0` with Debian
 `1.0.0-1`. Do not publish a `v0.1.0` final tag.
 
 Forgejo is authoritative. `.forgejo/workflows/package.yml` and the GitHub
@@ -19,27 +19,28 @@ tags the same commit and promotes those exact bytes to Forgejo and GitHub
 release surfaces. GitHub runners do not manufacture a second official release
 set or rebuild the container image.
 
-## Release-candidate source identity
+## Release source identity
 
-Every new release candidate is a new source state and new immutable version; do
-not move or rebuild an already-published RC tag. The top `debian/changelog`
-entry is the source of truth for the current candidate's Debian version. The
-embedded/public application version is that upstream Debian version with the
-literal prerelease `~` translated to `-`.
+Every release is a new source state and immutable version; do not move or
+rebuild an already-published tag. The top `debian/changelog` entry is the source
+of truth for the current Debian version. The embedded/public application
+version is that upstream Debian version with a literal prerelease `~`
+translated to `-` when present.
 
-The manually dispatched Forgejo canonical workflow is candidate-generic but
+The manually dispatched Forgejo canonical workflow is release-generic but
 fail-closed. Its `version` input must:
 
-- match `0.1.0-rcN`;
+- match the reviewed pre-1.0 form `0.1.0-rcN` or a stable `X.Y.Z` semantic
+  version with major version 1 or greater;
 - equal the application version derived from the top Debian changelog entry;
 - have a matching `docs/releases/v<version>.md` draft;
 - use exact confirmation `BUILD <version>`; and
 - build the exact reviewed `expected_commit`.
 
-The workflow derives candidate filenames and the Docker image/archive identity
-from that validated source version. A later RC therefore requires a normal
-reviewed source/version-preparation commit, but does not require editing the
-workflow merely to replace one hard-coded RC number with another.
+The workflow derives filenames and the Docker image/archive identity from that
+validated source version. A later release therefore requires a normal reviewed
+source/version-preparation commit, but not a workflow edit merely to replace one
+hard-coded version with another.
 
 Treat manual dispatch strings as data rather than shell source. Map
 `workflow_dispatch` input expressions into workflow environment variables and
@@ -55,8 +56,10 @@ candidate version before Go setup, package construction, or container work.
 
 ## Debian package contract
 
-Release-candidate packages use `activity-relay-directory` with Debian version
-`0.1.0~rcN-<revision>` for application `0.1.0-rcN`. The package installs a
+Pre-1.0 release-candidate packages use `activity-relay-directory` with Debian
+version `0.1.0~rcN-<revision>` for application `0.1.0-rcN`. Stable packages use
+the normal Debian revision form, for example application `1.0.0` with package
+version `1.0.0-1`. The package installs a
 dedicated system account, owner-only
 `/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked
@@ -78,7 +81,7 @@ destroy `/var/lib/activity-relay-directory`; destructive state removal requires
 a verified backup and explicit operator action. In-place database downgrade is
 unsupported and requires restoring the backup matching the older binary.
 
-The public candidate artifact set consists of the `.deb`, the exact packaged
+The public canonical artifact set consists of the `.deb`, the exact packaged
 standalone binary, CycloneDX JSON SBOM, build metadata, a Docker-loadable
 `activity-relay-directory_<application-version>_linux_amd64.docker.tar`, and
 one `SHA256SUMS` covering all five public assets. Loading the archive must
@@ -86,13 +89,14 @@ produce image tag `activity-relay-directory:<application-version>`. `.changes`,
 `.buildinfo`, package control scripts, Lintian output, and package inventory
 are retained as build evidence rather than promoted as end-user release assets.
 
-RC acceptance requires independent installation tests of the exact canonical
-`.deb` and the exact canonical Docker archive before tagging or publication.
+Release acceptance requires independent installation tests of the exact
+canonical `.deb` and exact canonical Docker archive before tagging or
+publication.
 Give the two tests separate SQLite state and separate bind ports if they run
 concurrently; they must not share one writable database.
 
 
-Before the first release:
+The 1.0.0 acceptance program completed the following first-release gates:
 
 1. define versioning and compatibility policy;
 2. add deterministic binary and container builds;
@@ -101,7 +105,9 @@ Before the first release:
 5. document database backup and migration behavior;
 6. perform an integration soak with relay2;
 7. verify that registration remains disabled unless explicitly configured;
-8. publish release notes and rollback instructions.
+8. verify natural daily heartbeats plus authenticated unregister/re-register
+   lifecycle behavior against the live Directory; and
+9. publish release notes and rollback instructions.
 
 SQLite is active during process startup and readiness checks. Explicitly
 enabled lifecycle handlers write audited registration, heartbeat, unregister,
@@ -224,11 +230,11 @@ manual page and Debian changelog line wrapping in the first RC.
 
 ## Operator acceptance
 
-Development validation and RC operator acceptance are separate gates.
+Development validation and operator acceptance are separate gates.
 Development automation should prove low-level implementation contracts first.
-For an assembled release candidate, follow `docs/RC-ACCEPTANCE.md` and record
-operator-visible outcomes, retries, noncritical failures, critical aborts, and
-the final `GO` / `GO WITH NOTES` / `NO-GO` disposition.
+For an assembled release candidate or stable build, follow `docs/RC-ACCEPTANCE.md`
+and record operator-visible outcomes, retries, noncritical failures, critical
+aborts, and the final `GO` / `GO WITH NOTES` / `NO-GO` disposition.
 
 Do not treat successful checklist execution as automatic release approval, and
 do not convert every recorded noncritical `FAIL` / `NO` result into a script

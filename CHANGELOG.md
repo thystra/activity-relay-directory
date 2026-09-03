@@ -4,6 +4,21 @@
 
 _No changes yet._
 
+## 1.0.0 - 2026-09-02
+
+- Publish the first stable Activity-Relay Directory release directly from the
+  accepted `0.1.0-rc4` runtime line; there is no final `0.1.0` release.
+- Record successful live integration with Activity-Relay 3.0, including two
+  independently registered relays, natural daily heartbeat refresh, public
+  health projection, and authenticated unregister/re-register lifecycle
+  acceptance.
+- Keep lifecycle, public listing, automatic soft pruning, positive inactive
+  retention, and administrator email disabled by default; durable enrollment
+  remains closed by default.
+- Generalize the canonical Forgejo artifact workflow to accept stable semantic
+  versions while retaining the reviewed pre-1.0 RC form and exact-commit gate.
+- No Go runtime behavior changes from the accepted RC4 source.
+
 ## 0.1.0-rc4 - 2026-08-22
 
 - Correct stale `docs/PUBLIC-LISTING.md` wording so semantic Nice-to-have

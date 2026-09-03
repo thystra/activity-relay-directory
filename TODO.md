@@ -1,13 +1,12 @@
 # Implementation roadmap
 
-This roadmap starts from commit `0e70c75`, where the directory server has
-default-off authenticated register, heartbeat, and unregister handlers backed
-by bounded admission, safe actor-key resolution, durable replay protection, and
-audited SQLite lifecycle state.
-
-The remaining work is intentionally split into reviewable tranches. A completed
-source tranche is not automatically deployed, enabled, released, or adopted by
-Activity-Relay. Those remain separate operator-controlled gates.
+This historical roadmap starts from commit `0e70c75`, where the directory
+server had default-off authenticated register, heartbeat, and unregister
+handlers backed by bounded admission, safe actor-key resolution, durable replay
+protection, and audited SQLite lifecycle state. Tranches 8 through 18 form the
+reviewed path to the 1.0.0 stable release. Future work remains separately
+reviewed and does not silently alter the version 1 protocol or default-off
+operator controls.
 
 ## Fixed boundaries
 

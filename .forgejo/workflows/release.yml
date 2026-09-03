@@ -1,4 +1,4 @@
-name: Canonical Release Candidate Artifacts
+name: Canonical Release Artifacts
 
 on:
   workflow_dispatch:
@@ -8,17 +8,17 @@ on:
         required: true
         type: string
       version:
-        description: Exact source candidate version, for example 0.1.0-rc2
+        description: Exact source release version, for example 0.1.0-rc4 or 1.0.0
         required: true
         type: string
       confirm:
-        description: Type BUILD followed by the exact candidate version
+        description: Type BUILD followed by the exact release version
         required: true
         type: string
 
 jobs:
   canonical:
-    name: Canonical candidate artifact set
+    name: Canonical release artifact set
     runs-on: forgejo-build
     env:
       RELEASE_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
@@ -34,7 +34,14 @@ jobs:
           set -Eeuo pipefail
           VERSION="$RELEASE_VERSION"
 
-          [[ "$VERSION" =~ ^0\.1\.0-rc[1-9][0-9]*$ ]]
+          if [[ "$VERSION" =~ ^0\.1\.0-rc[1-9][0-9]*$ ]]; then
+            :
+          elif [[ "$VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]; then
+            :
+          else
+            echo "unsupported release version: $VERSION" >&2
+            exit 1
+          fi
           test "$RELEASE_CONFIRMATION" = "BUILD $VERSION"
           test "$(git rev-parse HEAD)" = "$RELEASE_EXPECTED_COMMIT"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
@@ -133,7 +140,7 @@ jobs:
           test "$(wc -l < SHA256SUMS)" -eq 5
           sha256sum -c SHA256SUMS
 
-      - name: Upload canonical candidate artifact set
+      - name: Upload canonical release artifact set
         uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: activity-relay-directory-${{ inputs.version }}-canonical-${{ inputs.expected_commit }}
