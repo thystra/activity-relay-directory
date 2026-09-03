@@ -10,7 +10,7 @@ permissions:
 jobs:
   test:
     name: Go ${{ matrix.go }}
-    runs-on: forgejo-pilot
+    runs-on: forgejo-workstation
     strategy:
       fail-fast: false
       matrix:
@@ -50,7 +50,7 @@ jobs:
   # Summarize raw step outcomes so a failure remains explicit triage evidence.
   forward:
     name: Go 1.27rc2 (forward)
-    runs-on: forgejo-pilot
+    runs-on: forgejo-workstation
     steps:
       - name: Check out repository
         uses: https://data.forgejo.org/actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09

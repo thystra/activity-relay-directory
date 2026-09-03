@@ -7,7 +7,7 @@ on:
 jobs:
   debian:
     name: Debian package validation
-    runs-on: forgejo-pilot
+    runs-on: forgejo-workstation
     steps:
       - uses: https://data.forgejo.org/actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
