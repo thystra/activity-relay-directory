@@ -716,8 +716,8 @@ Required/implemented behavior:
 
 Repository: Directory.
 
-Add a default-off, bounded reachability maintenance worker. It must never be
-triggered by a public request. The worker probes canonical actors through the
+Implemented on the 1.1 development line. The worker is default-off, bounded,
+and never triggered by a public request. It probes canonical actors through the
 same safe network boundary, persists the latest outcome plus last successful
 observation, and may collect non-mutating inbox diagnostics. The reviewed 1.1
 policy is fixed at hourly maintenance, six-hour actor freshness, pages of at
@@ -736,7 +736,10 @@ recent process-local coverage. Reachability never rewrites heartbeat health or
 
 Repository: Directory.
 
-The 1.1 Directory projection and human page expose heartbeat state,
+Implemented in source on the 1.1 development line. `GET /v2/relays` and the
+human `/` page share one bounded canonical-actor projection, while
+`/v1/relays` remains frozen for 1.0 compatibility. The 1.1 projection and human
+page expose heartbeat state,
 reachability, actor/inbox diagnostics, RFC 9421 `verified|not verified`, and
 relevant observation timestamps while preserving `/v1/relays` compatibility.
 `not observed` is used when no authenticated heartbeat exists; no fake
@@ -746,6 +749,12 @@ discovery eligibility, and an active discovered relay requires sufficiently
 recent successful actor evidence to remain publicly eligible. Heartbeat and
 reachability remain independent so a card may truthfully show, for example,
 `Heartbeat: stale` and `Reachability: reachable` at the same time.
+Pages default to 50 and cap at 100; one request examines at most 400
+retained lifecycle/discovery identities and may return an empty page with a
+continuation cursor when inactive rows are interleaved. Pagination is a signed
+canonical-actor keyset with a five-minute walk lifetime. The public serializer
+does not expose discovery source/provenance, operator/reason data, audit events,
+probe errors, or internal registration/discovery flags.
 
 ### Tranche 23: 1.1 acceptance and release gate
 

@@ -21,3 +21,13 @@ POSTs. See `docs/SECURITY.md`, `docs/DISCOVERY-REACHABILITY.md`, and
 ## Background reachability
 
 The optional 1.1 background reachability worker is disabled by default, reuses the proxy-free SSRF-resistant actor resolver, has fixed bounded scheduling/concurrency, logs aggregate results only, and never substitutes its observations for authenticated lifecycle heartbeat recency. Automatic soft pruning is fail-closed behind recent complete reachability coverage when the worker is enabled.
+
+## Public 1.1 projection
+
+The default-off `/v2/relays` projection and human `/` page are read-only and
+share one bounded public-read concurrency budget. They expose only canonical
+relay identity plus reviewed heartbeat/reachability/inbox/RFC 9421 evidence.
+They do not expose discovery source kind/label, operator or reason tokens,
+audit events, resolver failures, signing-key identifiers, client addresses, or
+internal registration/discovery participation flags. `/v1/relays` remains the
+frozen 1.0 compatibility representation. See `docs/PUBLIC-LISTING.md`.

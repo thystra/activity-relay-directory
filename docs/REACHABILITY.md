@@ -94,6 +94,8 @@ Worker logs are aggregate only: counts of scanned, reachable, unreachable,
 skipped, inbox diagnostic classes, and truncation. Actor URLs and private
 discovery provenance are not logged by the scheduler.
 
-This tranche does not change `/v1/relays` or the human directory page. Public
-1.1 projection of heartbeat/reachability diagnostics is a separate review
-tranche.
+`/v1/relays` remains the frozen 1.0 compatibility representation. The 1.1
+development line provides the default-off `/v2/relays` projection and the human
+`/` page from that same richer read model. Those public reads never trigger this worker; they
+consume only retained observations and are documented in
+`docs/PUBLIC-LISTING.md`.

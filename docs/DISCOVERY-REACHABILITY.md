@@ -6,11 +6,11 @@ This document defines the approved Activity-Relay Directory 1.1 design for
 operator discovery, independent relay reachability, endpoint diagnostics, and
 their interaction with the existing version 1 lifecycle contract.
 
-Schema version 8 persistence, the local operator discovery/import surface, and
-the default-off bounded background reachability worker are implemented on the
-1.1 development line. The richer public 1.1 Directory projection remains a
-separate later tranche. See `docs/REACHABILITY.md` for worker scheduling and
-soft-pruning interaction. The released
+Schema version 8 persistence, the local operator discovery/import surface, the
+default-off bounded background reachability worker, and the richer public 1.1
+Directory projection are implemented on the 1.1 development line. See
+`docs/REACHABILITY.md` for worker scheduling/soft-pruning interaction and
+`docs/PUBLIC-LISTING.md` for the public projection contract. The released
 1.0.0 lifecycle and `/v1/relays` representation remain compatibility
 authorities until 1.1 is accepted and released.
 
@@ -251,8 +251,8 @@ observation, lifecycle-event, skipped, and batch counts without relay identity.
 contain only registered/active relays inside the version 1 heartbeat eligibility
 window and retains its current cursor and health semantics.
 
-The 1.1 human Directory and its matching new JSON projection use one shared
-repository/projection path. Public fields may include:
+The 1.1 human Directory and `GET /v2/relays` use one shared
+repository/projection path. Public fields include:
 
 - canonical relay actor and public base URL;
 - heartbeat state and last authenticated observation, or `not observed`;
@@ -271,10 +271,10 @@ administrative suspension overriding both:
 - an active operator discovery may authorize an entry while sufficiently recent
   successful actor evidence exists.
 
-The exact reachability freshness window is fixed in the implementation tranche
-and tested with controlled clocks. It must be long enough to tolerate bounded
-maintenance failures without allowing an indefinitely unobserved discovered
-entry to remain public.
+The exact reachability freshness window is the fixed six-hour Tranche 21
+contract. A discovered-only entry therefore ages out of public eligibility when
+that current successful actor evidence becomes older than six hours, even if
+operator discovery remains active.
 
 ## Soft pruning interaction
 

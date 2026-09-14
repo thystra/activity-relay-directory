@@ -209,15 +209,27 @@ ActivityPub activity and must not treat a normal method rejection such as 405
 as proof that the inbox is absent. RFC 9421 is reported as verified only after
 the Directory has actually accepted an RFC 9421-signed lifecycle request.
 
-The existing `/v1/relays` representation remains unchanged. The 1.1 human
-Directory and a new reviewed directory projection may combine authenticated
-heartbeat health with independent reachability and endpoint diagnostics while
-keeping registration/discovery provenance private. Moderation suspension
-continues to override all public eligibility. Soft pruning must not transition
-a relay solely because heartbeat recency aged past 30 days while a sufficiently
-recent independent actor check still proves that relay reachable. The detailed
-contract, persistence plan, bounds, and acceptance cases are defined in
-`docs/DISCOVERY-REACHABILITY.md` and the post-1.0 roadmap in `TODO.md`.
+The existing `/v1/relays` representation remains unchanged. The 1.1 public
+projection is `GET /v2/relays`, and the human `/` page renders that same bounded
+projection rather than running a separate eligibility query. The v2 repository
+merges retained lifecycle and discovery actor-primary-key streams, scans at most
+400 identities per request, deduplicates by canonical actor, and uses a signed
+actor-keyset cursor with pages of at most 100 public entries. It exposes
+heartbeat health, independent actor reachability, actor-declared inbox
+diagnostics, and positive RFC 9421 evidence while keeping registration/discovery
+participation flags and discovery/operator provenance private.
+
+Moderation suspension continues to override all public eligibility. Registered
+entries remain public under the original version 1 heartbeat window, while a
+30-day heartbeat-prune-boundary row may remain visible only with current fresh
+reachable actor evidence. Discovered-only entries require that same current
+successful actor evidence and otherwise age out after the fixed six-hour
+reachability freshness window. Soft pruning must not transition a relay solely
+because heartbeat recency aged past 30 days while sufficiently recent current
+actor evidence proves that relay reachable. The detailed contract, persistence
+plan, bounds, and acceptance cases are defined in
+`docs/DISCOVERY-REACHABILITY.md`, `docs/PUBLIC-LISTING.md`, and the post-1.0
+roadmap in `TODO.md`.
 
 Remaining post-1.0 components are added behind explicit contracts:
 

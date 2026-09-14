@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="A public directory of participating ActivityPub relay instances.">
   <title>Activity-Relay Directory</title>
-  <link rel="stylesheet" href="{{.Stylesheet}}">
+  <link rel="stylesheet" href="/assets/directory.css">
 </head>
 <body>
   <a class="skip-link" href="#directory">Skip to directory</a>
@@ -29,67 +29,60 @@
         <div>
           <p class="eyebrow">Directory</p>
           <h2 id="relay-list-heading">Participating relays</h2>
-          <p class="muted">{{len .Listing.Relays}} public {{if eq (len .Listing.Relays) 1}}relay{{else}}relays{{end}} on this page.</p>
+          <p class="muted">1 public relay on this page.</p>
         </div>
       </div>
 
-{{if .Listing.Relays}}
+
       <ul class="relay-list">
-{{range .Listing.Relays}}
+
         <li>
           <article class="relay-card">
             <div class="relay-card-heading">
-              <h3><a href="{{.PublicBaseURL}}" rel="noreferrer">{{.PublicBaseURL}}</a></h3>
+              <h3><a href="https://relay.example" rel="noreferrer">https://relay.example</a></h3>
               <div class="signal-badges" aria-label="Current evidence summary">
-                <span class="signal-badge heartbeat-{{.Heartbeat.State}}">Heartbeat: {{.Heartbeat.DisplayState}}</span>
-                <span class="signal-badge reachability-{{.Reachability.State}}">Reachability: {{.Reachability.DisplayState}}</span>
+                <span class="signal-badge heartbeat-healthy">Heartbeat: healthy</span>
+                <span class="signal-badge reachability-reachable">Reachability: reachable</span>
               </div>
             </div>
             <dl class="relay-meta">
               <div>
                 <dt>Actor</dt>
-                <dd><code>{{.RelayActor}}</code></dd>
+                <dd><code>https://relay.example/a&amp;b</code></dd>
               </div>
               <div>
                 <dt>Last authenticated Directory observation</dt>
-                <dd>{{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{.Heartbeat.LastSeenAt}}</time>{{else}}Not observed{{end}}</dd>
+                <dd><time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
               </div>
               <div>
                 <dt>Actor last checked</dt>
-                <dd>{{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{.Reachability.LastCheckedAt}}</time>{{else}}Not checked{{end}}</dd>
+                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
               </div>
               <div>
                 <dt>Actor last successful check</dt>
-                <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{.Reachability.LastSuccessAt}}</time>{{else}}Not observed{{end}}</dd>
+                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
               </div>
               <div>
                 <dt>Declared inbox</dt>
-                <dd>{{if .Inbox.URL}}<code>{{.Inbox.URL}}</code>{{if .Inbox.DeclaredAt}} · declared <time datetime="{{.Inbox.DeclaredAt}}">{{.Inbox.DeclaredAt}}</time>{{end}}{{else}}Not observed{{end}}</dd>
+                <dd><code>https://relay.example/inbox/a&amp;b</code> · declared <time datetime="1970-01-02T03:47:20Z">1970-01-02T03:47:20Z</time></dd>
               </div>
               <div>
                 <dt>Inbox diagnostic</dt>
-                <dd>{{.Inbox.DisplayState}}{{if .Inbox.LastCheckedAt}} · checked <time datetime="{{.Inbox.LastCheckedAt}}">{{.Inbox.LastCheckedAt}}</time>{{end}}</dd>
+                <dd>method rejected · checked <time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
               </div>
               <div>
                 <dt>RFC 9421</dt>
-                <dd>{{.RFC9421.State}}{{if .RFC9421.VerifiedAt}} · evidence recorded <time datetime="{{.RFC9421.VerifiedAt}}">{{.RFC9421.VerifiedAt}}</time>{{end}}</dd>
+                <dd>verified · evidence recorded <time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
               </div>
             </dl>
           </article>
         </li>
-{{end}}
+
       </ul>
-{{else}}
-      <div class="empty-state">
-{{if .NextURL}}        <p class="empty-title">No public relays on this page</p>
-        <p>This bounded page contained no currently eligible entries. Continue to the next page to keep browsing.</p>
-{{else}}        <p class="empty-title">No relays are listed yet</p>
-        <p>Relay instances will appear here after the directory has sufficient public eligibility evidence.</p>
-{{end}}      </div>
-{{end}}
+
 
       <nav class="pagination" aria-label="Directory pages">
-        {{if .NextURL}}<a class="button-link" rel="next" href="{{.NextURL}}">Next page</a>{{else}}<span class="muted">End of directory</span>{{end}}
+        <span class="muted">End of directory</span>
       </nav>
     </section>
 
@@ -130,17 +123,7 @@
           <span>Want to run your own directory? <a href="https://github.com/thystra/activity-relay-directory" rel="noreferrer">Get the software here.</a></span>
           <span>Want to run your own relay? <a href="https://github.com/thystra/Activity-Relay" rel="noreferrer">Get the software here.</a></span>
         </div>
-      </div>{{if .HasOperator}}
-      <div class="operator-contact">{{if .HasOperatorLinks}}
-        <nav class="operator-links" aria-label="Operator contact">
-          {{if .OperatorWebsite}}<a href="{{.OperatorWebsite}}" rel="noreferrer">Operator website</a>{{end}}
-          {{if .OperatorEmail}}<a href="{{.OperatorEmailURL}}">{{.OperatorEmail}}</a>{{end}}
-          {{if .FediverseID}}<a href="{{.FediverseURL}}" rel="me noreferrer">{{.FediverseID}}</a>{{end}}
-        </nav>{{end}}{{if .OperatorDiagnostics}}
-        <div class="operator-diagnostics" role="status" aria-label="Operator configuration notice">{{range .OperatorDiagnostics}}
-          <span class="operator-diagnostic">{{.}}</span>{{end}}
-        </div>{{end}}
-      </div>{{end}}
+      </div>
     </div>
   </footer>
 </body>

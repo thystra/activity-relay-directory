@@ -171,6 +171,34 @@ a:focus-visible {
   list-style: none;
 }
 
+.empty-state {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  border: 1px dashed var(--border);
+  border-radius: 0.8rem;
+  background: var(--surface-muted);
+  text-align: center;
+}
+
+.empty-state p {
+  max-width: 42rem;
+  margin: 0.5rem auto 0;
+  color: var(--muted);
+}
+
+.empty-state .empty-title {
+  margin-top: 0;
+  color: var(--text);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  margin-top: 1.25rem;
+}
+
 .relay-card {
   height: 100%;
   padding: 1.2rem;
@@ -213,106 +241,6 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
 }
-
-.health {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.55rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  font-weight: 800;
-  line-height: 1.2;
-  text-transform: capitalize;
-}
-
-.health::before {
-  display: inline-block;
-  min-width: 1em;
-  font-weight: 900;
-  line-height: 1;
-  text-align: center;
-}
-
-.health-healthy {
-  border-style: solid;
-}
-
-.health-healthy::before {
-  content: "✓";
-}
-
-.health-stale {
-  border-style: dashed;
-}
-
-.health-stale::before {
-  content: "!";
-}
-
-.health-dead {
-  border-width: 3px;
-  border-style: double;
-}
-
-.health-dead::before {
-  content: "×";
-}
-
-.health-healthy,
-.healthy-definition dt { color: var(--success); }
-
-.health-stale,
-.stale-definition dt { color: var(--warning); }
-
-.health-dead,
-.dead-definition dt { color: var(--danger); }
-
-.empty-state {
-  padding: clamp(1.5rem, 4vw, 2.5rem);
-  border: 1px dashed var(--border);
-  border-radius: 0.8rem;
-  background: var(--surface-muted);
-  text-align: center;
-}
-
-.empty-state p {
-  max-width: 42rem;
-  margin: 0.5rem auto 0;
-  color: var(--muted);
-}
-
-.empty-state .empty-title {
-  margin-top: 0;
-  color: var(--text);
-  font-size: 1.2rem;
-  font-weight: 800;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  min-height: 2.75rem;
-  margin-top: 1.25rem;
-}
-
-.health-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  margin: 0;
-}
-
-.health-definition {
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--background);
-}
-
-.health-definition dd { margin-top: 0.35rem; }
-
 
 
 .operator-contact {
@@ -359,8 +287,6 @@ code {
 }
 
 @media (max-width: 48rem) {
-  .health-grid { grid-template-columns: 1fr; }
-
   .section-heading,
   .relay-card-heading,
   .header-row,
@@ -375,4 +301,90 @@ code {
   .operator-contact { justify-items: start; }
 
   .operator-diagnostics { justify-content: flex-start; }
+}
+
+.signal-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.signal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.signal-badge::before {
+  display: inline-block;
+  min-width: 1em;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+}
+
+.heartbeat-healthy,
+.reachability-reachable { color: var(--success); }
+
+.heartbeat-healthy::before,
+.reachability-reachable::before { content: "✓"; }
+
+.heartbeat-stale {
+  color: var(--warning);
+  border-style: dashed;
+}
+
+.heartbeat-stale::before { content: "!"; }
+
+.heartbeat-dead,
+.heartbeat-prune,
+.reachability-unreachable { color: var(--danger); }
+
+.heartbeat-dead,
+.heartbeat-prune { border-style: double; border-width: 3px; }
+
+.heartbeat-dead::before,
+.reachability-unreachable::before { content: "×"; }
+
+.heartbeat-prune::before { content: "!!"; min-width: 1.4em; }
+
+.heartbeat-not_observed,
+.reachability-unknown {
+  color: var(--muted);
+  border-style: dotted;
+}
+
+.heartbeat-not_observed::before,
+.reachability-unknown::before { content: "?"; }
+
+.evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.evidence-definition {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--background);
+}
+
+.evidence-definition dd { margin-top: 0.35rem; }
+
+@media (max-width: 48rem) {
+  .relay-card-heading {
+    display: grid;
+  }
+
+  .signal-badges { justify-content: flex-start; }
+  .evidence-grid { grid-template-columns: 1fr; }
 }

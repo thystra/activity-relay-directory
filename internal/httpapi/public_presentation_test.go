@@ -56,7 +56,7 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		"Public relay directory",
 		"Participating relays",
 		"No relays are listed yet",
-		"Health definitions",
+		"Independent directory signals",
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("human directory body missing %q", required)
@@ -80,8 +80,11 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		".site-header",
 		".hero h1",
 		".panel",
-		".health-healthy",
+		".heartbeat-healthy",
+		".reachability-reachable",
+		".evidence-grid",
 		".empty-state",
+		".pagination",
 	} {
 		if !strings.Contains(stylesheet, required) {
 			t.Fatalf("stylesheet missing public-presentation contract %q", required)
@@ -94,16 +97,19 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 	}
 }
 
-func TestHumanDirectoryHealthStateDoesNotDependOnColor(t *testing.T) {
-	if !strings.Contains(
-		humanDirectoryTemplateSource,
-		`<span class="health health-{{.Health}}">{{.Health}}</span>`,
-	) {
-		t.Fatal("health badge no longer contains the visible textual health state")
-	}
-	for _, state := range []string{"healthy", "stale", "dead"} {
-		if !strings.Contains(humanDirectoryTemplateSource, "<dt>"+state+"</dt>") {
-			t.Fatalf("health definitions no longer visibly name %q", state)
+func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
+	for _, required := range []string{
+		`Heartbeat: {{.Heartbeat.DisplayState}}`,
+		`Reachability: {{.Reachability.DisplayState}}`,
+		`<strong>not observed</strong>`,
+		`<strong>reachable</strong>`,
+		`<strong>unreachable</strong>`,
+		`<strong>unknown</strong>`,
+		`<strong>method rejected</strong>`,
+		`<strong>not verified</strong>`,
+	} {
+		if !strings.Contains(humanDirectoryTemplateSource, required) {
+			t.Fatalf("directory template missing visible evidence label %q", required)
 		}
 	}
 
@@ -118,21 +124,17 @@ func TestHumanDirectoryHealthStateDoesNotDependOnColor(t *testing.T) {
 	stylesheet := styleResponse.Body.String()
 
 	for _, required := range []string{
-		`.health-healthy {`,
-		`border-style: solid;`,
-		`.health-healthy::before {`,
-		`content: "✓";`,
-		`.health-stale {`,
-		`border-style: dashed;`,
-		`.health-stale::before {`,
-		`content: "!";`,
-		`.health-dead {`,
-		`border-style: double;`,
-		`.health-dead::before {`,
-		`content: "×";`,
+		`.heartbeat-healthy::before,`,
+		`.reachability-reachable::before { content: "✓"; }`,
+		`.heartbeat-stale::before { content: "!"; }`,
+		`.heartbeat-dead::before,`,
+		`.reachability-unreachable::before { content: "×"; }`,
+		`.heartbeat-prune::before { content: "!!";`,
+		`.heartbeat-not_observed::before,`,
+		`.reachability-unknown::before { content: "?"; }`,
 	} {
 		if !strings.Contains(stylesheet, required) {
-			t.Fatalf("stylesheet missing non-color health cue %q", required)
+			t.Fatalf("stylesheet missing non-color evidence cue %q", required)
 		}
 	}
 }

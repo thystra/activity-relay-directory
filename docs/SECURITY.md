@@ -212,6 +212,17 @@ pruning are enabled, pruning fails closed until a recent complete non-truncated
 reachability pass exists and still rechecks fresh current reachable evidence in
 the prune transaction. See `docs/REACHABILITY.md`.
 
+The public 1.1 evidence surface is also separately read-only and default-off
+behind `DIRECTORY_PUBLIC_LISTING_ENABLED`. `/v2/relays` and the human `/` page
+share one backend-neutral projection that merges only current lifecycle,
+discovery-state, and observation records by canonical actor. It never joins or
+serializes private `discovery_events` or `moderation_events`. Public output
+contains no discovery source kind/label, operator/reason token, probe error,
+resolver detail, signing-key identifier, client address, or internal
+registered/discovered participation flag. Malformed retained evidence fails the
+request closed with fixed redacted errors. The compatibility `/v1/relays`
+representation remains unchanged. See `docs/PUBLIC-LISTING.md`.
+
 ## Hard-retention threat boundary
 
 Inactive retention is the only reviewed path that may permanently remove a

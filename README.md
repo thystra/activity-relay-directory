@@ -10,7 +10,8 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/status`
-- default-off `GET /v1/relays` public JSON listing and `GET /` human-readable view
+- default-off compatibility `GET /v1/relays` JSON listing plus the 1.1-development
+  `GET /v2/relays` evidence projection and `GET /` human-readable view
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
 - signed register, heartbeat, and unregister APIs, disabled together by default
@@ -45,6 +46,9 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
   non-mutating inbox diagnostics
 - default-off bounded background actor reachability maintenance with fixed
   hourly cadence, fair oldest-check-first scheduling, and pruning safeguards
+- 1.1-development bounded `/v2/relays` projection and human cards that keep
+  heartbeat, reachability, inbox diagnostics, and positive RFC 9421 evidence
+  independent while preserving `/v1/relays` compatibility
 - local read-only `admin pruning dry-run` candidate inspection
 - strict default-zero inactive-record retention with identity-free dry-run,
   backup-gated local purge, bounded transactional revalidation, and private
@@ -215,6 +219,24 @@ pruning is enabled, the interval must be at least `1h`. Each run captures one
 server time, processes at most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
+
+The 1.1 development public projection is `GET /v2/relays`. It is gated by
+the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` switch as `/v1/relays`
+and `/`, but it does not replace or reinterpret the version 1 JSON contract. A
+v2 entry exposes canonical actor/base identity, heartbeat state and optional
+last authenticated observation, current actor reachability/check history, the
+validated actor-declared inbox plus non-mutating diagnostic state, and positive
+RFC 9421 evidence. Discovery provenance, operator/reason tokens, audit events,
+and internal participation flags remain private.
+
+The v2 walk is bounded by canonical actor keyset: pages default to 50 and cap at
+100, while one request examines at most 400 retained identities. Sparse pages
+may therefore contain zero public rows and still return a continuation cursor.
+The human `/` page consumes this same projection and cursor. Discovered-only
+entries require a current successful actor check within the fixed six-hour
+freshness window; if background reachability is disabled, they naturally age
+out of public eligibility once their last validated actor observation becomes
+stale.
 
 ## Inactive-record retention
 

@@ -289,17 +289,24 @@ credentials, relay host, or notification enablement. See
 `docs/STORAGE-GROWTH.md`.
 
 Public directory presentation must use the same `httpapi.PublicListingHandler`
-projection for JSON and human-readable output. Do not add a second HTML-specific
-repository query, health classifier, moderation filter, or eligibility rule.
-`GET`/`HEAD` `/` and its bundled static assets remain under the same default-off
-`DIRECTORY_PUBLIC_LISTING_ENABLED` gate as `/v1/relays`. HTML must use Go
-`html/template`, automatic escaping, local assets only, a strict CSP, the same
-bounded authenticated cursor and one-minute cache policy, and no relay-provided
-HTML, scripts, fonts, analytics, or relay-controlled image fetches. Health-state
-meaning must never depend on hue alone: retain a visible state word plus a
-distinct non-color visual cue, preserve automated light/dark text-contrast
-coverage, and treat color-vision-deficiency simulation as a review diagnostic
-rather than a substitute for operator browser review.
+projection for v2 JSON and human-readable output. Do not add a second
+HTML-specific repository query, heartbeat/reachability classifier, moderation
+filter, or eligibility rule. Keep `/v1/relays` byte/semantic compatible with the
+1.0 health listing. `GET`/`HEAD` `/`, `/v2/relays`, and bundled static assets
+remain under the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` gate. The
+v2 projection may serialize only canonical identity plus reviewed
+heartbeat/reachability/inbox/RFC 9421 evidence; never serialize discovery
+source/provenance, operator/reason data, audit events, probe errors, client
+addresses, signing-key identifiers, or internal registered/discovered flags.
+Bound v2 pages to 100 public rows and at most 400 retained actor identities per
+request, advancing a signed canonical-actor keyset even through sparse inactive
+rows. HTML must use Go `html/template`, automatic escaping, local assets only, a
+strict CSP, the same v2 authenticated cursor and one-minute cache policy, and no
+relay-provided HTML, scripts, fonts, analytics, or relay-controlled image
+fetches. Evidence-state meaning must never depend on hue alone: retain visible
+state words plus distinct non-color visual cues, preserve automated light/dark
+text-contrast coverage, and treat color-vision-deficiency simulation as a review
+diagnostic rather than a substitute for operator browser review.
 
 The container workflow must use the reviewed Node-24-compatible Docker action
 majors `docker/setup-buildx-action@v4` and `docker/build-push-action@v7`. Keep the

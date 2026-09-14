@@ -148,6 +148,16 @@ func NewHandlerWithRuntime(
 			}
 			publicListing.serve(response, request)
 		})
+		mux.HandleFunc(directoryProjectionPath, func(response http.ResponseWriter, request *http.Request) {
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writeDirectoryProjectionError(response, request, http.StatusServiceUnavailable, "temporarily_unavailable", "directory projection temporarily unavailable")
+				return
+			}
+			publicListing.serveDirectoryProjection(response, request)
+		})
 		mux.HandleFunc(directoryStylesheetPath, serveDirectoryStylesheet)
 		mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
 			if request.URL.Path != "/" {
