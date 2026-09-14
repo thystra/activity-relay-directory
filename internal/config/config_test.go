@@ -81,10 +81,48 @@ func TestLoadRejectsInvalidPublicListingFlag(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsReachabilityDisabled(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_REACHABILITY_ENABLED", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ReachabilityEnabled {
+		t.Fatal("ReachabilityEnabled = true")
+	}
+}
+
+func TestLoadParsesReachabilityEnabled(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_REACHABILITY_ENABLED", "true")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !cfg.ReachabilityEnabled {
+		t.Fatal("ReachabilityEnabled = false")
+	}
+}
+
+func TestLoadRejectsInvalidReachabilityFlag(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
+	t.Setenv("DIRECTORY_REACHABILITY_ENABLED", "sometimes")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "REACHABILITY_ENABLED") {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
 func TestLoadDefaultsSoftPruningDisabled(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("DIRECTORY_PUBLIC_BASE_URL", "https://directory.example")
 	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "")
+	t.Setenv("DIRECTORY_REACHABILITY_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
 
@@ -322,6 +360,7 @@ func TestValidateRejectsRelativeOrUncleanDatabasePath(t *testing.T) {
 func setRequiredEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("DIRECTORY_PUBLIC_LISTING_ENABLED", "")
+	t.Setenv("DIRECTORY_REACHABILITY_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_ENABLED", "")
 	t.Setenv("DIRECTORY_SOFT_PRUNING_INTERVAL", "")
 	t.Setenv(

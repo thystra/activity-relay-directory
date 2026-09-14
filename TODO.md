@@ -712,34 +712,42 @@ Required/implemented behavior:
 - never remove a retained relay merely because a later imported file no longer
   lists it. Candidate files are discovery inputs, not authority.
 
-### Tranche 21: Background reachability and Directory projection
+### Tranche 21: Background reachability maintenance
 
 Repository: Directory.
 
 Add a default-off, bounded reachability maintenance worker. It must never be
 triggered by a public request. The worker probes canonical actors through the
 same safe network boundary, persists the latest outcome plus last successful
-observation, and may collect non-mutating inbox diagnostics. Exact scheduling,
-freshness, page size, and run bounds must be fixed and tested before activation.
+observation, and may collect non-mutating inbox diagnostics. The reviewed 1.1
+policy is fixed at hourly maintenance, six-hour actor freshness, pages of at
+most 24, at most 96 actors per run, and at most eight concurrent probes.
+Never-checked actors run first, then oldest checks, then canonical actor order.
 
-Public behavior:
-- `/v1/relays` remains byte/semantic compatible with 1.0;
-- the 1.1 Directory projection and human page expose heartbeat state,
-  reachability, actor/inbox diagnostics, RFC 9421 `verified|not verified`, and
-  relevant observation timestamps;
-- `not observed` is used when no authenticated heartbeat exists; no fake
-  `last_seen_at` is created for discovered-only relays;
-- manual/self/import origin is not public;
-- administrative suspension overrides both registration and discovery
-  eligibility;
-- an active discovered relay requires sufficiently recent successful actor
-  evidence to remain publicly eligible; and
-- a registered relay is not soft-pruned solely for old heartbeat recency while
-  sufficiently recent actor evidence proves it reachable. Actor reachability
-  does not rewrite heartbeat health, so a card may truthfully show, for example,
-  `Heartbeat: stale` and `Reachability: reachable` at the same time.
+Administrative suspension overrides both registration and discovery
+eligibility. A registered relay is not soft-pruned solely for old heartbeat
+recency while sufficiently recent *current* actor evidence proves it reachable.
+When background reachability and automatic pruning are both enabled, pruning
+must also fail closed until a complete non-truncated reachability pass provides
+recent process-local coverage. Reachability never rewrites heartbeat health or
+`last_seen_at_unix`. `/v1/relays` remains byte/semantic compatible with 1.0.
 
-### Tranche 22: 1.1 acceptance and release gate
+### Tranche 22: Public 1.1 Directory projection
+
+Repository: Directory.
+
+The 1.1 Directory projection and human page expose heartbeat state,
+reachability, actor/inbox diagnostics, RFC 9421 `verified|not verified`, and
+relevant observation timestamps while preserving `/v1/relays` compatibility.
+`not observed` is used when no authenticated heartbeat exists; no fake
+`last_seen_at` is created for discovered-only relays. Manual/self/import origin
+is not public. Administrative suspension overrides both registration and
+discovery eligibility, and an active discovered relay requires sufficiently
+recent successful actor evidence to remain publicly eligible. Heartbeat and
+reachability remain independent so a card may truthfully show, for example,
+`Heartbeat: stale` and `Reachability: reachable` at the same time.
+
+### Tranche 23: 1.1 acceptance and release gate
 
 Repository: Directory.
 

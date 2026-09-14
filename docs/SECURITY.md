@@ -205,6 +205,13 @@ durable mutation. `--yes` is an explicit acknowledgement, not a bypass of URL,
 network, actor, or file bounds. There is no discovery HTTP mutation route and no
 web scraper in 1.1. See `docs/DISCOVERY-REACHABILITY.md`.
 
+Background reachability is separately default-off. It reuses the same safe
+resolver and is bounded to fixed pages, run attempts, concurrency, and hourly
+cadence. Scheduler logs are aggregate-only. When both reachability and soft
+pruning are enabled, pruning fails closed until a recent complete non-truncated
+reachability pass exists and still rechecks fresh current reachable evidence in
+the prune transaction. See `docs/REACHABILITY.md`.
+
 ## Hard-retention threat boundary
 
 Inactive retention is the only reviewed path that may permanently remove a

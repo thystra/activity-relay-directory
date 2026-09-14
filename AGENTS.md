@@ -201,6 +201,19 @@ unregistered rows before decoding, perform no writes, and reject future
 last-seen values. Do not add a public listing route or pruning transition in the
 health-projection tranche.
 
+Background reachability code must use `storage.ReachabilityRepository` and the
+shared `actorresolver.Resolver`. Keep it default-off and unreachable from public
+HTTP handlers. The fixed 1.1 policy is one-hour maintenance, six-hour actor
+freshness, pages <=24, runs <=96 actors, and <=8 concurrent remote probes.
+Candidate order is never-checked first, then oldest check, then canonical actor;
+administrative suspension suppresses both registered and discovered eligibility.
+Remote probes may run concurrently, but persistence is serialized and must
+transactionally revalidate eligibility plus equal/newer observation races. A
+complete non-truncated pass may refresh the process-local pruning-coverage gate;
+failed/truncated passes may not. Reachability never updates lifecycle
+`last_seen_at_unix`, registration/heartbeat state, or RFC 9421 evidence. See
+`docs/REACHABILITY.md`.
+
 Soft-pruning code must use `storage.PruningRepository` and remain reversible.
 Candidate reads use the `(lifecycle_state, last_seen_at_unix, relay_actor)` index,
 include suspension without clearing it, and are bounded to 100 rows. One run may

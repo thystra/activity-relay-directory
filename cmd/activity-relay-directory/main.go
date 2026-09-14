@@ -21,6 +21,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	"github.com/thystra/activity-relay-directory/internal/pruning"
+	"github.com/thystra/activity-relay-directory/internal/reachability"
 	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
 	storage "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
@@ -144,11 +145,55 @@ func run(arguments []string) int {
 		)
 	}
 
+	var coverageGate *reachabilityCoverageGate
+	if cfg.ReachabilityEnabled {
+		reachabilityRepository, err := storage.NewRelayRepository(database, growthGuard)
+		if err != nil {
+			logger.Error("reachability initialization failed", "error", err)
+			return 1
+		}
+		reachabilityResolver, err := actorresolver.New("Activity-Relay-Directory")
+		if err != nil {
+			logger.Error("reachability resolver initialization failed", "error", err)
+			return 1
+		}
+		coverageGate = &reachabilityCoverageGate{}
+		go runReachabilityMaintenance(
+			signals,
+			reachabilityRepository,
+			reachabilityResolver,
+			storageContract.ReachabilityMaintenanceInterval,
+			time.Now,
+			coverageGate,
+			func(result reachability.Result) {
+				logger.Info(
+					"reachability maintenance completed",
+					"observed_at_unix", result.ObservedUnix,
+					"scanned", result.Scanned,
+					"reachable", result.Reachable,
+					"unreachable", result.Unreachable,
+					"skipped", result.Skipped,
+					"inbox_responsive", result.InboxResponsive,
+					"inbox_method_rejected", result.InboxMethodRejected,
+					"inbox_unreachable", result.InboxUnreachable,
+					"truncated", result.Truncated,
+				)
+			},
+			func(err error) {
+				logger.Error("reachability maintenance failed", "error", err)
+			},
+		)
+	}
+
 	if cfg.SoftPruningEnabled {
 		pruningRepository, err := storage.NewRelayRepository(database, growthGuard)
 		if err != nil {
 			logger.Error("soft-pruning initialization failed", "error", err)
 			return 1
+		}
+		var coveredObservation func(time.Time) (time.Time, bool)
+		if coverageGate != nil {
+			coveredObservation = coverageGate.ObservationForPruning
 		}
 		go runSoftPruningMaintenance(
 			signals,
@@ -156,6 +201,10 @@ func run(arguments []string) int {
 			cfg.SoftPruningInterval,
 			storageContract.MinimumSoftPruningInterval,
 			time.Now,
+			coveredObservation,
+			func() {
+				logger.Warn("soft-pruning maintenance deferred", "reason", "reachability_coverage_unavailable")
+			},
 			func(result pruning.Result) {
 				logger.Info(
 					"soft-pruning maintenance completed",
@@ -239,6 +288,9 @@ func run(arguments []string) int {
 		"lifecycle_available", lifecycleHandler != nil,
 		"public_listing_enabled", cfg.PublicListingEnabled,
 		"public_listing_available", publicListingHandler != nil,
+		"reachability_enabled", cfg.ReachabilityEnabled,
+		"reachability_interval", storageContract.ReachabilityMaintenanceInterval,
+		"reachability_freshness", storageContract.ReachabilityFreshness,
 		"soft_pruning_enabled", cfg.SoftPruningEnabled,
 		"soft_pruning_interval", cfg.SoftPruningInterval,
 		"inactive_retention_days", cfg.InactiveRetentionDays,
@@ -370,6 +422,8 @@ func runSoftPruningMaintenance(
 	interval time.Duration,
 	minimumInterval time.Duration,
 	now func() time.Time,
+	coveredObservation func(time.Time) (time.Time, bool),
+	onDeferred func(),
 	onResult func(pruning.Result),
 	onError func(error),
 ) {
@@ -385,7 +439,22 @@ func runSoftPruningMaintenance(
 		if err := ctx.Err(); err != nil {
 			return
 		}
-		result, err := pruning.Run(ctx, repository, now())
+		wallClock := now().UTC()
+		observedAt := wallClock
+		if coveredObservation != nil {
+			covered, ok := coveredObservation(wallClock)
+			if !ok {
+				if onDeferred != nil {
+					onDeferred()
+				}
+				if !waitMaintenanceInterval(ctx, interval) {
+					return
+				}
+				continue
+			}
+			observedAt = covered
+		}
+		result, err := pruning.Run(ctx, repository, observedAt)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -397,17 +466,8 @@ func runSoftPruningMaintenance(
 			onResult(result)
 		}
 
-		timer := time.NewTimer(interval)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
+		if !waitMaintenanceInterval(ctx, interval) {
 			return
-		case <-timer.C:
 		}
 	}
 }

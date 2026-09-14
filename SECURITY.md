@@ -17,3 +17,7 @@ commands; no administrative HTTP endpoint is exposed. Discovery reuses the
 proxy-free SSRF-resistant actor resolver and never sends synthetic ActivityPub
 POSTs. See `docs/SECURITY.md`, `docs/DISCOVERY-REACHABILITY.md`, and
 `docs/HANDLERS.md`.
+
+## Background reachability
+
+The optional 1.1 background reachability worker is disabled by default, reuses the proxy-free SSRF-resistant actor resolver, has fixed bounded scheduling/concurrency, logs aggregate results only, and never substitutes its observations for authenticated lifecycle heartbeat recency. Automatic soft pruning is fail-closed behind recent complete reachability coverage when the worker is enabled.

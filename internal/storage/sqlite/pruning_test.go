@@ -499,3 +499,99 @@ func insertPruningRelayRow(
 		t.Fatalf("insert pruning relay %s: %v", actor, err)
 	}
 }
+
+func TestPruneCandidatesProtectOnlyCurrentFreshReachability(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(4_000_000, 0)
+	lastSeen := observed.Unix() - int64(storage.DeadBefore/time.Second)
+
+	for _, actor := range []string{
+		"https://fresh-reachable.example/actor",
+		"https://old-reachable.example/actor",
+		"https://later-unreachable.example/actor",
+	} {
+		insertPruningRelay(t, database, actor, lifecycleRegistered, administrativeActive, lastSeen, nil)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: "https://fresh-reachable.example/actor",
+		State:      storage.ReachabilityReachable,
+	}, observed.Add(-storage.ReachabilityFreshness)); err != nil {
+		t.Fatalf("fresh observation: %v", err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: "https://old-reachable.example/actor",
+		State:      storage.ReachabilityReachable,
+	}, observed.Add(-storage.ReachabilityFreshness-time.Second)); err != nil {
+		t.Fatalf("old observation: %v", err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: "https://later-unreachable.example/actor",
+		State:      storage.ReachabilityReachable,
+	}, observed.Add(-time.Hour)); err != nil {
+		t.Fatalf("successful observation: %v", err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: "https://later-unreachable.example/actor",
+		State:      storage.ReachabilityUnreachable,
+	}, observed.Add(-time.Minute)); err != nil {
+		t.Fatalf("unreachable observation: %v", err)
+	}
+
+	page, err := repository.PruneCandidates(ctx, storage.PruneCandidateQuery{
+		Limit:      10,
+		ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("PruneCandidates() error = %v", err)
+	}
+	var actors []string
+	for _, candidate := range page.Candidates {
+		actors = append(actors, candidate.RelayActor)
+	}
+	want := []string{
+		"https://later-unreachable.example/actor",
+		"https://old-reachable.example/actor",
+	}
+	if !equalStrings(actors, want) {
+		t.Fatalf("prune candidates = %#v, want %#v", actors, want)
+	}
+}
+
+func TestSoftPruneRevalidatesFreshReachabilityRace(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(5_000_000, 0)
+	actor := "https://race-reachable.example/actor"
+	insertPruningRelay(
+		t,
+		database,
+		actor,
+		lifecycleRegistered,
+		administrativeActive,
+		observed.Unix()-int64(storage.DeadBefore/time.Second),
+		nil,
+	)
+	page, err := repository.PruneCandidates(ctx, storage.PruneCandidateQuery{
+		Limit:      1,
+		ObservedAt: observed,
+	})
+	if err != nil || len(page.Candidates) != 1 {
+		t.Fatalf("candidate page = (%#v, %v)", page, err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: actor,
+		State:      storage.ReachabilityReachable,
+	}, observed); err != nil {
+		t.Fatalf("RecordActorObservation() error = %v", err)
+	}
+	outcome, err := repository.SoftPrune(ctx, storage.IdentityIntent{RelayActor: actor}, observed)
+	if err != nil || outcome != storage.PruneNotEligible {
+		t.Fatalf("SoftPrune(after reachability) = (%q, %v)", outcome, err)
+	}
+	if relay := readTestRelay(t, database, actor); relay.lifecycleState != lifecycleRegistered || relay.prunedAt.Valid {
+		t.Fatalf("relay after race = %#v", relay)
+	}
+}

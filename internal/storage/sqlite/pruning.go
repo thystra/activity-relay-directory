@@ -12,8 +12,10 @@ import (
 var _ storage.PruningRepository = (*RelayRepository)(nil)
 
 // PruneCandidates returns one indexed, bounded page of registered relays at or
-// beyond the fixed 30-day boundary. Administrative suspension is deliberately
-// not a filter because moderation and soft-pruning are independent dimensions.
+// beyond the fixed 30-day boundary. A currently reachable actor with sufficiently
+// recent successful evidence is protected independently of heartbeat recency.
+// Administrative suspension remains independent from the reversible lifecycle
+// transition and is therefore not a candidate filter.
 func (repository *RelayRepository) PruneCandidates(
 	ctx context.Context,
 	query storage.PruneCandidateQuery,
@@ -33,6 +35,7 @@ func (repository *RelayRepository) PruneCandidates(
 		return storage.PruneCandidatePage{}, storage.ErrPruningReadInput
 	}
 	cutoffUnix := observedUnix - int64(storage.DeadBefore/time.Second)
+	reachabilityCutoffUnix := observedUnix - int64(storage.ReachabilityFreshness/time.Second)
 	if query.After != (storage.PruneCandidateCursor{}) &&
 		query.After.LastSeenUnix > cutoffUnix {
 		return storage.PruneCandidatePage{}, storage.ErrPruningReadInput
@@ -48,12 +51,21 @@ func (repository *RelayRepository) PruneCandidates(
 		 WHERE lifecycle_state = ?
 		   AND last_seen_at_unix <= ?
 		   AND (last_seen_at_unix, relay_actor) > (?, ?)
+		   AND NOT EXISTS (
+		       SELECT 1
+		       FROM relay_observations AS observation
+		       WHERE observation.relay_actor = relays.relay_actor
+		         AND observation.actor_state = ?
+		         AND observation.actor_last_success_at_unix >= ?
+		   )
 		 ORDER BY last_seen_at_unix, relay_actor
 		 LIMIT ?`,
 		lifecycleRegistered,
 		cutoffUnix,
 		query.After.LastSeenUnix,
 		query.After.RelayActor,
+		string(storage.ReachabilityReachable),
+		reachabilityCutoffUnix,
 		query.Limit+1,
 	)
 	if err != nil {
@@ -129,6 +141,7 @@ func (repository *RelayRepository) SoftPrune(
 		return "", err
 	}
 	cutoffUnix := observedUnix - int64(storage.DeadBefore/time.Second)
+	reachabilityCutoffUnix := observedUnix - int64(storage.ReachabilityFreshness/time.Second)
 
 	transaction, lease, err := repository.begin(ctx)
 	if err != nil {
@@ -148,6 +161,14 @@ func (repository *RelayRepository) SoftPrune(
 		return storage.PruneAlreadyPruned, nil
 	}
 	if relay.lifecycleState != lifecycleRegistered || relay.lastSeenAtUnix > cutoffUnix {
+		return storage.PruneNotEligible, nil
+	}
+	observation, err := selectObservation(ctx, transaction, intent.RelayActor)
+	if err != nil {
+		return "", storageFailure("read reachability for soft pruning", err)
+	}
+	if observation != nil && observation.actorState == string(storage.ReachabilityReachable) &&
+		observation.actorLastSuccess.Valid && observation.actorLastSuccess.Int64 >= reachabilityCutoffUnix {
 		return storage.PruneNotEligible, nil
 	}
 	if err := requireMonotonicTime(

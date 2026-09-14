@@ -43,6 +43,8 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - 1.1-development local `admin discovery add|remove|import` commands with
   SSRF-resistant actor verification, bounded file import, private provenance, and
   non-mutating inbox diagnostics
+- default-off bounded background actor reachability maintenance with fixed
+  hourly cadence, fair oldest-check-first scheduling, and pruning safeguards
 - local read-only `admin pruning dry-run` candidate inspection
 - strict default-zero inactive-record retention with identity-free dry-run,
   backup-gated local purge, bounded transactional revalidation, and private
@@ -89,6 +91,7 @@ and logging overrides.
 | `DIRECTORY_DATABASE_PATH` | required absolute secure local path | SQLite database |
 | `DIRECTORY_LIFECYCLE_ENABLED` | `false` | Enable signed register/heartbeat/unregister routes together |
 | `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON and human directory views |
+| `DIRECTORY_REACHABILITY_ENABLED` | `false` | Enable fixed bounded background actor/inbox reachability maintenance |
 | `DIRECTORY_SOFT_PRUNING_ENABLED` | `false` | Enable automatic reversible pruning |
 | `DIRECTORY_SOFT_PRUNING_INTERVAL` | `24h`; `0` only while pruning is disabled; otherwise minimum `1h` | Automatic pruning interval |
 | `DIRECTORY_INACTIVE_RETENTION_DAYS` | `0` | Inactive-record retention; `0` means indefinite |
@@ -189,7 +192,7 @@ applied even when other candidates fail, and the command returns a nonzero
 operational result when any candidate failed so automation cannot mistake a
 partial import for complete success. Removing a discovery does not unregister a
 separately self-registered relay, and a later file omission never removes an
-entry automatically. See `docs/DISCOVERY-REACHABILITY.md`.
+entry automatically. See `docs/DISCOVERY-REACHABILITY.md`. Background maintenance is documented in `docs/REACHABILITY.md`.
 
 Soft pruning is a reversible lifecycle transition, not deletion. A dry run opens
 an existing current-schema database through a query-only connection and reads
@@ -201,8 +204,12 @@ activity-relay-directory admin pruning dry-run \
   --format json
 ```
 
-Automatic maintenance is disabled by default. Operators may explicitly enable
+Automatic pruning is disabled by default. Operators may explicitly enable
 it with `DIRECTORY_SOFT_PRUNING_ENABLED=true`; the interval defaults to `24h`.
+Independent background reachability is separately default-off behind
+`DIRECTORY_REACHABILITY_ENABLED=true`. When both are enabled, pruning waits
+for recent complete reachability coverage and fresh current actor success
+protects a stale-heartbeat relay from reversible pruning.
 An explicit interval of `0` is valid only while pruning is disabled; when
 pruning is enabled, the interval must be at least `1h`. Each run captures one
 server time, processes at most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
@@ -319,8 +326,8 @@ The stable package uses application version `1.0.0` and Debian version
 `1.0.0-1`. Package installation is deliberately separate from activation: the systemd unit is installed disabled and is not started
 automatically. The packaged environment binds to loopback, stores SQLite state
 under `/var/lib/activity-relay-directory`, and keeps lifecycle, public listing,
-automatic soft pruning, positive inactive retention, and administrator email
-disabled until an operator explicitly changes them.
+background reachability, automatic soft pruning, positive inactive retention,
+and administrator email disabled until an operator explicitly changes them.
 
 Removing or purging the package never deletes the SQLite state automatically.
 See `debian/README.Debian` and `docs/RELEASING.md` before package installation,

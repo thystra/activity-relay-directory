@@ -25,6 +25,8 @@ func TestRunSoftPruningMaintenanceRunsImmediatelyAndStops(t *testing.T) {
 			time.Hour,
 			time.Hour,
 			func() time.Time { return observed },
+			nil,
+			nil,
 			func(result pruning.Result) {
 				results <- result
 				cancel()
@@ -83,6 +85,8 @@ func TestRunSoftPruningMaintenanceRejectsTooFrequentOrIncompleteConfiguration(t 
 				test.minimum,
 				test.now,
 				nil,
+				nil,
+				nil,
 				func(err error) { errorsSeen <- err },
 			)
 			select {
@@ -112,6 +116,8 @@ func TestRunSoftPruningMaintenanceReportsRunErrorThenWaitsForCancellation(t *tes
 			time.Hour,
 			time.Hour,
 			time.Now,
+			nil,
+			nil,
 			nil,
 			func(err error) {
 				errorsSeen <- err
@@ -157,4 +163,83 @@ func (*maintenancePruningRepository) SoftPrune(
 	time.Time,
 ) (storageContract.PruneOutcome, error) {
 	return storageContract.PruneApplied, nil
+}
+
+func TestRunSoftPruningMaintenanceDefersWithoutReachabilityCoverage(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repository := &maintenancePruningRepository{queries: make(chan storageContract.PruneCandidateQuery, 1)}
+	deferred := make(chan struct{}, 1)
+	done := make(chan struct{})
+	go func() {
+		runSoftPruningMaintenance(
+			ctx,
+			repository,
+			time.Hour,
+			time.Hour,
+			time.Now,
+			func(time.Time) (time.Time, bool) { return time.Time{}, false },
+			func() {
+				deferred <- struct{}{}
+				cancel()
+			},
+			nil,
+			func(err error) { t.Errorf("unexpected error: %v", err) },
+		)
+		close(done)
+	}()
+	select {
+	case <-deferred:
+	case <-time.After(time.Second):
+		t.Fatal("soft pruning was not deferred")
+	}
+	select {
+	case query := <-repository.queries:
+		t.Fatalf("unexpected pruning query without coverage: %#v", query)
+	default:
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("deferred maintenance did not stop")
+	}
+}
+
+func TestRunSoftPruningMaintenanceUsesCoveredObservationTime(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	repository := &maintenancePruningRepository{queries: make(chan storageContract.PruneCandidateQuery, 1)}
+	wallClock := time.Unix(5_000_000, 0)
+	covered := wallClock.Add(-time.Hour)
+	done := make(chan struct{})
+	go func() {
+		runSoftPruningMaintenance(
+			ctx,
+			repository,
+			time.Hour,
+			time.Hour,
+			func() time.Time { return wallClock },
+			func(now time.Time) (time.Time, bool) {
+				if !now.Equal(wallClock) {
+					t.Errorf("coverage wall clock = %s", now)
+				}
+				return covered, true
+			},
+			nil,
+			func(pruning.Result) { cancel() },
+			func(err error) { t.Errorf("unexpected error: %v", err) },
+		)
+		close(done)
+	}()
+	select {
+	case query := <-repository.queries:
+		if !query.ObservedAt.Equal(covered) {
+			t.Fatalf("pruning observed at = %s, want %s", query.ObservedAt, covered)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("covered pruning query did not run")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("covered maintenance did not stop")
+	}
 }

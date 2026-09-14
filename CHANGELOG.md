@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add default-off bounded background reachability maintenance with fair oldest-check-first scheduling, fixed hourly/six-hour policy, at most 96 actors per run and eight concurrent probes.
+- Protect soft pruning with fresh current reachability plus a fail-closed process-local complete-coverage gate; reachability never rewrites authenticated heartbeat recency.
 - Add schema version 8 discovery/reachability persistence with private
   operator-discovery provenance, independent actor/inbox observations,
   positive-only RFC 9421 evidence, and retention-policy version 2 integration.

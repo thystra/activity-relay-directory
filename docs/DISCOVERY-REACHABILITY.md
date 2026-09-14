@@ -6,9 +6,11 @@ This document defines the approved Activity-Relay Directory 1.1 design for
 operator discovery, independent relay reachability, endpoint diagnostics, and
 their interaction with the existing version 1 lifecycle contract.
 
-Schema version 8 persistence plus the local operator discovery/import surface
-are implemented on the 1.1 development line. Periodic background probing and
-the richer public 1.1 Directory projection remain later tranches. The released
+Schema version 8 persistence, the local operator discovery/import surface, and
+the default-off bounded background reachability worker are implemented on the
+1.1 development line. The richer public 1.1 Directory projection remains a
+separate later tranche. See `docs/REACHABILITY.md` for worker scheduling and
+soft-pruning interaction. The released
 1.0.0 lifecycle and `/v1/relays` representation remain compatibility
 authorities until 1.1 is accepted and released.
 

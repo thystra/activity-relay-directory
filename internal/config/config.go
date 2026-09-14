@@ -51,6 +51,7 @@ type Config struct {
 	DatabasePath          string
 	LifecycleEnabled      bool
 	PublicListingEnabled  bool
+	ReachabilityEnabled   bool
 	SoftPruningEnabled    bool
 	SoftPruningInterval   time.Duration
 	InactiveRetentionDays int
@@ -67,6 +68,7 @@ func Load() (Config, error) {
 		DatabasePath:          strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH")),
 		LifecycleEnabled:      false,
 		PublicListingEnabled:  false,
+		ReachabilityEnabled:   false,
 		SoftPruningEnabled:    false,
 		SoftPruningInterval:   storage.DefaultSoftPruningInterval,
 		InactiveRetentionDays: 0,
@@ -99,6 +101,17 @@ func Load() (Config, error) {
 			)
 		}
 		cfg.PublicListingEnabled = value
+	}
+
+	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_REACHABILITY_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, fmt.Errorf(
+				"DIRECTORY_REACHABILITY_ENABLED must be a boolean: %w",
+				err,
+			)
+		}
+		cfg.ReachabilityEnabled = value
 	}
 
 	if raw := strings.TrimSpace(os.Getenv("DIRECTORY_SOFT_PRUNING_ENABLED")); raw != "" {

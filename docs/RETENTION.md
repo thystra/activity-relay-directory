@@ -13,6 +13,17 @@ The initial implementation is local-administrator-only. A positive policy says
 which inactive rows are old enough to purge; an operator must still invoke the
 local purge command with a verified pre-retention backup.
 
+### Reachability and reversible soft pruning
+
+Hard retention remains independent from actor reachability. For reversible
+soft pruning, however, 1.1 treats fresh current actor reachability as separate
+evidence from lifecycle heartbeat recency. When background reachability is
+enabled, automatic soft pruning waits for recent complete reachability coverage
+and both candidate selection and the final pruning transaction protect a relay
+whose current actor state is `reachable` with a success inside the fixed
+six-hour window. See `docs/REACHABILITY.md`.
+
+
 ## Threat model
 
 Hard retention is designed around accidental or stale destructive maintenance,
