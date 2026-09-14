@@ -12,10 +12,16 @@ operator controls.
 
 Every tranche must preserve these project invariants:
 
-- directory participation remains opt-in on both the server and relay;
+- authenticated lifecycle participation remains opt-in on both the server and
+  relay; operator discovery is a separate local authorization for Directory
+  inclusion and never fabricates remote participation;
 - the directory stores relay-instance metadata, never connected-site, follower,
   membership, or user identities;
-- only server acceptance time determines directory recency;
+- only server acceptance time determines authenticated directory recency;
+- independent reachability observations never refresh authenticated directory
+  recency or fabricate heartbeat participation;
+- registration/discovery provenance is private and never appears in public
+  Directory representations;
 - moderation overrides automated health and public visibility;
 - pruning is a reversible lifecycle transition, not hard deletion;
 - enrollment defaults closed and changes only through a local administrative
@@ -635,6 +641,122 @@ After a sustained soak, prepare release-candidate metadata, deterministic
 binary/container builds, SBOMs, checksums, rollback instructions, schema notes,
 and Debian packages. Package publication, deployment, feature activation, and
 stable promotion remain distinct approvals.
+
+## Post-1.0 / 1.1 roadmap
+
+The 1.0.0 production experience established a new requirement: a relay may be a
+valid, reachable ActivityPub relay even when its optional Directory heartbeat
+client is absent, stopped, or mis-scheduled. Version 1 lifecycle semantics stay
+frozen. Activity-Relay Directory 1.1 adds independent server-originated
+reachability and operator discovery rather than redefining a heartbeat.
+
+### Tranche 19: Discovery/reachability contract and persistence
+
+Repository: Directory.
+
+Freeze the new evidence model before wiring background work or public output.
+The contract must:
+- keep authenticated `last_seen_at_unix` and fixed version 1 health boundaries
+  unchanged;
+- define independent actor reachability as `unknown`, `reachable`, or
+  `unreachable`, with separate last-check and last-success times;
+- record a validated actor-declared HTTPS inbox separately from actor
+  reachability and allow bounded non-mutating inbox diagnostics;
+- record RFC 9421 as `verified` only from an actually accepted signed lifecycle
+  request and otherwise expose `not verified`, never an inferred `no`;
+- represent active/removed operator discovery independently of the relay
+  lifecycle row so discovery does not fabricate registration state;
+- retain private append-only discovery events with bounded operator, reason,
+  source-kind, and source-label tokens while exposing none of that provenance
+  publicly;
+- preserve existing `/v1/relays` storage and representation semantics; and
+- specify how discovery/observation identity-bearing rows participate in
+  inactive retention before a migration is released, so version 8 cannot create
+  orphaned durable identity data outside the reviewed purge boundary.
+
+Migration implementation must be one consecutive migration, update
+`CurrentSchemaVersion`, preserve migration hash/drift checks, and add fresh plus
+supported-upgrade tests. Do not release a partial migration whose new rows are
+not covered by the retention contract.
+
+### Tranche 20: Safe operator discovery and local-file import
+
+Repository: Directory.
+
+Add local administrative discovery commands only; there is no discovery HTTP
+mutation surface and no web scraper in 1.1. Required behavior:
+- accept one HTTPS candidate or a bounded local newline-delimited file;
+- ignore blank lines and `#` comments and bound file bytes, line bytes, candidate
+  count, and concurrent remote checks;
+- accept base, `/actor`, and `/inbox` candidate forms as hints, then independently
+  establish a canonical actor before mutation;
+- use the existing proxy-free SSRF-resistant resolver/network policy for every
+  remote request and revalidate redirects/addresses exactly as production actor
+  resolution does;
+- require successful canonical actor validation before first discovery add;
+- derive and verify the actor-declared inbox without sending a synthetic
+  ActivityPub POST; optional HEAD/OPTIONS/GET diagnostics must treat method
+  rejection conservatively;
+- deduplicate all candidate forms by validated canonical actor identity;
+- support idempotent local add/remove plus a prospective import summary and
+  explicit confirmation or `--yes` before mutation;
+- record a bounded source label rather than an absolute workstation file path;
+  and
+- never remove a retained relay merely because a later imported file no longer
+  lists it. Candidate files are discovery inputs, not authority.
+
+### Tranche 21: Background reachability and Directory projection
+
+Repository: Directory.
+
+Add a default-off, bounded reachability maintenance worker. It must never be
+triggered by a public request. The worker probes canonical actors through the
+same safe network boundary, persists the latest outcome plus last successful
+observation, and may collect non-mutating inbox diagnostics. Exact scheduling,
+freshness, page size, and run bounds must be fixed and tested before activation.
+
+Public behavior:
+- `/v1/relays` remains byte/semantic compatible with 1.0;
+- the 1.1 Directory projection and human page expose heartbeat state,
+  reachability, actor/inbox diagnostics, RFC 9421 `verified|not verified`, and
+  relevant observation timestamps;
+- `not observed` is used when no authenticated heartbeat exists; no fake
+  `last_seen_at` is created for discovered-only relays;
+- manual/self/import origin is not public;
+- administrative suspension overrides both registration and discovery
+  eligibility;
+- an active discovered relay requires sufficiently recent successful actor
+  evidence to remain publicly eligible; and
+- a registered relay is not soft-pruned solely for old heartbeat recency while
+  sufficiently recent actor evidence proves it reachable. Actor reachability
+  does not rewrite heartbeat health, so a card may truthfully show, for example,
+  `Heartbeat: stale` and `Reachability: reachable` at the same time.
+
+### Tranche 22: 1.1 acceptance and release gate
+
+Repository: Directory.
+
+Acceptance must exercise at least:
+1. upgrade from the exact 1.0.0 schema with retained lifecycle/audit state;
+2. a self-registered relay with healthy heartbeat and successful actor probe;
+3. a self-registered relay with stale/dead heartbeat but reachable actor;
+4. a discovered-only relay with no fabricated heartbeat or registration time;
+5. base, `/actor`, and `/inbox` file candidates converging on one actor row;
+6. invalid JSON, wrong actor ID/type, wrong content type, redirect, private-IP,
+   DNS-change, timeout, oversized-response, and TLS failures staying fail-closed;
+7. an actor-declared inbox returning a normal method rejection without being
+   incorrectly classified as absent;
+8. RFC 9421 changing from `not verified` to `verified` only after an accepted
+   signed lifecycle request;
+9. discovery remove preserving a separately valid self-registration and
+   authenticated unregister preserving a separately active discovery;
+10. moderation suspension hiding either provenance path;
+11. pruning races against a fresh reachability observation; and
+12. inactive retention covering all newly introduced identity-bearing state as
+    specified by the reviewed schema contract.
+
+Canonical release bytes, package/container validation, deployment, activation,
+and production verification remain separate gates.
 
 ## Completion definition
 

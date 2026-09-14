@@ -18,9 +18,13 @@ const (
 	// MaximumPurgeAttemptsPerRun bounds one manual destructive maintenance run.
 	MaximumPurgeAttemptsPerRun = 1000
 
-	// RetentionPolicyVersion identifies the first hard-retention policy/audit
-	// contract. It is local private metadata, not protocol vocabulary.
-	RetentionPolicyVersion = 1
+	// RetentionPolicyVersion identifies the current hard-retention policy/audit
+	// contract. Version 2 adds removed discovery state and orphan-observation
+	// cleanup while preserving version-1 run records as historical evidence.
+	RetentionPolicyVersion = 2
+
+	PurgeCandidateLifecycle PurgeCandidateKind = "lifecycle"
+	PurgeCandidateDiscovery PurgeCandidateKind = "discovery"
 )
 
 var (
@@ -33,12 +37,19 @@ var (
 	ErrRetentionWriteInput = errors.New("inactive-retention write input is invalid")
 )
 
+type PurgeCandidateKind string
+
+func (kind PurgeCandidateKind) Valid() bool {
+	return kind == PurgeCandidateLifecycle || kind == PurgeCandidateDiscovery
+}
+
 // PurgeCandidateCursor is a private indexed keyset position ordered by the
-// authoritative inactive-transition timestamp and canonical relay actor.
-// The zero value starts from the first candidate.
+// authoritative inactive-transition timestamp, canonical relay actor, and
+// candidate kind. The zero value starts from the first candidate.
 type PurgeCandidateCursor struct {
 	InactiveUnix int64
 	RelayActor   string
+	Kind         PurgeCandidateKind
 }
 
 // Valid reports whether the cursor is zero or a complete nonnegative position.
@@ -46,11 +57,12 @@ func (cursor PurgeCandidateCursor) Valid() bool {
 	if cursor == (PurgeCandidateCursor{}) {
 		return true
 	}
-	return cursor.InactiveUnix >= 0 && cursor.RelayActor != ""
+	return cursor.InactiveUnix >= 0 && cursor.RelayActor != "" && cursor.Kind.Valid()
 }
 
-// PurgeCandidateQuery requests one bounded page at a fixed cutoff. Only
-// administratively active unregistered or pruned rows may be returned.
+// PurgeCandidateQuery requests one bounded page at a fixed cutoff. Version 2
+// considers administratively active inactive lifecycle rows and removed
+// discovery rows.
 type PurgeCandidateQuery struct {
 	After    PurgeCandidateCursor
 	Limit    int
@@ -58,26 +70,40 @@ type PurgeCandidateQuery struct {
 }
 
 // PurgeCandidate is private destructive-maintenance input. RelayActor is never
-// emitted by the dry-run or retention-run audit adapters.
+// emitted by the dry-run or retention-run audit adapters. ObservationRevision
+// is 0 when no observation row existed at candidate-read time; the monotonic
+// observation revision prevents same-second fresh evidence from being lost to
+// a stale destructive candidate.
 type PurgeCandidate struct {
+	Kind                    PurgeCandidateKind
 	RelayActor              string
 	LifecycleState          RelayLifecycleState
 	InactiveUnix            int64
 	UpdatedUnix             int64
 	LatestRelayEventID      int64
 	LatestModerationEventID int64
+	LatestDiscoveryEventID  int64
+	ObservationRevision     int64
 }
 
-// Valid reports whether the candidate represents a complete snapshot of an
-// inactive lifecycle row and its latest private lifecycle/moderation decisions.
-// The event IDs make even idempotent concurrent decisions invalidate a stale
-// destructive candidate.
+// Valid reports whether the candidate represents a complete snapshot of one
+// inactive lifecycle/discovery row and the private decision versions needed to
+// reject stale destructive work.
 func (candidate PurgeCandidate) Valid() bool {
-	return candidate.RelayActor != "" && candidate.InactiveUnix >= 0 &&
-		candidate.UpdatedUnix >= candidate.InactiveUnix &&
-		candidate.LatestRelayEventID >= 0 && candidate.LatestModerationEventID >= 0 &&
-		(candidate.LifecycleState == LifecycleUnregistered ||
-			candidate.LifecycleState == LifecyclePruned)
+	if !candidate.Kind.Valid() || candidate.RelayActor == "" ||
+		candidate.InactiveUnix < 0 || candidate.UpdatedUnix < candidate.InactiveUnix ||
+		candidate.ObservationRevision < 0 {
+		return false
+	}
+	switch candidate.Kind {
+	case PurgeCandidateLifecycle:
+		return candidate.LatestRelayEventID >= 0 && candidate.LatestModerationEventID >= 0 &&
+			(candidate.LifecycleState == LifecycleUnregistered || candidate.LifecycleState == LifecyclePruned)
+	case PurgeCandidateDiscovery:
+		return candidate.LifecycleState == "" && candidate.LatestDiscoveryEventID >= 0
+	default:
+		return false
+	}
 }
 
 // PurgeCandidatePage is one bounded page. Next is zero when no later eligible
@@ -88,10 +114,14 @@ type PurgeCandidatePage struct {
 }
 
 // PurgeBatchResult summarizes one committed destructive batch. A skipped row
-// was revalidated transactionally and found no longer eligible.
+// was revalidated transactionally and found no longer eligible. Observation
+// deletions are side effects after the final lifecycle/discovery owner is gone
+// and therefore do not count as primary candidates.
 type PurgeBatchResult struct {
 	Attempted             int
 	PurgedRelays          int
+	PurgedDiscoveries     int
+	PurgedObservations    int
 	PurgedLifecycleEvents int
 	Skipped               int
 }
@@ -105,7 +135,7 @@ const (
 	RetentionFailed    RetentionOutcome = "failed"
 )
 
-// Valid reports whether the outcome belongs to the final private audit contract.
+// Valid reports whether an outcome belongs to the final private audit contract.
 func (outcome RetentionOutcome) Valid() bool {
 	switch outcome {
 	case RetentionCompleted, RetentionCanceled, RetentionFailed:
@@ -133,6 +163,8 @@ type RetentionRunFinish struct {
 	RunID                 int64
 	CandidatesScanned     int
 	PurgedRelays          int
+	PurgedDiscoveries     int
+	PurgedObservations    int
 	PurgedLifecycleEvents int
 	Skipped               int
 	Batches               int

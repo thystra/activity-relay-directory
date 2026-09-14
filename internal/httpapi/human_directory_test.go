@@ -67,6 +67,10 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`<dt>stale</dt>`,
 		`<dt>dead</dt>`,
 		`https://relay.example/a&amp;b`,
+		`href="https://github.com/thystra/activity-relay-directory"`,
+		`href="https://github.com/thystra/Activity-Relay"`,
+		`Want to run your own directory?`,
+		`Want to run your own relay?`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("body missing %q", required)

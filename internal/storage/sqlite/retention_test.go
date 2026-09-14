@@ -102,10 +102,12 @@ func TestRetentionRepositoryRejectsOversizedCandidateReadsAndBatches(t *testing.
 	candidates := make([]storage.PurgeCandidate, storage.MaximumPurgeCandidatePage+1)
 	for index := range candidates {
 		candidates[index] = storage.PurgeCandidate{
-			RelayActor:     "https://relay.example/actor",
-			LifecycleState: storage.LifecycleUnregistered,
-			InactiveUnix:   1,
-			UpdatedUnix:    1,
+			Kind:                storage.PurgeCandidateLifecycle,
+			RelayActor:          "https://relay.example/actor",
+			LifecycleState:      storage.LifecycleUnregistered,
+			InactiveUnix:        1,
+			UpdatedUnix:         1,
+			ObservationRevision: 0,
 		}
 	}
 	if _, err := repository.PurgeBatch(context.Background(), 1, candidates, time.Unix(100, 0)); !errors.Is(err, storage.ErrRetentionWriteInput) {
@@ -667,5 +669,142 @@ func TestRetentionMutationsFailClosedBehindHardGrowthAdmission(t *testing.T) {
 	var outcome string
 	if err := database.QueryRow(`SELECT outcome FROM retention_runs WHERE retention_run_id=?`, runID).Scan(&outcome); err != nil || outcome != "running" {
 		t.Fatalf("hard retention gate changed run outcome = %q, %v", outcome, err)
+	}
+}
+
+func TestPurgeCandidatesIncludeRemovedDiscoveryAndPurgePreservesPrivateDiscoveryAudit(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://retention-discovery.example/actor"
+	base := "https://retention-discovery.example"
+	if _, err := repository.AddDiscovery(ctx, discoveryAdd(actor, base), time.Unix(10, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: actor, State: storage.ReachabilityReachable, InboxURL: base + "/inbox",
+	}, time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.RemoveDiscovery(ctx, discoveryRemove(actor), time.Unix(30, 0)); err != nil {
+		t.Fatal(err)
+	}
+	page, err := repository.PurgeCandidates(ctx, storage.PurgeCandidateQuery{Limit: 10, CutoffAt: time.Unix(30, 0)})
+	if err != nil || len(page.Candidates) != 1 || page.Candidates[0].Kind != storage.PurgeCandidateDiscovery ||
+		page.Candidates[0].RelayActor != actor || page.Candidates[0].ObservationRevision != 2 {
+		t.Fatalf("discovery candidates = %#v, %v", page, err)
+	}
+	runID := beginTestRetentionRun(t, repository, 30)
+	result, err := repository.PurgeBatch(ctx, runID, page.Candidates, time.Unix(30, 0))
+	if err != nil || result.PurgedDiscoveries != 1 || result.PurgedObservations != 1 ||
+		result.PurgedRelays != 0 || result.Skipped != 0 {
+		t.Fatalf("PurgeBatch(discovery) = %#v, %v", result, err)
+	}
+	var discoveries, observations, events int
+	_ = database.QueryRow(`SELECT COUNT(*) FROM relay_discoveries WHERE relay_actor=?`, actor).Scan(&discoveries)
+	_ = database.QueryRow(`SELECT COUNT(*) FROM relay_observations WHERE relay_actor=?`, actor).Scan(&observations)
+	_ = database.QueryRow(`SELECT COUNT(*) FROM discovery_events WHERE relay_actor=?`, actor).Scan(&events)
+	if discoveries != 0 || observations != 0 || events != 2 {
+		t.Fatalf("post-discovery-purge counts discoveries=%d observations=%d events=%d", discoveries, observations, events)
+	}
+}
+
+func TestPurgeLifecyclePreservesObservationOwnedByActiveDiscovery(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://mixed-owner.example/actor"
+	base := "https://mixed-owner.example"
+	if _, err := repository.AddDiscovery(ctx, discoveryAdd(actor, base), time.Unix(5, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Register(ctx, storage.RegisterIntent{RelayActor: actor, PublicBaseURL: base}, time.Unix(10, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Unregister(ctx, storage.IdentityIntent{RelayActor: actor}, time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	page, err := repository.PurgeCandidates(ctx, storage.PurgeCandidateQuery{Limit: 10, CutoffAt: time.Unix(20, 0)})
+	if err != nil || len(page.Candidates) != 1 || page.Candidates[0].Kind != storage.PurgeCandidateLifecycle {
+		t.Fatalf("mixed-owner candidates = %#v, %v", page, err)
+	}
+	runID := beginTestRetentionRun(t, repository, 20)
+	result, err := repository.PurgeBatch(ctx, runID, page.Candidates, time.Unix(20, 0))
+	if err != nil || result.PurgedRelays != 1 || result.PurgedObservations != 0 {
+		t.Fatalf("PurgeBatch(mixed owner) = %#v, %v", result, err)
+	}
+	var discoveryCount, observationCount int
+	_ = database.QueryRow(`SELECT COUNT(*) FROM relay_discoveries WHERE relay_actor=? AND discovery_state='active'`, actor).Scan(&discoveryCount)
+	_ = database.QueryRow(`SELECT COUNT(*) FROM relay_observations WHERE relay_actor=?`, actor).Scan(&observationCount)
+	if discoveryCount != 1 || observationCount != 1 {
+		t.Fatalf("mixed-owner retained counts discovery=%d observation=%d", discoveryCount, observationCount)
+	}
+}
+
+func TestPurgeBatchSkipsCandidateAfterFreshObservation(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://observation-race.example/actor"
+	base := "https://observation-race.example"
+	if _, err := repository.AddDiscovery(ctx, discoveryAdd(actor, base), time.Unix(10, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.RemoveDiscovery(ctx, discoveryRemove(actor), time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	page, err := repository.PurgeCandidates(ctx, storage.PurgeCandidateQuery{Limit: 1, CutoffAt: time.Unix(30, 0)})
+	if err != nil || len(page.Candidates) != 1 {
+		t.Fatalf("candidate capture = %#v, %v", page, err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: actor, State: storage.ReachabilityUnreachable,
+	}, time.Unix(20, 0)); err != nil {
+		t.Fatal(err)
+	}
+	runID := beginTestRetentionRun(t, repository, 30)
+	result, err := repository.PurgeBatch(ctx, runID, page.Candidates, time.Unix(30, 0))
+	if err != nil || result.Skipped != 1 || result.PurgedDiscoveries != 0 || result.PurgedObservations != 0 {
+		t.Fatalf("PurgeBatch(fresh observation) = %#v, %v", result, err)
+	}
+	var discoveryCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM relay_discoveries WHERE relay_actor=?`, actor).Scan(&discoveryCount); err != nil || discoveryCount != 1 {
+		t.Fatalf("fresh observation race discovery count=%d err=%v", discoveryCount, err)
+	}
+}
+
+func TestFinishRetentionRunRejectsRunningHistoricalPolicy(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+
+	result, err := database.Exec(`INSERT INTO retention_runs (
+		policy_version, retention_days, observed_at_unix, cutoff_at_unix,
+		backup_sha256, started_at_unix
+	) VALUES (1, 1, 86500, 100, ?, 86500)`, strings.Repeat("a", 64))
+	if err != nil {
+		t.Fatalf("insert historical running retention audit: %v", err)
+	}
+	runID, err := result.LastInsertId()
+	if err != nil || runID <= 0 {
+		t.Fatalf("historical running retention run id = %d, %v", runID, err)
+	}
+
+	finish := storage.RetentionRunFinish{
+		RunID:        runID,
+		Outcome:      storage.RetentionCanceled,
+		FinishedUnix: 86501,
+	}
+	if err := repository.FinishRetentionRun(ctx, finish); !errors.Is(err, storage.ErrRetentionWriteInput) {
+		t.Fatalf("FinishRetentionRun(policy 1 running) error = %v", err)
+	}
+
+	var outcome string
+	var finished sql.NullInt64
+	if err := database.QueryRow(`SELECT outcome, finished_at_unix FROM retention_runs WHERE retention_run_id=?`, runID).Scan(&outcome, &finished); err != nil {
+		t.Fatal(err)
+	}
+	if outcome != "running" || finished.Valid {
+		t.Fatalf("historical running retention audit changed = outcome:%q finished:%v", outcome, finished)
 	}
 }

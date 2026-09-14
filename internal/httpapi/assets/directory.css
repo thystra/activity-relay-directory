@@ -348,6 +348,16 @@ code {
 
 .footer-row { min-height: 5rem; }
 
+.footer-about,
+.software-links {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.software-links {
+  font-size: 0.9rem;
+}
+
 @media (max-width: 48rem) {
   .health-grid { grid-template-columns: 1fr; }
 

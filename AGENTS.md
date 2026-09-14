@@ -34,6 +34,22 @@
   prune boundaries at 36 hours, 7 days, and 30 days of server-owned recency.
 - Accepted register and heartbeat operations maintain one nondecreasing
   `last_seen_at_unix`; future values fail closed during projection.
+- Independent ActivityPub reachability observations must never rewrite,
+  refresh, or substitute for authenticated lifecycle recency. Keep heartbeat
+  health and server-originated reachability as separate evidence.
+- Operator discovery must not fabricate registration, heartbeat, or RFC 9421
+  participation. A discovered relay becomes public only through the separately
+  reviewed discovery/reachability eligibility path.
+- Public views must not disclose whether a relay was self-registered, manually
+  added, or imported from a local candidate file. Discovery provenance remains
+  private operator/audit data.
+- RFC 9421 diagnostics are positive-evidence only: report `verified` only after
+  the Directory has accepted an RFC 9421-signed lifecycle request. Absence of
+  that evidence is `not verified`, never proof that the relay lacks support.
+- Discovery and reachability network work must reuse the resolver's proxy-free,
+  SSRF-resistant DNS/address/redirect controls and response bounds; do not use
+  the default HTTP client, environment proxies, shell `curl`, or public-request
+  triggered probing.
 - Moderation and administrative suspension override automated health state.
 - Protocol compatibility must be versioned and tested with fixtures.
 
@@ -188,20 +204,31 @@ all HTTP handlers; the local dry-run command must use an existing current-schema
 query-only connection and perform no database creation, migration, or writes.
 
 Hard-retention code must use the separate purge vocabulary and keep
-`DIRECTORY_INACTIVE_RETENTION_DAYS=0` as indefinite/default. Only active
-`unregistered` or `pruned` rows may be candidates, ordered by their current
-inactive-transition timestamp; registered or suspended rows must never pass the
-destructive predicate. Bind a candidate to row update time and the latest
-lifecycle/moderation event IDs and revalidate all of them under the immediate
-write transaction so even idempotent concurrent decisions prevent a stale
-delete. Keep pages <=100 and one run <=1,000 candidates.
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0` as indefinite/default. Policy version 2
+has two primary candidate kinds: administratively active `unregistered` or
+`pruned` lifecycle rows, and operator discovery rows already in `removed`
+state. Registered/suspended lifecycle rows and active discoveries must never
+pass their destructive predicates. Order the merged stream by inactive
+transition, canonical actor, and candidate kind; bound each source before the
+merge, keep pages <=100, and keep one run <=1,000 candidates.
 
-Never delete `moderation_events` in inactive retention. `relay_events` deletion
-may bypass its append-only trigger only transaction-locally, with the trigger
-recreated before commit and rollback restoring it on every failure. Keep the
-aggregate retention audit identity-free: create it before scanning, checkpoint
-committed destructive counts in the same purge transaction, and make it
-immutable when finalized. No public HTTP handler or automatic scheduler may
+Bind lifecycle candidates to row update time plus latest lifecycle/moderation
+event IDs; bind discovery candidates to row update time plus latest discovery
+event ID. Both candidate kinds also snapshot the current monotonic observation revision
+(`0` for absent) so even a same-second reachability/RFC-evidence write invalidates
+stale destructive work. Revalidate every snapshot under the immediate write
+transaction. Remove a `relay_observations` row only after the same transaction
+has removed a primary owner and no lifecycle or discovery row remains for that
+actor.
+
+Never delete `moderation_events` or `discovery_events` in inactive retention.
+`relay_events` deletion may bypass its append-only trigger only
+transaction-locally, with the trigger recreated before commit and rollback
+restoring it on every failure. Keep the aggregate retention audit identity-free:
+create it before scanning, checkpoint lifecycle/discovery/observation and event
+counts in the same purge transaction, and make it immutable when finalized.
+Historical policy-version-1 run rows remain valid audit evidence after schema 8;
+new runs use policy version 2. No public HTTP handler or automatic scheduler may
 invoke hard purge. Purge must preflight an existing current-schema database
 read-only and must not create or migrate its target. Every destructive local run
 must verify a secure same-database current-schema backup before confirmation and

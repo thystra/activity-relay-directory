@@ -13,6 +13,30 @@ import (
 
 const testActor = "https://relay.example/actor"
 
+func lifecycleCandidate(actor string, inactive int64) storage.PurgeCandidate {
+	return storage.PurgeCandidate{
+		Kind:                    storage.PurgeCandidateLifecycle,
+		RelayActor:              actor,
+		LifecycleState:          storage.LifecycleUnregistered,
+		InactiveUnix:            inactive,
+		UpdatedUnix:             inactive,
+		LatestRelayEventID:      inactive,
+		LatestModerationEventID: 0,
+		ObservationRevision:     0,
+	}
+}
+
+func discoveryCandidate(actor string, inactive int64) storage.PurgeCandidate {
+	return storage.PurgeCandidate{
+		Kind:                   storage.PurgeCandidateDiscovery,
+		RelayActor:             actor,
+		InactiveUnix:           inactive,
+		UpdatedUnix:            inactive,
+		LatestDiscoveryEventID: inactive,
+		ObservationRevision:    0,
+	}
+}
+
 func TestSummarizeExactZeroOneDayAnd365DayCutoffs(t *testing.T) {
 	day := int64(24 * time.Hour / time.Second)
 	observed := time.Unix(400*day, 0).UTC()
@@ -49,10 +73,8 @@ func TestSummarizeExactZeroOneDayAnd365DayCutoffs(t *testing.T) {
 
 func TestSummarizeRejectsCandidateNewerThanExactCutoff(t *testing.T) {
 	observed := time.Unix(2*86400, 0).UTC()
-	repository := &fixedPageRepository{page: storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{{
-		RelayActor: testActor, LifecycleState: storage.LifecycleUnregistered,
-		InactiveUnix: 86401, UpdatedUnix: 86401,
-	}}}}
+	candidate := lifecycleCandidate(testActor, 86401)
+	repository := &fixedPageRepository{page: storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{candidate}}}
 	if _, err := Summarize(context.Background(), repository, 1, observed); !errors.Is(err, ErrConfiguration) {
 		t.Fatalf("Summarize(newer candidate) error = %v", err)
 	}
@@ -60,12 +82,7 @@ func TestSummarizeRejectsCandidateNewerThanExactCutoff(t *testing.T) {
 
 func TestSummarizeIsBoundedAtOneThousandAndReportsTruncation(t *testing.T) {
 	repository := &generatedRepository{total: storage.MaximumPurgeAttemptsPerRun + 1}
-	summary, err := Summarize(
-		context.Background(),
-		repository,
-		1,
-		time.Unix(200000, 0).UTC(),
-	)
+	summary, err := Summarize(context.Background(), repository, 1, time.Unix(200000, 0).UTC())
 	if err != nil {
 		t.Fatalf("Summarize() error = %v", err)
 	}
@@ -83,8 +100,9 @@ func TestRunCreatesAuditBeforePurgeAndFinalizesAggregateWithoutIdentityList(t *t
 	if err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if result.CandidateCount != 2 || result.PurgedRelays != 2 || result.Skipped != 0 ||
-		result.Batches != 1 || len(repository.starts) != 1 || len(repository.finishes) != 1 {
+	if result.CandidateCount != 2 || result.PurgedRelays != 2 || result.PurgedDiscoveries != 0 ||
+		result.PurgedObservations != 0 || result.Skipped != 0 || result.Batches != 1 ||
+		len(repository.starts) != 1 || len(repository.finishes) != 1 {
 		t.Fatalf("result=%#v starts=%#v finishes=%#v", result, repository.starts, repository.finishes)
 	}
 	if got := strings.Join(repository.events, ","); got != "begin,purge,finish" {
@@ -99,10 +117,21 @@ func TestRunCreatesAuditBeforePurgeAndFinalizesAggregateWithoutIdentityList(t *t
 		finish.Outcome != storage.RetentionCompleted {
 		t.Fatalf("start=%#v finish=%#v", start, finish)
 	}
-	// The start/final audit contracts contain only aggregate fields; relay
-	// identities exist only in the candidate snapshots consumed by PurgeBatch.
 	if strings.Contains(fmt.Sprintf("%#v %#v", start, finish), "relay.example") {
 		t.Fatalf("audit leaked relay identity: start=%#v finish=%#v", start, finish)
+	}
+}
+
+func TestRunAccumulatesMixedRetentionEffects(t *testing.T) {
+	repository := &mixedRepository{}
+	result, err := Run(context.Background(), repository, 1, time.Unix(200000, 0), strings.Repeat("e", 64))
+	if err != nil {
+		t.Fatalf("Run(mixed) error = %v", err)
+	}
+	if result.CandidateCount != 2 || result.PurgedRelays != 1 || result.PurgedDiscoveries != 1 ||
+		result.PurgedObservations != 1 || result.Skipped != 0 || len(repository.finishes) != 1 ||
+		repository.finishes[0].PurgedDiscoveries != 1 || repository.finishes[0].PurgedObservations != 1 {
+		t.Fatalf("mixed result=%#v finishes=%#v", result, repository.finishes)
 	}
 }
 
@@ -131,9 +160,7 @@ func TestRunFinalizesCancellationAfterCandidateReadAndRestartCompletes(t *testin
 
 func TestRunRejectsMalformedPageOrderingBeforeDestructiveCall(t *testing.T) {
 	repository := &malformedRepository{}
-	_, err := Run(
-		context.Background(), repository, 1, time.Unix(200000, 0), strings.Repeat("c", 64),
-	)
+	_, err := Run(context.Background(), repository, 1, time.Unix(200000, 0), strings.Repeat("c", 64))
 	if !errors.Is(err, ErrConfiguration) {
 		t.Fatalf("Run(malformed) error = %v", err)
 	}
@@ -155,6 +182,21 @@ func TestRunReturnsFinalizationFailureAfterSuccessfulPurge(t *testing.T) {
 	}
 }
 
+func TestValidatePageOrdersSameActorByCandidateKind(t *testing.T) {
+	page := storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{
+		discoveryCandidate(testActor, 100),
+		lifecycleCandidate(testActor, 100),
+	}}
+	// SQL lexical order is discovery, then lifecycle.
+	if err := validatePage(page, storage.PurgeCandidateCursor{}, 2, 100); err != nil {
+		t.Fatalf("validatePage(mixed kinds) error = %v", err)
+	}
+	page.Candidates[0], page.Candidates[1] = page.Candidates[1], page.Candidates[0]
+	if err := validatePage(page, storage.PurgeCandidateCursor{}, 2, 100); !errors.Is(err, ErrConfiguration) {
+		t.Fatalf("validatePage(reversed kinds) error = %v", err)
+	}
+}
+
 type cutoffRepository struct {
 	wantCutoff      int64
 	returnCandidate bool
@@ -169,10 +211,7 @@ func (repository *cutoffRepository) PurgeCandidates(_ context.Context, query sto
 	if !repository.returnCandidate {
 		return storage.PurgeCandidatePage{}, nil
 	}
-	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{{
-		RelayActor: testActor, LifecycleState: storage.LifecycleUnregistered,
-		InactiveUnix: repository.wantCutoff, UpdatedUnix: repository.wantCutoff,
-	}}}, nil
+	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{lifecycleCandidate(testActor, repository.wantCutoff)}}, nil
 }
 
 type fixedPageRepository struct{ page storage.PurgeCandidatePage }
@@ -204,15 +243,11 @@ func (repository *generatedRepository) PurgeCandidates(_ context.Context, query 
 	}
 	page := storage.PurgeCandidatePage{Candidates: make([]storage.PurgeCandidate, 0, end-start)}
 	for index := start + 1; index <= end; index++ {
-		page.Candidates = append(page.Candidates, storage.PurgeCandidate{
-			RelayActor: testActor, LifecycleState: storage.LifecycleUnregistered,
-			InactiveUnix: int64(index), UpdatedUnix: int64(index),
-			LatestRelayEventID: int64(index), LatestModerationEventID: 0,
-		})
+		page.Candidates = append(page.Candidates, lifecycleCandidate(testActor, int64(index)))
 	}
 	if end < repository.total {
 		last := page.Candidates[len(page.Candidates)-1]
-		page.Next = storage.PurgeCandidateCursor{InactiveUnix: last.InactiveUnix, RelayActor: last.RelayActor}
+		page.Next = storage.PurgeCandidateCursor{InactiveUnix: last.InactiveUnix, RelayActor: last.RelayActor, Kind: last.Kind}
 	}
 	return page, nil
 }
@@ -237,6 +272,34 @@ func (repository *generatedRepository) FinishRetentionRun(_ context.Context, fin
 	return repository.finishErr
 }
 
+type mixedRepository struct {
+	starts   []storage.RetentionRunStart
+	finishes []storage.RetentionRunFinish
+	served   bool
+}
+
+func (repository *mixedRepository) PurgeCandidates(context.Context, storage.PurgeCandidateQuery) (storage.PurgeCandidatePage, error) {
+	if repository.served {
+		return storage.PurgeCandidatePage{}, nil
+	}
+	repository.served = true
+	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{
+		discoveryCandidate("https://a.example/actor", 100),
+		lifecycleCandidate("https://b.example/actor", 100),
+	}}, nil
+}
+func (repository *mixedRepository) BeginRetentionRun(_ context.Context, start storage.RetentionRunStart) (int64, error) {
+	repository.starts = append(repository.starts, start)
+	return 1, nil
+}
+func (*mixedRepository) PurgeBatch(_ context.Context, _ int64, candidates []storage.PurgeCandidate, _ time.Time) (storage.PurgeBatchResult, error) {
+	return storage.PurgeBatchResult{Attempted: len(candidates), PurgedRelays: 1, PurgedDiscoveries: 1, PurgedObservations: 1}, nil
+}
+func (repository *mixedRepository) FinishRetentionRun(_ context.Context, finish storage.RetentionRunFinish) error {
+	repository.finishes = append(repository.finishes, finish)
+	return nil
+}
+
 type cancelingRepository struct {
 	cancel   context.CancelFunc
 	starts   []storage.RetentionRunStart
@@ -245,24 +308,18 @@ type cancelingRepository struct {
 
 func (repository *cancelingRepository) PurgeCandidates(_ context.Context, _ storage.PurgeCandidateQuery) (storage.PurgeCandidatePage, error) {
 	repository.cancel()
-	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{{
-		RelayActor: testActor, LifecycleState: storage.LifecycleUnregistered,
-		InactiveUnix: 1, UpdatedUnix: 1,
-	}}}, nil
+	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{lifecycleCandidate(testActor, 1)}}, nil
 }
-
 func (repository *cancelingRepository) BeginRetentionRun(_ context.Context, start storage.RetentionRunStart) (int64, error) {
 	repository.starts = append(repository.starts, start)
 	return 1, nil
 }
-
 func (*cancelingRepository) PurgeBatch(ctx context.Context, _ int64, candidates []storage.PurgeCandidate, _ time.Time) (storage.PurgeBatchResult, error) {
 	if err := ctx.Err(); err != nil {
 		return storage.PurgeBatchResult{}, err
 	}
 	return storage.PurgeBatchResult{Attempted: len(candidates), PurgedRelays: len(candidates)}, nil
 }
-
 func (repository *cancelingRepository) FinishRetentionRun(_ context.Context, finish storage.RetentionRunFinish) error {
 	repository.finishes = append(repository.finishes, finish)
 	return nil
@@ -276,21 +333,18 @@ type malformedRepository struct {
 
 func (*malformedRepository) PurgeCandidates(context.Context, storage.PurgeCandidateQuery) (storage.PurgeCandidatePage, error) {
 	return storage.PurgeCandidatePage{Candidates: []storage.PurgeCandidate{
-		{RelayActor: "https://z.example/actor", LifecycleState: storage.LifecycleUnregistered, InactiveUnix: 2, UpdatedUnix: 2},
-		{RelayActor: "https://a.example/actor", LifecycleState: storage.LifecycleUnregistered, InactiveUnix: 1, UpdatedUnix: 1},
+		lifecycleCandidate("https://z.example/actor", 2),
+		lifecycleCandidate("https://a.example/actor", 1),
 	}}, nil
 }
-
 func (repository *malformedRepository) BeginRetentionRun(_ context.Context, start storage.RetentionRunStart) (int64, error) {
 	repository.starts = append(repository.starts, start)
 	return 1, nil
 }
-
 func (repository *malformedRepository) PurgeBatch(context.Context, int64, []storage.PurgeCandidate, time.Time) (storage.PurgeBatchResult, error) {
 	repository.purgeCalls++
 	return storage.PurgeBatchResult{}, nil
 }
-
 func (repository *malformedRepository) FinishRetentionRun(_ context.Context, finish storage.RetentionRunFinish) error {
 	repository.finishes = append(repository.finishes, finish)
 	return nil
