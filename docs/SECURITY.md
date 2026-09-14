@@ -45,6 +45,17 @@ errors, and never serves expired data. Eviction triggers another safe fetch
 rather than bypassing resolution. Concurrent cold misses remain subject to the
 composed admission ceiling.
 
+The 1.1 local discovery surface reuses the same proxy-free, address-pinning
+resolver client instead of the default HTTP client or shell `curl`. Base and
+`/inbox` hints are converted only to the same-origin conventional `/actor`
+candidate; an explicit `/actor` hint is used directly after canonical syntax
+validation. The fetched actor must still exactly identify that canonical URL
+and have `Application` or `Service` type. A declared inbox is canonicalized and
+may receive one non-mutating `OPTIONS` diagnostic through the same network
+boundary. Discovery never sends a synthetic ActivityPub POST. Invalid candidate
+errors report only a bounded line number/reason code rather than echoing the
+untrusted URL.
+
 ## Content digest
 
 Version 1 requires an RFC 9530 `sha-256` Content-Digest over the exact bounded
@@ -184,6 +195,15 @@ not stored. Those fields, database details, and internal moderation outcomes
 must not reach public errors or listing data. The reviewed adapter is the local
 operating-system-authorized CLI; no moderation HTTP endpoint exists. See
 `docs/MODERATION.md`.
+
+Operator discovery is also local-only and uses the same operating-system access
+boundary. Import files must be regular UTF-8 files no larger than 256 KiB, with
+2,048-byte lines, at most 100 candidate lines, and no more than eight concurrent
+remote checks. The private audit record stores a bounded source label, never the
+local path. All remote checks complete prospectively before confirmation and
+durable mutation. `--yes` is an explicit acknowledgement, not a bypass of URL,
+network, actor, or file bounds. There is no discovery HTTP mutation route and no
+web scraper in 1.1. See `docs/DISCOVERY-REACHABILITY.md`.
 
 ## Hard-retention threat boundary
 

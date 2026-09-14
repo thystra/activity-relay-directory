@@ -40,6 +40,9 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - local audited `admin enrollment status|open|close` policy commands
 - local `admin suspend|restore|show|audit` moderation commands with bounded
   private audit pagination
+- 1.1-development local `admin discovery add|remove|import` commands with
+  SSRF-resistant actor verification, bounded file import, private provenance, and
+  non-mutating inbox diagnostics
 - local read-only `admin pruning dry-run` candidate inspection
 - strict default-zero inactive-record retention with identity-free dry-run,
   backup-gated local purge, bounded transactional revalidation, and private
@@ -149,6 +152,45 @@ Audit output contains private moderator and reason tokens. Protect command
 output as carefully as the database. The CLI does not create a preemptive
 blocklist and does not add a remote administrative endpoint.
 
+The 1.1 development line also supports local operator discovery without
+fabricating lifecycle participation. A single candidate may be a base URL,
+`/actor`, or `/inbox` hint; ARD independently validates the canonical `/actor`
+through the production SSRF-resistant resolver before storing an active
+discovery. A validated actor-declared inbox is recorded and receives one
+non-mutating `OPTIONS` diagnostic; ARD never sends a synthetic ActivityPub POST
+for discovery.
+
+```sh
+activity-relay-directory admin discovery add \
+  --url https://relay.example/inbox \
+  --operator operator-id \
+  --reason public_relay
+
+activity-relay-directory admin discovery import \
+  --file ./relay-candidates.txt \
+  --operator operator-id \
+  --reason public_list \
+  --source-label curated_list
+
+activity-relay-directory admin discovery remove \
+  --actor https://relay.example/actor \
+  --operator operator-id \
+  --reason no_longer_public
+```
+
+Imports accept at most 256 KiB, 2,048 bytes per line, and 100 non-comment
+candidates, with at most eight concurrent remote checks. Blank lines and lines
+whose first non-space character is `#` are ignored. The source label is a
+bounded private token; the local file path is never persisted. Imports are
+prospective first and show ready, duplicate, and failed candidates before
+confirmation. Interactive imports require `IMPORT <ready-count>`; `--yes` is the
+explicit noninteractive acknowledgement. Successfully validated entries may be
+applied even when other candidates fail, and the command returns a nonzero
+operational result when any candidate failed so automation cannot mistake a
+partial import for complete success. Removing a discovery does not unregister a
+separately self-registered relay, and a later file omission never removes an
+entry automatically. See `docs/DISCOVERY-REACHABILITY.md`.
+
 Soft pruning is a reversible lifecycle transition, not deletion. A dry run opens
 an existing current-schema database through a query-only connection and reads
 one bounded candidate page without migrating or mutating state:
@@ -172,9 +214,10 @@ performs no hard deletion. No public HTTP request can start maintenance.
 Hard retention is a separate irreversible local maintenance path.
 `DIRECTORY_INACTIVE_RETENTION_DAYS=0` is the default and retains inactive rows
 indefinitely. A positive canonical integer, for example `365`, makes only
-administratively active `unregistered` or `pruned` rows eligible after that many
-complete days from their unregister/prune transition. Registered and suspended
-rows are never automatic purge candidates.
+administratively active `unregistered` or `pruned` lifecycle rows and already
+`removed` operator-discovery rows eligible after the configured age. Registered
+and suspended lifecycle rows and active discoveries are never automatic purge
+candidates.
 
 The initial implementation has no hard-retention scheduler or HTTP route. The
 read-only local command reports bounded aggregate candidate counts without actor

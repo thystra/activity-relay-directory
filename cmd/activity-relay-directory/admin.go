@@ -9,9 +9,11 @@ import (
 	"os"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 	"github.com/thystra/activity-relay-directory/internal/admincommand"
 	"github.com/thystra/activity-relay-directory/internal/adminnotify"
 	"github.com/thystra/activity-relay-directory/internal/config"
+	"github.com/thystra/activity-relay-directory/internal/discoverycommand"
 	"github.com/thystra/activity-relay-directory/internal/prunecommand"
 	"github.com/thystra/activity-relay-directory/internal/retentioncommand"
 	"github.com/thystra/activity-relay-directory/internal/storage"
@@ -20,8 +22,9 @@ import (
 )
 
 const (
-	adminCommandTimeout   = 30 * time.Second
-	retentionPurgeTimeout = 5 * time.Minute
+	adminCommandTimeout     = 30 * time.Second
+	discoveryCommandTimeout = 5 * time.Minute
+	retentionPurgeTimeout   = 5 * time.Minute
 )
 
 func runAdmin(arguments []string, stdout, stderr io.Writer, now func() time.Time) int {
@@ -40,6 +43,9 @@ func runAdminWithInput(
 	}
 	if arguments[2] == "enrollment" {
 		return runEnrollmentAdmin(arguments, stdout, stderr, now)
+	}
+	if arguments[2] == "discovery" {
+		return runDiscoveryAdmin(arguments, stdin, stdout, stderr, now)
 	}
 	if arguments[2] == "pruning" {
 		return runPruningAdmin(arguments, stdout, stderr, now)
@@ -107,6 +113,133 @@ func runAdminWithInput(
 		return admincommand.ExitOperational
 	}
 	return admincommand.Execute(ctx, request, repository, stdout, stderr, now)
+}
+
+func runDiscoveryAdmin(
+	arguments []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	return runDiscoveryAdminWithProberFactory(
+		arguments, stdin, stdout, stderr, now,
+		func() (discoverycommand.Prober, error) {
+			return actorresolver.New("Activity-Relay-Directory")
+		},
+	)
+}
+
+func runDiscoveryAdminWithProberFactory(
+	arguments []string,
+	stdin io.Reader,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+	newProber func() (discoverycommand.Prober, error),
+) int {
+	if len(arguments) < 4 {
+		writeDiscoveryUsage(stderr)
+		return discoverycommand.ExitUsage
+	}
+	request, err := discoverycommand.Parse(arguments[3:])
+	if err != nil {
+		writeDiscoveryUsage(stderr)
+		return discoverycommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return discoverycommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return discoverycommand.ExitUsage
+	}
+
+	growthConfig, retentionDays, growthMailer, err := loadAdminGrowthDependencies()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid storage growth configuration")
+		return discoverycommand.ExitUsage
+	}
+
+	prepareCtx, cancelPrepare := context.WithTimeout(context.Background(), discoveryCommandTimeout)
+	defer cancelPrepare()
+
+	// Fail closed on an absent/stale database and invalid storage configuration
+	// before initiating remote probes. The preparation timeout ends before the
+	// operator confirmation prompt so review time cannot consume the mutation
+	// budget.
+	preflight, err := initializeReadOnlyDatabase(prepareCtx, databasePath)
+	if err != nil {
+		cancelPrepare()
+		fmt.Fprintln(stderr, "database initialization failed")
+		return discoverycommand.ExitOperational
+	}
+	if err := preflight.Close(); err != nil {
+		cancelPrepare()
+		fmt.Fprintln(stderr, "database initialization failed")
+		return discoverycommand.ExitOperational
+	}
+
+	plan := discoverycommand.Plan{}
+	if request.Action != discoverycommand.ActionRemove {
+		if newProber == nil {
+			fmt.Fprintln(stderr, "discovery resolver initialization failed")
+			return discoverycommand.ExitOperational
+		}
+		prober, err := newProber()
+		if err != nil || prober == nil {
+			fmt.Fprintln(stderr, "discovery resolver initialization failed")
+			return discoverycommand.ExitOperational
+		}
+		plan, err = discoverycommand.Prepare(prepareCtx, request, prober)
+		if err != nil {
+			cancelPrepare()
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				fmt.Fprintln(stderr, "discovery preparation canceled")
+				return discoverycommand.ExitCanceled
+			}
+			if errors.Is(err, discoverycommand.ErrImportFile) {
+				fmt.Fprintln(stderr, "discovery import file is invalid")
+				return discoverycommand.ExitUsage
+			}
+			fmt.Fprintln(stderr, "discovery preparation failed")
+			return discoverycommand.ExitOperational
+		}
+		if err := discoverycommand.RenderPlan(stderr, request, plan); err != nil {
+			cancelPrepare()
+			fmt.Fprintln(stderr, "discovery prospective output failed")
+			return discoverycommand.ExitOperational
+		}
+		if len(plan.Ready) == 0 {
+			cancelPrepare()
+			fmt.Fprintln(stderr, "discovery preparation produced no ready relays")
+			return discoverycommand.ExitOperational
+		}
+	}
+	cancelPrepare()
+
+	if err := discoverycommand.Confirm(request, plan, stdin, stderr); err != nil {
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "discovery confirmation failed")
+		return discoverycommand.ExitUsage
+	}
+
+	mutationCtx, cancelMutation := context.WithTimeout(context.Background(), discoveryCommandTimeout)
+	defer cancelMutation()
+	database, growthGuard, err := initializeGuardedDatabase(
+		mutationCtx, databasePath, growthConfig, retentionDays, growthMailer, now,
+	)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return discoverycommand.ExitOperational
+	}
+	defer database.Close()
+	repository, err := storageSQLite.NewRelayRepository(database, growthGuard)
+	if err != nil {
+		fmt.Fprintln(stderr, "discovery repository initialization failed")
+		return discoverycommand.ExitOperational
+	}
+	return discoverycommand.Execute(mutationCtx, request, plan, repository, stdout, stderr, now)
 }
 
 func runPruningAdmin(
@@ -492,10 +625,19 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin restore --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin show --actor URL [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin storage status|check|test-alert [--format human|json]")
+}
+
+func writeDiscoveryUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]")
 }
 
 func writePruningUsage(output io.Writer) {

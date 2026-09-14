@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-_No changes yet._
+- Add schema version 8 discovery/reachability persistence with private
+  operator-discovery provenance, independent actor/inbox observations,
+  positive-only RFC 9421 evidence, and retention-policy version 2 integration.
+- Add local `admin discovery add|remove|import` commands. Candidate actor checks
+  reuse the proxy-free SSRF-resistant resolver, local file imports are bounded
+  and prospective-first, and inbox diagnostics use non-mutating `OPTIONS` only.
+- Keep discovery provenance private and lifecycle heartbeat recency unchanged;
+  operator discovery never fabricates registration or RFC 9421 participation.
+- Add footer links advertising the Activity-Relay Directory and Activity-Relay
+  source repositories on the human directory page.
 
 ## 1.0.0 - 2026-09-02
 

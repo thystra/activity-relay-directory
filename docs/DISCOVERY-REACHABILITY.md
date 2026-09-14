@@ -6,10 +6,11 @@ This document defines the approved Activity-Relay Directory 1.1 design for
 operator discovery, independent relay reachability, endpoint diagnostics, and
 their interaction with the existing version 1 lifecycle contract.
 
-It is a design/implementation contract, not evidence that the 1.1 runtime is
-already present. The 1.0.0 lifecycle, public `/v1/relays` representation,
-pruning behavior, and schema remain authoritative until their corresponding
-post-1.0 implementation tranches are applied and validated.
+Schema version 8 persistence plus the local operator discovery/import surface
+are implemented on the 1.1 development line. Periodic background probing and
+the richer public 1.1 Directory projection remain later tranches. The released
+1.0.0 lifecycle and `/v1/relays` representation remain compatibility
+authorities until 1.1 is accepted and released.
 
 The motivating interoperability case is a relay that successfully registered
 and heartbeated but later stopped sending Directory heartbeats while its public
@@ -70,9 +71,11 @@ upgrade path before the backfill is released.
 ARD 1.1 supports explicit local operator discovery. It does not automatically
 scrape web pages, Git repositories, or third-party relay directories.
 
-The initial bulk format is intentionally simple: a bounded local UTF-8 text file
-with one HTTPS candidate per line. Empty lines and lines whose first non-space
-character is `#` are ignored. Candidate forms may be:
+The initial bulk format is intentionally simple: a regular local UTF-8 text file
+of at most 256 KiB with one HTTPS candidate per line. Lines are limited to
+2,048 bytes, at most 100 non-comment candidates are accepted, and at most eight
+remote candidate checks execute concurrently. Empty lines and lines whose first
+non-space character is `#` are ignored. Candidate forms may be:
 
 ```text
 https://relay.example/
@@ -85,15 +88,30 @@ active discovery it must independently resolve a canonical actor. Multiple
 candidate forms that validate to the same actor are one relay.
 
 Import processing is prospective first: parse and bound the whole input, probe
-within the reviewed concurrency/rate limits, report accepted/duplicate/failed
-candidates, and require explicit confirmation or `--yes` before durable
-discovery mutation. A file disappearing or dropping an entry later never
-removes a relay automatically.
+within the fixed concurrency limit, report ready/duplicate/failed candidates,
+and require explicit confirmation or `--yes` before durable discovery
+mutation. Interactive imports confirm the exact phrase `IMPORT <ready-count>`.
+Successfully validated entries may still be applied when other candidates
+failed; the command returns a nonzero operational exit in that case so callers
+can distinguish partial from complete success. A file disappearing or dropping
+an entry later never removes a relay automatically.
 
 Private provenance records a bounded explicit source label such as a curated
-list name. It must not persist an operator workstation's absolute path. Public
-Directory output contains no source label and does not say whether an entry was
-self-registered, manually added, or imported.
+list name. File imports require that label. The local file path is never
+persisted. Public Directory output contains no source label and does not say
+whether an entry was self-registered, manually added, or imported.
+
+The implemented local commands are:
+
+```text
+activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
+activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
+activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]
+```
+
+Single-add confirmation requires typing the independently validated canonical
+actor. Removal requires typing the exact canonical actor supplied to the local
+command. No discovery command creates a public administrative HTTP route.
 
 ## Actor discovery and verification
 
@@ -122,18 +140,26 @@ same HTTPS origin's `/actor`. An explicit `/actor` candidate is fetched as
 supplied after canonical validation. A successful actor document becomes the
 authority for canonical actor identity and its declared inbox.
 
+The actor probe shares the exact bounded ActivityStreams GET path used by RFC
+9421 key resolution but deliberately does not require one historical signing
+key. The actor `id` must exactly match the requested canonical `/actor` URL and
+its type must include `Application` or `Service`. A present inbox must itself be
+a canonical HTTPS URL before it can be recorded or probed.
+
 ## Inbox capability and diagnostics
 
 A validated actor's canonical HTTPS `inbox` property is positive evidence that
 the actor supports an ActivityPub inbox. ARD stores that URL separately from the
 candidate hint.
 
-ARD may perform a bounded, non-mutating check against the declared inbox to
-improve diagnostics. It must not POST a fabricated Follow, Announce, Undo, or
-other ActivityPub activity. HEAD, OPTIONS, or GET responses are diagnostic only:
-a method rejection such as HTTP 405 can be consistent with a functioning POST-
-only inbox and must not be converted into `unsupported` merely because a read
-method was rejected.
+The 1.1 local discovery command performs one bounded `OPTIONS` request against a
+validated actor-declared inbox through the same safe transport. It never POSTs
+a fabricated Follow, Announce, Undo, or other ActivityPub activity. A 2xx/3xx
+final result is recorded as `responsive`; HTTP 405 or 501 is
+`method_rejected`; other transport/HTTP outcomes are recorded conservatively as
+`unreachable`. These are diagnostics only: a method rejection is compatible
+with a functioning POST-only inbox and does not negate the positive capability
+evidence supplied by the validated actor document.
 
 Inbox diagnostics do not determine relay public eligibility or soft pruning.
 Canonical actor reachability is the independent liveness signal.

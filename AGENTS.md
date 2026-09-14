@@ -50,6 +50,17 @@
   SSRF-resistant DNS/address/redirect controls and response bounds; do not use
   the default HTTP client, environment proxies, shell `curl`, or public-request
   triggered probing.
+- Local discovery/import is operating-system-authorized administration only.
+  Keep import files regular/UTF-8 and bounded to 256 KiB, 2,048-byte lines, 100
+  candidates, and eight concurrent probes. Treat base, `/actor`, and `/inbox`
+  inputs only as hints; require successful canonical actor validation before an
+  add. Persist a bounded source label, never a local file path. `--yes` bypasses
+  only interactive confirmation, never validation/probing. Candidate omission
+  from a later file is not removal authority.
+- Inbox discovery diagnostics must be non-mutating. The reviewed 1.1 path uses
+  `OPTIONS`; never send fabricated Follow/Announce/Undo or another ActivityPub
+  POST merely to test support. HTTP method rejection is diagnostic evidence,
+  not proof that a declared inbox is absent.
 - Moderation and administrative suspension override automated health state.
 - Protocol compatibility must be versioned and tested with fixtures.
 

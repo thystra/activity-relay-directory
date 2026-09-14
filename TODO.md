@@ -683,11 +683,15 @@ not covered by the retention contract.
 
 Repository: Directory.
 
-Add local administrative discovery commands only; there is no discovery HTTP
-mutation surface and no web scraper in 1.1. Required behavior:
+Implemented on the 1.1 development line. Local administration now provides
+`discovery add`, `remove`, and bounded file `import`; actor verification and
+inbox diagnostics reuse the production-safe resolver, and no public mutation
+route or scraper was added.
+
+Required/implemented behavior:
 - accept one HTTPS candidate or a bounded local newline-delimited file;
-- ignore blank lines and `#` comments and bound file bytes, line bytes, candidate
-  count, and concurrent remote checks;
+- ignore blank lines and `#` comments; file import is fixed at 256 KiB, 2,048
+  bytes per line, 100 candidates, and eight concurrent remote checks;
 - accept base, `/actor`, and `/inbox` candidate forms as hints, then independently
   establish a canonical actor before mutation;
 - use the existing proxy-free SSRF-resistant resolver/network policy for every
@@ -695,11 +699,14 @@ mutation surface and no web scraper in 1.1. Required behavior:
   resolution does;
 - require successful canonical actor validation before first discovery add;
 - derive and verify the actor-declared inbox without sending a synthetic
-  ActivityPub POST; optional HEAD/OPTIONS/GET diagnostics must treat method
+  ActivityPub POST; the implemented bounded `OPTIONS` diagnostic treats method
   rejection conservatively;
 - deduplicate all candidate forms by validated canonical actor identity;
 - support idempotent local add/remove plus a prospective import summary and
-  explicit confirmation or `--yes` before mutation;
+  explicit confirmation or `--yes` before mutation; interactive bulk import
+  confirms `IMPORT <ready-count>`, validated entries may be applied despite
+  other failed candidates, and any failed candidate keeps the overall exit
+  nonzero;
 - record a bounded source label rather than an absolute workstation file path;
   and
 - never remove a retained relay merely because a later imported file no longer
