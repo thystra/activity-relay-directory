@@ -1,3 +1,17 @@
+activity-relay-directory (1.1.0~rc1-1) unstable; urgency=medium
+
+  * Add schema 8 operator discovery, reachability evidence, and retention
+    integration.
+  * Add local bounded discovery add/remove/import with SSRF-resistant actor
+    checks.
+  * Add default-off background reachability with fresh-evidence pruning
+    safeguards.
+  * Add default-off /v2/relays and the shared human 1.1 evidence projection
+    while preserving the frozen /v1/relays contract.
+  * Add the 1.1 source acceptance matrix and post-1.0 release-candidate gate.
+
+ -- Alan Johnson <alan@argentwolf.org>  Tue, 15 Sep 2026 11:34:36 -0400
+
 activity-relay-directory (1.0.0-1) stable; urgency=medium
 
   * Publish the first stable Activity-Relay Directory release.

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+_No changes yet._
+
+## 1.1.0-rc1 - 2026-09-15
+
 - Add default-off `GET /v2/relays` public 1.1 evidence projection and switch
   the human directory to the same bounded actor-keyset projection while keeping
   `/v1/relays` byte/semantic compatibility. Heartbeat, actor reachability,
