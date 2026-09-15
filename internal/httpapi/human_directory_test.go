@@ -10,18 +10,30 @@ import (
 	"testing"
 	"time"
 
-	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	now := time.Unix(100_100, 0).UTC()
-	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{
-		Relays: []storage.HealthProjectionRelay{{
-			RelayActor:    "https://relay.example/a&b",
-			PublicBaseURL: "https://relay.example",
-			HealthState:   v1.HealthHealthy,
-			LastSeenUnix:  100_000,
+	lastSeen := int64(100_000)
+	checked := int64(100_050)
+	declared := int64(100_040)
+	verified := int64(100_000)
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{{
+			RelayActor:           "https://relay.example/a&b",
+			PublicBaseURL:        "https://relay.example",
+			Registered:           true,
+			HeartbeatState:       storage.HeartbeatHealthy,
+			LastSeenUnix:         &lastSeen,
+			ActorState:           storage.ReachabilityReachable,
+			ActorLastCheckedUnix: &checked,
+			ActorLastSuccessUnix: &checked,
+			InboxURL:             "https://relay.example/inbox/a&b",
+			InboxDeclaredUnix:    &declared,
+			InboxProbeState:      storage.InboxMethodRejected,
+			InboxLastCheckedUnix: &checked,
+			RFC9421VerifiedUnix:  &verified,
 		}},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
@@ -29,27 +41,22 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
 
-	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	response := httptest.NewRecorder()
-	handler.serveHumanDirectory(response, request)
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
-	fixture, err := os.ReadFile("../../testdata/public/v1/relays-page.valid.html")
+	fixture, err := os.ReadFile("../../testdata/public/v2/directory-page.valid.html")
 	if err != nil {
 		t.Fatalf("ReadFile(fixture) error = %v", err)
 	}
 	if response.Body.String() != string(fixture) {
 		t.Fatalf("body = %q, want fixture %q", response.Body.String(), fixture)
 	}
-	if response.Header().Get("Content-Type") != humanDirectoryContentType {
-		t.Fatalf("Content-Type = %q", response.Header().Get("Content-Type"))
-	}
-	if response.Header().Get("Cache-Control") != publicListingCacheControl {
-		t.Fatalf("Cache-Control = %q", response.Header().Get("Cache-Control"))
-	}
-	if response.Header().Get("Content-Security-Policy") != humanDirectoryCSP {
-		t.Fatalf("Content-Security-Policy = %q", response.Header().Get("Content-Security-Policy"))
+	if response.Header().Get("Content-Type") != humanDirectoryContentType ||
+		response.Header().Get("Cache-Control") != publicListingCacheControl ||
+		response.Header().Get("Content-Security-Policy") != humanDirectoryCSP {
+		t.Fatalf("headers = %#v", response.Header())
 	}
 	etag := response.Header().Get("ETag")
 	if etag == "" {
@@ -62,19 +69,30 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`href="#directory">Skip to directory</a>`,
 		`<main id="directory"`,
 		`<nav class="pagination" aria-label="Directory pages">`,
-		`<section class="health-help panel" aria-labelledby="health-heading">`,
-		`<dt>healthy</dt>`,
-		`<dt>stale</dt>`,
-		`<dt>dead</dt>`,
+		`<section class="evidence-help panel" aria-labelledby="evidence-heading">`,
+		`Heartbeat: healthy`,
+		`Reachability: reachable`,
+		`Inbox diagnostic`,
+		`method rejected`,
+		`RFC 9421`,
+		`verified`,
 		`https://relay.example/a&amp;b`,
+		`https://relay.example/inbox/a&amp;b`,
+		`href="https://github.com/thystra/activity-relay-directory"`,
+		`href="https://github.com/thystra/Activity-Relay"`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("body missing %q", required)
 		}
 	}
-	if strings.Contains(body, "https://relay.example/a&b") || strings.Contains(body, "<script") ||
-		strings.Contains(body, "analytics") || strings.Contains(body, "fonts.googleapis") {
-		t.Fatalf("unsafe or remote content present: %q", body)
+	for _, forbidden := range []string{
+		"https://relay.example/a&b", "https://relay.example/inbox/a&b",
+		"<script", "analytics", "fonts.googleapis",
+		"source_kind", "source_label", "reason_code", "operator_id", "discovery_added",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("unsafe/private content %q present: %q", forbidden, body)
+		}
 	}
 
 	conditional := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -87,41 +105,35 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 }
 
 func TestHumanDirectoryHeadSuppressesBodyAndPreservesValidators(t *testing.T) {
-	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{Relays: []storage.HealthProjectionRelay{}}}
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
-	request := httptest.NewRequest(http.MethodHead, "/", nil)
 	response := httptest.NewRecorder()
-	handler.serveHumanDirectory(response, request)
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodHead, "/", nil))
 	if response.Code != http.StatusOK || response.Body.Len() != 0 {
 		t.Fatalf("HEAD response = status %d body %q", response.Code, response.Body.String())
 	}
-	if response.Header().Get("ETag") == "" ||
-		response.Header().Get("Cache-Control") != publicListingCacheControl ||
+	if response.Header().Get("ETag") == "" || response.Header().Get("Cache-Control") != publicListingCacheControl ||
 		response.Header().Get("Content-Security-Policy") != humanDirectoryCSP {
 		t.Fatalf("HEAD headers = %#v", response.Header())
 	}
 }
 
-func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjection(t *testing.T) {
+func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T) {
 	now := time.Unix(2_000, 0).UTC()
-	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{
-		Relays: []storage.HealthProjectionRelay{},
-		Next: storage.HealthProjectionCursor{
-			LastSeenUnix: 1_000,
-			RelayActor:   "https://relay.example/actor",
-		},
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{},
+		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
 
-	htmlRequest := httptest.NewRequest(http.MethodGet, "/?limit=7", nil)
 	htmlResponse := httptest.NewRecorder()
-	handler.serveHumanDirectory(htmlResponse, htmlRequest)
+	handler.serveHumanDirectory(htmlResponse, httptest.NewRequest(http.MethodGet, "/?limit=7", nil))
 	if htmlResponse.Code != http.StatusOK {
 		t.Fatalf("HTML status = %d body = %q", htmlResponse.Code, htmlResponse.Body.String())
 	}
@@ -136,35 +148,32 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjection(t *testing.T) {
 	}
 
 	repository.mu.Lock()
-	repository.page.Next = storage.HealthProjectionCursor{}
+	repository.directoryPage.Next = storage.DirectoryProjectionCursor{}
 	repository.mu.Unlock()
 
-	jsonRequest := httptest.NewRequest(http.MethodGet, "/v1/relays?limit=7&cursor="+url.QueryEscape(cursor), nil)
 	jsonResponse := httptest.NewRecorder()
-	handler.serve(jsonResponse, jsonRequest)
+	handler.serveDirectoryProjection(jsonResponse, httptest.NewRequest(
+		http.MethodGet, directoryProjectionPath+"?limit=7&cursor="+url.QueryEscape(cursor), nil,
+	))
 	if jsonResponse.Code != http.StatusOK {
 		t.Fatalf("JSON status = %d body = %q", jsonResponse.Code, jsonResponse.Body.String())
 	}
 
 	repository.mu.Lock()
 	defer repository.mu.Unlock()
-	if len(repository.queries) != 2 {
-		t.Fatalf("queries = %#v", repository.queries)
+	if len(repository.directoryQueries) != 2 {
+		t.Fatalf("queries = %#v", repository.directoryQueries)
 	}
-	second := repository.queries[1]
-	if !second.ObservedAt.Equal(now) || second.Limit != 7 ||
-		second.After.LastSeenUnix != 1_000 || second.After.RelayActor != "https://relay.example/actor" {
+	second := repository.directoryQueries[1]
+	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.RelayActor != "https://relay.example/actor" {
 		t.Fatalf("second query = %#v", second)
 	}
 }
 
 func TestHumanDirectoryRejectsTamperedCursorAndBackendFailureWithoutDisclosure(t *testing.T) {
-	repository := &publicListingRepositoryStub{err: nil, page: storage.HealthProjectionPage{
-		Relays: []storage.HealthProjectionRelay{},
-		Next: storage.HealthProjectionCursor{
-			LastSeenUnix: 1_000,
-			RelayActor:   "https://relay.example/actor",
-		},
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{},
+		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(2_000, 0).UTC() })
 	if err != nil {
@@ -193,48 +202,42 @@ func TestHumanDirectoryRejectsTamperedCursorAndBackendFailureWithoutDisclosure(t
 	}
 
 	repository.mu.Lock()
-	repository.err = errorsForHumanTest{}
-	repository.page.Next = storage.HealthProjectionCursor{}
+	repository.directoryErr = errorsForHumanTest{}
+	repository.directoryPage.Next = storage.DirectoryProjectionCursor{}
 	repository.mu.Unlock()
 
 	response = httptest.NewRecorder()
 	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if response.Code != http.StatusServiceUnavailable ||
-		strings.Contains(response.Body.String(), "sqlite") ||
-		strings.Contains(response.Body.String(), "/srv") {
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "sqlite") || strings.Contains(response.Body.String(), "/srv") {
 		t.Fatalf("backend response = status %d body %q", response.Code, response.Body.String())
 	}
 }
 
 func TestHumanDirectoryEmptyStateAndStylesheet(t *testing.T) {
-	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{Relays: []storage.HealthProjectionRelay{}}}
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
 	response := httptest.NewRecorder()
 	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
-	if !strings.Contains(response.Body.String(), "No relays are listed yet") ||
-		!strings.Contains(response.Body.String(), "End of directory") {
+	if !strings.Contains(response.Body.String(), "No relays are listed yet") || !strings.Contains(response.Body.String(), "End of directory") {
 		t.Fatalf("empty state body = %q", response.Body.String())
 	}
 
 	styleResponse := httptest.NewRecorder()
 	serveDirectoryStylesheet(styleResponse, httptest.NewRequest(http.MethodGet, directoryStylesheetPath, nil))
-	if styleResponse.Code != http.StatusOK ||
-		styleResponse.Header().Get("Content-Type") != "text/css; charset=utf-8" ||
-		styleResponse.Header().Get("ETag") == "" ||
-		styleResponse.Header().Get("Cache-Control") != publicListingCacheControl {
+	if styleResponse.Code != http.StatusOK || styleResponse.Header().Get("Content-Type") != "text/css; charset=utf-8" ||
+		styleResponse.Header().Get("ETag") == "" || styleResponse.Header().Get("Cache-Control") != publicListingCacheControl {
 		t.Fatalf("stylesheet response = status %d headers %#v", styleResponse.Code, styleResponse.Header())
 	}
-	if strings.Contains(styleResponse.Body.String(), "@import") ||
-		strings.Contains(styleResponse.Body.String(), "url(") {
+	if strings.Contains(styleResponse.Body.String(), "@import") || strings.Contains(styleResponse.Body.String(), "url(") {
 		t.Fatalf("stylesheet contains remote-capable fetch: %q", styleResponse.Body.String())
 	}
 }
 
 func TestHumanDirectoryRejectsWriteMethods(t *testing.T) {
-	repository := &publicListingRepositoryStub{page: storage.HealthProjectionPage{Relays: []storage.HealthProjectionRelay{}}}
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
@@ -248,9 +251,7 @@ func TestHumanDirectoryRejectsWriteMethods(t *testing.T) {
 
 type errorsForHumanTest struct{}
 
-func (errorsForHumanTest) Error() string {
-	return "secret sqlite path /srv/private.sqlite"
-}
+func (errorsForHumanTest) Error() string { return "secret sqlite path /srv/private.sqlite" }
 
 func extractHTMLAttribute(t *testing.T, body, prefix, suffix string) string {
 	t.Helper()
@@ -263,6 +264,5 @@ func extractHTMLAttribute(t *testing.T, body, prefix, suffix string) string {
 	if end < 0 {
 		t.Fatalf("missing HTML attribute suffix %q in %q", suffix, body)
 	}
-	value := body[start : start+end]
-	return html.UnescapeString(value)
+	return html.UnescapeString(body[start : start+end])
 }

@@ -172,6 +172,9 @@ func (repository *RelayRepository) Register(
 	if err != nil {
 		return "", storageFailure("write relay", err)
 	}
+	if err := recordRFC9421VerifiedTx(ctx, transaction, intent.RelayActor, acceptedUnix); err != nil {
+		return "", err
+	}
 	if err := insertRelayEvent(
 		ctx,
 		transaction,
@@ -242,6 +245,9 @@ func (repository *RelayRepository) Heartbeat(
 	); err != nil {
 		return "", storageFailure("write heartbeat", err)
 	}
+	if err := recordRFC9421VerifiedTx(ctx, transaction, intent.RelayActor, acceptedUnix); err != nil {
+		return "", err
+	}
 	if err := insertRelayEvent(
 		ctx,
 		transaction,
@@ -311,6 +317,15 @@ func (repository *RelayRepository) Unregister(
 			intent.RelayActor,
 		); err != nil {
 			return "", storageFailure("write unregister", err)
+		}
+	}
+	retained, err := retainedObservationIdentity(ctx, transaction, intent.RelayActor)
+	if err != nil {
+		return "", storageFailure("read RFC 9421 observation identity", err)
+	}
+	if retained {
+		if err := recordRFC9421VerifiedTx(ctx, transaction, intent.RelayActor, acceptedUnix); err != nil {
+			return "", err
 		}
 	}
 	if err := insertRelayEvent(

@@ -177,10 +177,65 @@ and forward to the loopback Go listener. Proxy configuration is an operator-
 owned deployment layer and must preserve the public authority and request
 target required by HTTP message-signature verification.
 
-Remaining components will be added behind explicit contracts:
+The approved Activity-Relay Directory 1.1 design adds a second, independent
+source of relay evidence without changing version 1 lifecycle semantics.
+Authenticated register and heartbeat acceptance remains the only source of
+`last_seen_at_unix` and the fixed version 1 `healthy`, `stale`, `dead`, and
+`prune` classification. A background maintenance path may independently fetch a
+relay actor through the existing SSRF-resistant network boundary and persist
+reachability/capability observations. Those observations never manufacture a
+heartbeat or refresh lifecycle recency. Public-request handlers never initiate
+remote probes.
 
-1. cross-repository staging soak and release-candidate evidence;
-2. Activity-Relay client integration and soak testing.
+The same 1.1 work adds local operator discovery. A relay candidate may be added
+individually or imported from a bounded local newline-delimited file containing
+base, `/actor`, or `/inbox` HTTPS URLs. The Directory resolves each candidate to
+a validated canonical ActivityPub actor before accepting discovery state,
+deduplicates by canonical actor identity, and records private append-only
+operator/source provenance. Authenticated lifecycle participation remains opt-in
+for the remote relay; operator discovery is a separate local authorization for
+Directory inclusion and must never be represented as remote participation.
+There is no automatic web scraper in 1.1. Public representations deliberately
+do not disclose whether an entry originated from self-registration, manual
+discovery, or file import.
+
+Actor and inbox diagnostics remain evidence-based. A successful actor check
+requires the existing proxy-free DNS/address/redirect controls, bounded HTTPS
+retrieval, ActivityStreams media type, valid bounded JSON, exact actor identity,
+and an accepted `Application` or `Service` type. A validated actor's declared
+canonical HTTPS inbox is positive inbox-capability evidence; an optional
+non-mutating inbox check may add diagnostics but must not POST a synthetic
+ActivityPub activity and must not treat a normal method rejection such as 405
+as proof that the inbox is absent. RFC 9421 is reported as verified only after
+the Directory has actually accepted an RFC 9421-signed lifecycle request.
+
+The existing `/v1/relays` representation remains unchanged. The 1.1 public
+projection is `GET /v2/relays`, and the human `/` page renders that same bounded
+projection rather than running a separate eligibility query. The v2 repository
+merges retained lifecycle and discovery actor-primary-key streams, scans at most
+400 identities per request, deduplicates by canonical actor, and uses a signed
+actor-keyset cursor with pages of at most 100 public entries. It exposes
+heartbeat health, independent actor reachability, actor-declared inbox
+diagnostics, and positive RFC 9421 evidence while keeping registration/discovery
+participation flags and discovery/operator provenance private.
+
+Moderation suspension continues to override all public eligibility. Registered
+entries remain public under the original version 1 heartbeat window, while a
+30-day heartbeat-prune-boundary row may remain visible only with current fresh
+reachable actor evidence. Discovered-only entries require that same current
+successful actor evidence and otherwise age out after the fixed six-hour
+reachability freshness window. Soft pruning must not transition a relay solely
+because heartbeat recency aged past 30 days while sufficiently recent current
+actor evidence proves that relay reachable. The detailed contract, persistence
+plan, bounds, and acceptance cases are defined in
+`docs/DISCOVERY-REACHABILITY.md`, `docs/PUBLIC-LISTING.md`, and the post-1.0
+roadmap in `TODO.md`.
+
+Remaining post-1.0 components are added behind explicit contracts:
+
+1. Activity-Relay Directory 1.1 discovery/reachability implementation and soak;
+2. cross-repository compatibility evidence for retained version 1 lifecycle
+   behavior.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review
 tranches, and acceptance gates for these components.

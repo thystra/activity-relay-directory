@@ -81,6 +81,11 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 		"moderation_events",
 		"directory_policy",
 		"enrollment_events",
+		"relay_discoveries",
+		"discovery_events",
+		"relay_observations",
+		"retention_metadata",
+		"retention_runs",
 	} {
 		assertTableExists(t, database, table)
 	}

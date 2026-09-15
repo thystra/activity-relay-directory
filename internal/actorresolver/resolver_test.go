@@ -303,6 +303,103 @@ func TestResolverRejectsAmbiguousActorDocuments(t *testing.T) {
 	}
 }
 
+func TestResolverProbesActorWithoutRequiringHistoricalKey(t *testing.T) {
+	body, err := json.Marshal(map[string]any{
+		"@context": "https://www.w3.org/ns/activitystreams",
+		"id":       testActorURL,
+		"type":     "Application",
+		"inbox":    "https://relay.example/inbox",
+	})
+	if err != nil {
+		t.Fatalf("marshal actor: %v", err)
+	}
+	resolver := newTestResolver(t, func(request *http.Request) (*http.Response, error) {
+		if request.Method != http.MethodGet || request.URL.String() != testActorURL {
+			t.Fatalf("request = %s %q", request.Method, request.URL.String())
+		}
+		return actorResponse(http.StatusOK, "application/activity+json", body), nil
+	})
+	result, err := resolver.ProbeActor(context.Background(), testActorURL)
+	if err != nil {
+		t.Fatalf("ProbeActor() error = %v", err)
+	}
+	if result.ActorID != testActorURL || result.InboxURL != "https://relay.example/inbox" {
+		t.Fatalf("ProbeActor() = %#v", result)
+	}
+}
+
+func TestResolverActorProbeRejectsInvalidDeclaredInbox(t *testing.T) {
+	body, err := json.Marshal(map[string]any{
+		"id":    testActorURL,
+		"type":  "Service",
+		"inbox": "http://relay.example/inbox",
+	})
+	if err != nil {
+		t.Fatalf("marshal actor: %v", err)
+	}
+	resolver := newTestResolver(t, func(*http.Request) (*http.Response, error) {
+		return actorResponse(http.StatusOK, "application/activity+json", body), nil
+	})
+	result, err := resolver.ProbeActor(context.Background(), testActorURL)
+	if result != (ActorProbeResult{}) || !errors.Is(err, ErrActorDocument) {
+		t.Fatalf("ProbeActor() = %#v, %v", result, err)
+	}
+}
+
+func TestResolverInboxProbeIsNonMutatingAndConservative(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		want   InboxProbeResult
+	}{
+		{name: "responsive", status: http.StatusNoContent, want: InboxProbeResponsive},
+		{name: "method rejected", status: http.StatusMethodNotAllowed, want: InboxProbeMethodRejected},
+		{name: "not implemented", status: http.StatusNotImplemented, want: InboxProbeMethodRejected},
+		{name: "not found", status: http.StatusNotFound, want: InboxProbeUnreachable},
+		{name: "server error", status: http.StatusBadGateway, want: InboxProbeUnreachable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := newTestResolver(t, func(request *http.Request) (*http.Response, error) {
+				if request.Method != http.MethodOptions || request.URL.String() != "https://relay.example/inbox" {
+					t.Fatalf("request = %s %q", request.Method, request.URL.String())
+				}
+				return actorResponse(test.status, "", nil), nil
+			})
+			result, err := resolver.ProbeInbox(context.Background(), "https://relay.example/inbox")
+			if err != nil || result != test.want {
+				t.Fatalf("ProbeInbox() = %q, %v; want %q", result, err, test.want)
+			}
+		})
+	}
+}
+
+func TestResolverProbesRejectProhibitedLiteralTargetsBeforeTransport(t *testing.T) {
+	called := false
+	resolver := newTestResolver(t, func(*http.Request) (*http.Response, error) {
+		called = true
+		return nil, errors.New("unexpected transport")
+	})
+	if result, err := resolver.ProbeActor(context.Background(), "https://127.0.0.1/actor"); result != (ActorProbeResult{}) || !errors.Is(err, ErrNetworkTarget) {
+		t.Fatalf("ProbeActor(private) = %#v, %v", result, err)
+	}
+	if result, err := resolver.ProbeInbox(context.Background(), "https://[::1]/inbox"); result != "" || !errors.Is(err, ErrNetworkTarget) {
+		t.Fatalf("ProbeInbox(private) = %q, %v", result, err)
+	}
+	if called {
+		t.Fatal("prohibited literal target reached transport")
+	}
+}
+
+func TestResolverInboxProbeTransportFailureIsDiagnostic(t *testing.T) {
+	resolver := newTestResolver(t, func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("private transport detail")
+	})
+	result, err := resolver.ProbeInbox(context.Background(), "https://relay.example/inbox")
+	if err != nil || result != InboxProbeUnreachable {
+		t.Fatalf("ProbeInbox() = %q, %v", result, err)
+	}
+}
+
 func TestParseRSAPublicKeyRejectsUnsafeForms(t *testing.T) {
 	validPEM, validKey := loadTestPublicKey(t)
 	weakPrivate, err := rsa.GenerateKey(rand.Reader, 1024)

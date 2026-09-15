@@ -24,6 +24,11 @@ type publicListingRepositoryStub struct {
 	page    storage.HealthProjectionPage
 	err     error
 	block   <-chan struct{}
+
+	directoryQueries []storage.DirectoryProjectionQuery
+	directoryPage    storage.DirectoryProjectionPage
+	directoryErr     error
+	directoryBlock   <-chan struct{}
 }
 
 func (repository *publicListingRepositoryStub) ListPublicRelays(
@@ -41,6 +46,27 @@ func (repository *publicListingRepositoryStub) ListPublicRelays(
 		select {
 		case <-ctx.Done():
 			return storage.HealthProjectionPage{}, ctx.Err()
+		case <-block:
+		}
+	}
+	return page, err
+}
+
+func (repository *publicListingRepositoryStub) ListDirectoryRelays(
+	ctx context.Context,
+	query storage.DirectoryProjectionQuery,
+) (storage.DirectoryProjectionPage, error) {
+	if repository == nil {
+		return storage.DirectoryProjectionPage{}, storage.ErrRepositoryConfiguration
+	}
+	repository.mu.Lock()
+	repository.directoryQueries = append(repository.directoryQueries, query)
+	page, err, block := repository.directoryPage, repository.directoryErr, repository.directoryBlock
+	repository.mu.Unlock()
+	if block != nil {
+		select {
+		case <-ctx.Done():
+			return storage.DirectoryProjectionPage{}, ctx.Err()
 		case <-block:
 		}
 	}

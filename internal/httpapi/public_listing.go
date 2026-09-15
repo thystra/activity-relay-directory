@@ -37,6 +37,7 @@ var ErrPublicListingConfiguration = errors.New("public listing configuration is 
 // Its concurrency budget is independent of signed lifecycle admission.
 type PublicListingHandler struct {
 	repository           storage.PublicListingRepository
+	directoryRepository  storage.DirectoryProjectionRepository
 	now                  func() time.Time
 	semaphore            chan struct{}
 	cursorKey            []byte
@@ -60,6 +61,10 @@ func newPublicListingHandler(
 	if repository == nil || now == nil || maximumConcurrent <= 0 || maximumConcurrent > 1024 {
 		return nil, ErrPublicListingConfiguration
 	}
+	directoryRepository, ok := repository.(storage.DirectoryProjectionRepository)
+	if !ok || directoryRepository == nil {
+		return nil, ErrPublicListingConfiguration
+	}
 	cursorKey := make([]byte, publicListingCursorKeySize)
 	if _, err := rand.Read(cursorKey); err != nil {
 		return nil, ErrPublicListingConfiguration
@@ -70,6 +75,7 @@ func newPublicListingHandler(
 	}
 	return &PublicListingHandler{
 		repository:           repository,
+		directoryRepository:  directoryRepository,
 		now:                  now,
 		semaphore:            make(chan struct{}, maximumConcurrent),
 		cursorKey:            cursorKey,

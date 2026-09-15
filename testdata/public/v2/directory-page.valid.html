@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A public directory of participating ActivityPub relay instances.">
+  <title>Activity-Relay Directory</title>
+  <link rel="stylesheet" href="/assets/directory.css">
+</head>
+<body>
+  <a class="skip-link" href="#directory">Skip to directory</a>
+
+  <header class="site-header">
+    <div class="shell header-row">
+      <a class="site-name" href="/">Activity-Relay Directory</a>
+    </div>
+  </header>
+
+  <main id="directory" class="shell" tabindex="-1">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">ActivityPub infrastructure</p>
+      <h1 id="page-title">Public relay directory</h1>
+      <p class="lede">Discover relay instances currently eligible through authenticated Directory activity or independently observed ActivityPub reachability.</p>
+    </section>
+
+    <section class="panel directory-panel" aria-labelledby="relay-list-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Directory</p>
+          <h2 id="relay-list-heading">Participating relays</h2>
+          <p class="muted">1 public relay on this page.</p>
+        </div>
+      </div>
+
+
+      <ul class="relay-list">
+
+        <li>
+          <article class="relay-card">
+            <div class="relay-card-heading">
+              <h3><a href="https://relay.example" rel="noreferrer">https://relay.example</a></h3>
+              <div class="signal-badges" aria-label="Current evidence summary">
+                <span class="signal-badge heartbeat-healthy">Heartbeat: healthy</span>
+                <span class="signal-badge reachability-reachable">Reachability: reachable</span>
+              </div>
+            </div>
+            <dl class="relay-meta">
+              <div>
+                <dt>Actor</dt>
+                <dd><code>https://relay.example/a&amp;b</code></dd>
+              </div>
+              <div>
+                <dt>Last authenticated Directory observation</dt>
+                <dd><time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
+              </div>
+              <div>
+                <dt>Actor last checked</dt>
+                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
+              </div>
+              <div>
+                <dt>Actor last successful check</dt>
+                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
+              </div>
+              <div>
+                <dt>Declared inbox</dt>
+                <dd><code>https://relay.example/inbox/a&amp;b</code> · declared <time datetime="1970-01-02T03:47:20Z">1970-01-02T03:47:20Z</time></dd>
+              </div>
+              <div>
+                <dt>Inbox diagnostic</dt>
+                <dd>method rejected · checked <time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
+              </div>
+              <div>
+                <dt>RFC 9421</dt>
+                <dd>verified · evidence recorded <time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
+              </div>
+            </dl>
+          </article>
+        </li>
+
+      </ul>
+
+
+      <nav class="pagination" aria-label="Directory pages">
+        <span class="muted">End of directory</span>
+      </nav>
+    </section>
+
+    <section class="evidence-help panel" aria-labelledby="evidence-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Evidence</p>
+          <h2 id="evidence-heading">Independent directory signals</h2>
+          <p class="muted">Heartbeat and server-observed reachability are intentionally separate. One does not rewrite the other.</p>
+        </div>
+      </div>
+      <dl class="evidence-grid">
+        <div class="evidence-definition">
+          <dt>Heartbeat</dt>
+          <dd><strong>healthy</strong> through 36 hours; <strong>stale</strong> after 36 hours and before 7 days; <strong>dead</strong> from 7 days to before 30 days; <strong>prune boundary</strong> at 30 days or older. <strong>not observed</strong> means no retained authenticated Directory observation exists for the entry.</dd>
+        </div>
+        <div class="evidence-definition">
+          <dt>Reachability</dt>
+          <dd><strong>reachable</strong> means the most recent bounded actor validation succeeded; <strong>unreachable</strong> means the latest check failed; <strong>unknown</strong> means no current actor check has been recorded.</dd>
+        </div>
+        <div class="evidence-definition">
+          <dt>Inbox diagnostic</dt>
+          <dd>The actor-declared inbox may be <strong>responsive</strong>, <strong>method rejected</strong>, <strong>unreachable</strong>, or <strong>not checked</strong>. Method rejection does not mean the inbox is absent.</dd>
+        </div>
+        <div class="evidence-definition">
+          <dt>RFC 9421</dt>
+          <dd><strong>verified</strong> means this directory has accepted a signed lifecycle request from the relay. <strong>not verified</strong> means only that the directory has no such positive evidence.</dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-row">
+      <div class="footer-about">
+        <span>Activity-Relay Directory</span>
+        <div class="software-links" aria-label="Software">
+          <span>Want to run your own directory? <a href="https://github.com/thystra/activity-relay-directory" rel="noreferrer">Get the software here.</a></span>
+          <span>Want to run your own relay? <a href="https://github.com/thystra/Activity-Relay" rel="noreferrer">Get the software here.</a></span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

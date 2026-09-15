@@ -24,8 +24,9 @@ BEGIN
     SELECT RAISE(ABORT, 'relay events are append-only');
 END`
 
-// PurgeCandidates returns one indexed bounded page of administratively active
-// unregistered or pruned rows ordered by their authoritative inactive transition.
+// PurgeCandidates returns one bounded keyset page containing both eligible
+// lifecycle rows and removed discovery rows. Ordering is stable across the two
+// sources by inactive time, canonical actor, and candidate kind.
 func (repository *RelayRepository) PurgeCandidates(
 	ctx context.Context,
 	query storage.PurgeCandidateQuery,
@@ -33,10 +34,8 @@ func (repository *RelayRepository) PurgeCandidates(
 	if repository == nil || repository.database == nil || ctx == nil {
 		return storage.PurgeCandidatePage{}, storage.ErrRepositoryConfiguration
 	}
-	if !query.After.Valid() || query.Limit <= 0 ||
-		query.Limit > storage.MaximumPurgeCandidatePage ||
-		(query.After != (storage.PurgeCandidateCursor{}) &&
-			!validHealthProjectionActor(query.After.RelayActor)) {
+	if !query.After.Valid() || query.Limit <= 0 || query.Limit > storage.MaximumPurgeCandidatePage ||
+		(query.After != (storage.PurgeCandidateCursor{}) && !validHealthProjectionActor(query.After.RelayActor)) {
 		return storage.PurgeCandidatePage{}, storage.ErrRetentionReadInput
 	}
 	cutoffUnix := query.CutoffAt.UTC().Unix()
@@ -45,77 +44,127 @@ func (repository *RelayRepository) PurgeCandidates(
 		return storage.PurgeCandidatePage{}, storage.ErrRetentionReadInput
 	}
 
-	rows, err := repository.database.QueryContext(
-		ctx,
-		`SELECT relay_actor,
-                lifecycle_state,
-                CASE lifecycle_state
-                    WHEN 'unregistered' THEN unregistered_at_unix
-                    WHEN 'pruned' THEN pruned_at_unix
-                    ELSE NULL
-                END AS inactive_at_unix,
-                updated_at_unix,
-                COALESCE((
-                    SELECT MAX(event_id)
-                    FROM relay_events INDEXED BY relay_events_retention_version_idx
-                    WHERE relay_events.relay_actor = relays.relay_actor
-                ), 0) AS latest_relay_event_id,
-                COALESCE((
-                    SELECT MAX(moderation_event_id)
-                    FROM moderation_events INDEXED BY moderation_events_retention_version_idx
-                    WHERE moderation_events.relay_actor = relays.relay_actor
-                ), 0) AS latest_moderation_event_id
-         FROM relays INDEXED BY relays_retention_candidates_idx
-         WHERE administrative_state = ?
-           AND lifecycle_state IN ('unregistered', 'pruned')
-           AND CASE lifecycle_state
-                   WHEN 'unregistered' THEN unregistered_at_unix
-                   WHEN 'pruned' THEN pruned_at_unix
-                   ELSE NULL
-               END <= ?
-           AND (
-               CASE lifecycle_state
-                   WHEN 'unregistered' THEN unregistered_at_unix
-                   WHEN 'pruned' THEN pruned_at_unix
-                   ELSE NULL
-               END,
-               relay_actor
-           ) > (?, ?)
-         ORDER BY inactive_at_unix, relay_actor
-         LIMIT ?`,
-		administrativeActive,
+	perSourceLimit := query.Limit + 1
+	rows, err := repository.database.QueryContext(ctx, `WITH
+	lifecycle_candidates AS (
+		SELECT
+			'lifecycle' AS candidate_kind,
+			relay_actor,
+			lifecycle_state,
+			CASE lifecycle_state
+				WHEN 'unregistered' THEN unregistered_at_unix
+				WHEN 'pruned' THEN pruned_at_unix
+				ELSE NULL
+			END AS inactive_at_unix,
+			updated_at_unix,
+			COALESCE((
+				SELECT MAX(event_id)
+				FROM relay_events INDEXED BY relay_events_retention_version_idx
+				WHERE relay_events.relay_actor = relays.relay_actor
+			), 0) AS latest_relay_event_id,
+			COALESCE((
+				SELECT MAX(moderation_event_id)
+				FROM moderation_events INDEXED BY moderation_events_retention_version_idx
+				WHERE moderation_events.relay_actor = relays.relay_actor
+			), 0) AS latest_moderation_event_id,
+			0 AS latest_discovery_event_id,
+			COALESCE((
+				SELECT revision
+				FROM relay_observations
+				WHERE relay_observations.relay_actor = relays.relay_actor
+			), 0) AS observation_revision
+		FROM relays INDEXED BY relays_retention_candidates_idx
+		WHERE administrative_state = 'active'
+		  AND lifecycle_state IN ('unregistered', 'pruned')
+		  AND CASE lifecycle_state
+				WHEN 'unregistered' THEN unregistered_at_unix
+				WHEN 'pruned' THEN pruned_at_unix
+				ELSE NULL
+			  END <= ?
+		  AND (CASE lifecycle_state
+				WHEN 'unregistered' THEN unregistered_at_unix
+				WHEN 'pruned' THEN pruned_at_unix
+				ELSE NULL
+			  END, relay_actor, 'lifecycle') > (?, ?, ?)
+		ORDER BY inactive_at_unix, relay_actor
+		LIMIT ?
+	),
+	discovery_candidates AS (
+		SELECT
+			'discovery' AS candidate_kind,
+			relay_actor,
+			'' AS lifecycle_state,
+			removed_at_unix AS inactive_at_unix,
+			updated_at_unix,
+			0 AS latest_relay_event_id,
+			0 AS latest_moderation_event_id,
+			COALESCE((
+				SELECT MAX(discovery_event_id)
+				FROM discovery_events INDEXED BY discovery_events_retention_version_idx
+				WHERE discovery_events.relay_actor = relay_discoveries.relay_actor
+			), 0) AS latest_discovery_event_id,
+			COALESCE((
+				SELECT revision
+				FROM relay_observations
+				WHERE relay_observations.relay_actor = relay_discoveries.relay_actor
+			), 0) AS observation_revision
+		FROM relay_discoveries INDEXED BY relay_discoveries_retention_candidates_idx
+		WHERE discovery_state = 'removed'
+		  AND removed_at_unix <= ?
+		  AND (removed_at_unix, relay_actor, 'discovery') > (?, ?, ?)
+		ORDER BY removed_at_unix, relay_actor
+		LIMIT ?
+	),
+	candidates AS (
+		SELECT * FROM lifecycle_candidates
+		UNION ALL
+		SELECT * FROM discovery_candidates
+	)
+	SELECT candidate_kind, relay_actor, lifecycle_state, inactive_at_unix,
+	       updated_at_unix, latest_relay_event_id, latest_moderation_event_id,
+	       latest_discovery_event_id, observation_revision
+	FROM candidates
+	ORDER BY inactive_at_unix, relay_actor, candidate_kind
+	LIMIT ?`,
 		cutoffUnix,
 		query.After.InactiveUnix,
 		query.After.RelayActor,
-		query.Limit+1,
+		string(query.After.Kind),
+		perSourceLimit,
+		cutoffUnix,
+		query.After.InactiveUnix,
+		query.After.RelayActor,
+		string(query.After.Kind),
+		perSourceLimit,
+		perSourceLimit,
 	)
 	if err != nil {
 		return storage.PurgeCandidatePage{}, storageFailure("read retention candidates", err)
 	}
 	defer rows.Close()
 
-	page := storage.PurgeCandidatePage{
-		Candidates: make([]storage.PurgeCandidate, 0, query.Limit),
-	}
+	page := storage.PurgeCandidatePage{Candidates: make([]storage.PurgeCandidate, 0, query.Limit)}
 	for rows.Next() {
 		var candidate storage.PurgeCandidate
-		var lifecycle string
+		var kind, lifecycle string
 		if err := rows.Scan(
+			&kind,
 			&candidate.RelayActor,
 			&lifecycle,
 			&candidate.InactiveUnix,
 			&candidate.UpdatedUnix,
 			&candidate.LatestRelayEventID,
 			&candidate.LatestModerationEventID,
+			&candidate.LatestDiscoveryEventID,
+			&candidate.ObservationRevision,
 		); err != nil {
 			return storage.PurgeCandidatePage{}, storageFailure("decode retention candidate", err)
 		}
+		candidate.Kind = storage.PurgeCandidateKind(kind)
 		candidate.LifecycleState = storage.RelayLifecycleState(lifecycle)
-		if !candidate.Valid() || !validHealthProjectionActor(candidate.RelayActor) ||
-			candidate.InactiveUnix > cutoffUnix {
+		if !candidate.Valid() || !validHealthProjectionActor(candidate.RelayActor) || candidate.InactiveUnix > cutoffUnix {
 			return storage.PurgeCandidatePage{}, storageFailure(
-				"validate retention candidate",
-				errors.New("invalid retained retention state"),
+				"validate retention candidate", errors.New("invalid retained retention state"),
 			)
 		}
 		if len(page.Candidates) == query.Limit {
@@ -123,6 +172,7 @@ func (repository *RelayRepository) PurgeCandidates(
 			page.Next = storage.PurgeCandidateCursor{
 				InactiveUnix: last.InactiveUnix,
 				RelayActor:   last.RelayActor,
+				Kind:         last.Kind,
 			}
 			break
 		}
@@ -134,10 +184,10 @@ func (repository *RelayRepository) PurgeCandidates(
 	return page, nil
 }
 
-// PurgeBatch revalidates one bounded candidate page under an immediate write
-// transaction. The relay-events delete trigger is dropped only inside this
-// transaction and is recreated before commit; rollback restores the trigger.
-// Private moderation events are deliberately retained.
+// PurgeBatch revalidates one bounded mixed candidate page under an immediate
+// write transaction. Lifecycle history is deleted only under the existing
+// temporary trigger scope. Discovery audit is deliberately retained. An
+// observation row is removed only after no lifecycle or discovery row remains.
 func (repository *RelayRepository) PurgeBatch(
 	ctx context.Context,
 	runID int64,
@@ -152,8 +202,7 @@ func (repository *RelayRepository) PurgeBatch(
 		return storage.PurgeBatchResult{}, storage.ErrRetentionWriteInput
 	}
 	for _, candidate := range candidates {
-		if !candidate.Valid() || !validHealthProjectionActor(candidate.RelayActor) ||
-			candidate.InactiveUnix > cutoffUnix {
+		if !candidate.Valid() || !validHealthProjectionActor(candidate.RelayActor) || candidate.InactiveUnix > cutoffUnix {
 			return storage.PurgeBatchResult{}, storage.ErrRetentionWriteInput
 		}
 	}
@@ -167,93 +216,124 @@ func (repository *RelayRepository) PurgeBatch(
 
 	var runOutcome string
 	var runCutoffUnix int64
-	if err := transaction.QueryRowContext(
-		ctx,
-		`SELECT outcome, cutoff_at_unix FROM retention_runs WHERE retention_run_id = ?`,
-		runID,
-	).Scan(&runOutcome, &runCutoffUnix); err != nil {
+	var runPolicyVersion int
+	if err := transaction.QueryRowContext(ctx,
+		`SELECT outcome, cutoff_at_unix, policy_version FROM retention_runs WHERE retention_run_id = ?`, runID,
+	).Scan(&runOutcome, &runCutoffUnix, &runPolicyVersion); err != nil {
 		return storage.PurgeBatchResult{}, storageFailure("read retention run", err)
 	}
-	if runOutcome != "running" || runCutoffUnix != cutoffUnix {
+	if runOutcome != "running" || runCutoffUnix != cutoffUnix || runPolicyVersion != storage.RetentionPolicyVersion {
 		return storage.PurgeBatchResult{}, storage.ErrRetentionWriteInput
 	}
 
-	if _, err := transaction.ExecContext(ctx, `DROP TRIGGER relay_events_no_delete`); err != nil {
-		return storage.PurgeBatchResult{}, storageFailure("open retention delete scope", err)
+	needsLifecycleDelete := false
+	for _, candidate := range candidates {
+		if candidate.Kind == storage.PurgeCandidateLifecycle {
+			needsLifecycleDelete = true
+			break
+		}
+	}
+	if needsLifecycleDelete {
+		if _, err := transaction.ExecContext(ctx, `DROP TRIGGER relay_events_no_delete`); err != nil {
+			return storage.PurgeBatchResult{}, storageFailure("open retention delete scope", err)
+		}
 	}
 
 	result := storage.PurgeBatchResult{Attempted: len(candidates)}
 	for _, candidate := range candidates {
-		current, err := readRetentionState(ctx, transaction, candidate.RelayActor)
+		current, err := readRetentionState(ctx, transaction, candidate)
 		if err != nil {
 			return storage.PurgeBatchResult{}, err
 		}
-		if current == nil || current.administrative != administrativeActive ||
-			current.lifecycle != string(candidate.LifecycleState) ||
-			current.inactiveUnix != candidate.InactiveUnix ||
-			current.updatedUnix != candidate.UpdatedUnix ||
-			current.latestRelayEventID != candidate.LatestRelayEventID ||
-			current.latestModerationEventID != candidate.LatestModerationEventID ||
-			current.inactiveUnix > cutoffUnix {
+		if current == nil || !retentionStateMatches(candidate, current, cutoffUnix) {
 			result.Skipped++
 			continue
 		}
 
-		deletedEvents, err := transaction.ExecContext(
-			ctx,
-			`DELETE FROM relay_events WHERE relay_actor = ?`,
-			candidate.RelayActor,
-		)
-		if err != nil {
-			return storage.PurgeBatchResult{}, storageFailure("delete retained lifecycle events", err)
-		}
-		eventCount, err := deletedEvents.RowsAffected()
-		if err != nil || eventCount < 0 {
-			if err == nil {
-				err = errors.New("negative deleted lifecycle event count")
+		switch candidate.Kind {
+		case storage.PurgeCandidateLifecycle:
+			deletedEvents, err := transaction.ExecContext(ctx,
+				`DELETE FROM relay_events WHERE relay_actor = ?`, candidate.RelayActor)
+			if err != nil {
+				return storage.PurgeBatchResult{}, storageFailure("delete retained lifecycle events", err)
 			}
-			return storage.PurgeBatchResult{}, storageFailure("count deleted lifecycle events", err)
+			eventCount, err := deletedEvents.RowsAffected()
+			if err != nil || eventCount < 0 {
+				if err == nil {
+					err = errors.New("negative deleted lifecycle event count")
+				}
+				return storage.PurgeBatchResult{}, storageFailure("count deleted lifecycle events", err)
+			}
+			deletedRelay, err := transaction.ExecContext(ctx, `DELETE FROM relays
+				WHERE relay_actor = ? AND administrative_state = ? AND lifecycle_state = ?`,
+				candidate.RelayActor, administrativeActive, string(candidate.LifecycleState))
+			if err != nil {
+				return storage.PurgeBatchResult{}, storageFailure("delete inactive relay", err)
+			}
+			count, err := deletedRelay.RowsAffected()
+			if err != nil || count != 1 {
+				if err == nil {
+					err = fmt.Errorf("deleted relay count = %d", count)
+				}
+				return storage.PurgeBatchResult{}, storageFailure("count deleted inactive relay", err)
+			}
+			result.PurgedRelays++
+			result.PurgedLifecycleEvents += int(eventCount)
+
+		case storage.PurgeCandidateDiscovery:
+			deleted, err := transaction.ExecContext(ctx, `DELETE FROM relay_discoveries
+				WHERE relay_actor = ? AND discovery_state = 'removed'`, candidate.RelayActor)
+			if err != nil {
+				return storage.PurgeBatchResult{}, storageFailure("delete removed discovery", err)
+			}
+			count, err := deleted.RowsAffected()
+			if err != nil || count != 1 {
+				if err == nil {
+					err = fmt.Errorf("deleted discovery count = %d", count)
+				}
+				return storage.PurgeBatchResult{}, storageFailure("count deleted discovery", err)
+			}
+			result.PurgedDiscoveries++
+		default:
+			return storage.PurgeBatchResult{}, storage.ErrRetentionWriteInput
 		}
 
-		deletedRelay, err := transaction.ExecContext(
-			ctx,
-			`DELETE FROM relays
-             WHERE relay_actor = ?
-               AND administrative_state = ?
-               AND lifecycle_state = ?`,
-			candidate.RelayActor,
-			administrativeActive,
-			string(candidate.LifecycleState),
-		)
+		deletedObservation, err := transaction.ExecContext(ctx, `DELETE FROM relay_observations
+			WHERE relay_actor = ?
+			  AND NOT EXISTS (SELECT 1 FROM relays WHERE relays.relay_actor = relay_observations.relay_actor)
+			  AND NOT EXISTS (SELECT 1 FROM relay_discoveries WHERE relay_discoveries.relay_actor = relay_observations.relay_actor)`,
+			candidate.RelayActor)
 		if err != nil {
-			return storage.PurgeBatchResult{}, storageFailure("delete inactive relay", err)
+			return storage.PurgeBatchResult{}, storageFailure("delete unowned relay observation", err)
 		}
-		relayCount, err := deletedRelay.RowsAffected()
-		if err != nil || relayCount != 1 {
+		observationCount, err := deletedObservation.RowsAffected()
+		if err != nil || observationCount < 0 || observationCount > 1 {
 			if err == nil {
-				err = fmt.Errorf("deleted relay count = %d", relayCount)
+				err = fmt.Errorf("deleted observation count = %d", observationCount)
 			}
-			return storage.PurgeBatchResult{}, storageFailure("count deleted inactive relay", err)
+			return storage.PurgeBatchResult{}, storageFailure("count deleted relay observation", err)
 		}
-		result.PurgedRelays++
-		result.PurgedLifecycleEvents += int(eventCount)
+		result.PurgedObservations += int(observationCount)
 	}
 
-	if _, err := transaction.ExecContext(ctx, relayEventsDeleteTriggerSQL); err != nil {
-		return storage.PurgeBatchResult{}, storageFailure("close retention delete scope", err)
+	if needsLifecycleDelete {
+		if _, err := transaction.ExecContext(ctx, relayEventsDeleteTriggerSQL); err != nil {
+			return storage.PurgeBatchResult{}, storageFailure("close retention delete scope", err)
+		}
 	}
-	checkpoint, err := transaction.ExecContext(
-		ctx,
-		`UPDATE retention_runs
-		 SET candidates_scanned = candidates_scanned + ?,
-		     purged_relays = purged_relays + ?,
-		     purged_lifecycle_events = purged_lifecycle_events + ?,
-		     skipped = skipped + ?,
-		     batches = batches + 1
-		 WHERE retention_run_id = ?
-		   AND outcome = 'running'`,
+	checkpoint, err := transaction.ExecContext(ctx, `UPDATE retention_runs
+		SET candidates_scanned = candidates_scanned + ?,
+		    purged_relays = purged_relays + ?,
+		    purged_discoveries = purged_discoveries + ?,
+		    purged_observations = purged_observations + ?,
+		    purged_lifecycle_events = purged_lifecycle_events + ?,
+		    skipped = skipped + ?,
+		    batches = batches + 1
+		WHERE retention_run_id = ? AND outcome = 'running'`,
 		result.Attempted,
 		result.PurgedRelays,
+		result.PurgedDiscoveries,
+		result.PurgedObservations,
 		result.PurgedLifecycleEvents,
 		result.Skipped,
 		runID,
@@ -275,64 +355,115 @@ func (repository *RelayRepository) PurgeBatch(
 }
 
 type retentionState struct {
+	kind                    storage.PurgeCandidateKind
 	lifecycle               string
 	administrative          string
 	inactiveUnix            int64
 	updatedUnix             int64
 	latestRelayEventID      int64
 	latestModerationEventID int64
+	latestDiscoveryEventID  int64
+	observationRevision     int64
 }
 
 func readRetentionState(
 	ctx context.Context,
 	transaction *sql.Tx,
-	actor string,
+	candidate storage.PurgeCandidate,
 ) (*retentionState, error) {
-	var state retentionState
-	var inactive sql.NullInt64
-	err := transaction.QueryRowContext(
-		ctx,
-		`SELECT lifecycle_state,
-                administrative_state,
-                CASE lifecycle_state
-                    WHEN 'unregistered' THEN unregistered_at_unix
-                    WHEN 'pruned' THEN pruned_at_unix
-                    ELSE NULL
-                END,
-                updated_at_unix,
-                COALESCE((
-                    SELECT MAX(event_id)
-                    FROM relay_events INDEXED BY relay_events_retention_version_idx
-                    WHERE relay_events.relay_actor = relays.relay_actor
-                ), 0),
-                COALESCE((
-                    SELECT MAX(moderation_event_id)
-                    FROM moderation_events INDEXED BY moderation_events_retention_version_idx
-                    WHERE moderation_events.relay_actor = relays.relay_actor
-                ), 0)
-         FROM relays
-         WHERE relay_actor = ?`,
-		actor,
-	).Scan(
-		&state.lifecycle,
-		&state.administrative,
-		&inactive,
-		&state.updatedUnix,
-		&state.latestRelayEventID,
-		&state.latestModerationEventID,
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+	state := retentionState{kind: candidate.Kind, observationRevision: 0}
+	switch candidate.Kind {
+	case storage.PurgeCandidateLifecycle:
+		var inactive sql.NullInt64
+		err := transaction.QueryRowContext(ctx, `SELECT
+			lifecycle_state,
+			administrative_state,
+			CASE lifecycle_state
+				WHEN 'unregistered' THEN unregistered_at_unix
+				WHEN 'pruned' THEN pruned_at_unix
+				ELSE NULL
+			END,
+			updated_at_unix,
+			COALESCE((SELECT MAX(event_id) FROM relay_events INDEXED BY relay_events_retention_version_idx
+				WHERE relay_events.relay_actor = relays.relay_actor), 0),
+			COALESCE((SELECT MAX(moderation_event_id) FROM moderation_events INDEXED BY moderation_events_retention_version_idx
+				WHERE moderation_events.relay_actor = relays.relay_actor), 0),
+			COALESCE((SELECT revision FROM relay_observations
+				WHERE relay_observations.relay_actor = relays.relay_actor), 0)
+			FROM relays WHERE relay_actor = ?`, candidate.RelayActor).Scan(
+			&state.lifecycle,
+			&state.administrative,
+			&inactive,
+			&state.updatedUnix,
+			&state.latestRelayEventID,
+			&state.latestModerationEventID,
+			&state.observationRevision,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, storageFailure("read relay for retention", err)
+		}
+		if !inactive.Valid {
+			state.inactiveUnix = -1
+		} else {
+			state.inactiveUnix = inactive.Int64
+		}
+		return &state, nil
+
+	case storage.PurgeCandidateDiscovery:
+		var removed sql.NullInt64
+		err := transaction.QueryRowContext(ctx, `SELECT
+			discovery_state,
+			removed_at_unix,
+			updated_at_unix,
+			COALESCE((SELECT MAX(discovery_event_id) FROM discovery_events INDEXED BY discovery_events_retention_version_idx
+				WHERE discovery_events.relay_actor = relay_discoveries.relay_actor), 0),
+			COALESCE((SELECT revision FROM relay_observations
+				WHERE relay_observations.relay_actor = relay_discoveries.relay_actor), 0)
+			FROM relay_discoveries WHERE relay_actor = ?`, candidate.RelayActor).Scan(
+			&state.lifecycle,
+			&removed,
+			&state.updatedUnix,
+			&state.latestDiscoveryEventID,
+			&state.observationRevision,
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, storageFailure("read discovery for retention", err)
+		}
+		if !removed.Valid {
+			state.inactiveUnix = -1
+		} else {
+			state.inactiveUnix = removed.Int64
+		}
+		return &state, nil
+	default:
+		return nil, storage.ErrRetentionWriteInput
 	}
-	if err != nil {
-		return nil, storageFailure("read relay for retention", err)
+}
+
+func retentionStateMatches(candidate storage.PurgeCandidate, current *retentionState, cutoffUnix int64) bool {
+	if current == nil || current.kind != candidate.Kind ||
+		current.inactiveUnix != candidate.InactiveUnix || current.updatedUnix != candidate.UpdatedUnix ||
+		current.observationRevision != candidate.ObservationRevision || current.inactiveUnix > cutoffUnix {
+		return false
 	}
-	if !inactive.Valid {
-		state.inactiveUnix = -1
-	} else {
-		state.inactiveUnix = inactive.Int64
+	switch candidate.Kind {
+	case storage.PurgeCandidateLifecycle:
+		return current.administrative == administrativeActive &&
+			current.lifecycle == string(candidate.LifecycleState) &&
+			current.latestRelayEventID == candidate.LatestRelayEventID &&
+			current.latestModerationEventID == candidate.LatestModerationEventID
+	case storage.PurgeCandidateDiscovery:
+		return current.lifecycle == discoveryRemoved &&
+			current.latestDiscoveryEventID == candidate.LatestDiscoveryEventID
+	default:
+		return false
 	}
-	return &state, nil
 }
 
 // BeginRetentionRun creates the private aggregate run record before any
@@ -399,13 +530,16 @@ func (repository *RelayRepository) FinishRetentionRun(
 	if repository == nil || repository.database == nil || ctx == nil {
 		return storage.ErrRepositoryConfiguration
 	}
+	primaryPurged := finish.PurgedRelays + finish.PurgedDiscoveries
 	if finish.RunID <= 0 ||
 		finish.CandidatesScanned < 0 || finish.CandidatesScanned > storage.MaximumPurgeAttemptsPerRun ||
-		finish.PurgedRelays < 0 || finish.PurgedRelays > finish.CandidatesScanned ||
+		finish.PurgedRelays < 0 || finish.PurgedDiscoveries < 0 ||
+		primaryPurged > finish.CandidatesScanned ||
+		finish.PurgedObservations < 0 || finish.PurgedObservations > primaryPurged ||
 		finish.PurgedLifecycleEvents < 0 || finish.Skipped < 0 ||
-		finish.PurgedRelays+finish.Skipped > finish.CandidatesScanned ||
+		primaryPurged+finish.Skipped > finish.CandidatesScanned ||
 		(finish.Outcome == storage.RetentionCompleted &&
-			finish.PurgedRelays+finish.Skipped != finish.CandidatesScanned) ||
+			primaryPurged+finish.Skipped != finish.CandidatesScanned) ||
 		finish.Batches < 0 || finish.Batches > storage.MaximumPurgeAttemptsPerRun ||
 		(finish.CandidatesScanned == 0 && finish.Batches != 0) ||
 		(finish.CandidatesScanned > 0 && (finish.Batches == 0 || finish.Batches > finish.CandidatesScanned)) ||
@@ -416,12 +550,16 @@ func (repository *RelayRepository) FinishRetentionRun(
 	var checkpoint storage.RetentionRunFinish
 	var checkpointTruncated int
 	var currentOutcome string
+	var currentPolicyVersion int
 	var finished sql.NullInt64
 	if err := repository.database.QueryRowContext(
 		ctx,
 		`SELECT retention_run_id,
+                policy_version,
                 candidates_scanned,
                 purged_relays,
+                purged_discoveries,
+                purged_observations,
                 purged_lifecycle_events,
                 skipped,
                 batches,
@@ -433,8 +571,11 @@ func (repository *RelayRepository) FinishRetentionRun(
 		finish.RunID,
 	).Scan(
 		&checkpoint.RunID,
+		&currentPolicyVersion,
 		&checkpoint.CandidatesScanned,
 		&checkpoint.PurgedRelays,
+		&checkpoint.PurgedDiscoveries,
+		&checkpoint.PurgedObservations,
 		&checkpoint.PurgedLifecycleEvents,
 		&checkpoint.Skipped,
 		&checkpoint.Batches,
@@ -445,6 +586,9 @@ func (repository *RelayRepository) FinishRetentionRun(
 		return storageFailure("read retention run audit for finalization", err)
 	}
 	checkpoint.Truncated = checkpointTruncated == 1
+	if currentOutcome == "running" && currentPolicyVersion != storage.RetentionPolicyVersion {
+		return storage.ErrRetentionWriteInput
+	}
 	if currentOutcome != "running" {
 		if !finished.Valid {
 			return storage.ErrRetentionWriteInput
@@ -461,6 +605,8 @@ func (repository *RelayRepository) FinishRetentionRun(
 	// PurgeBatch transactions. Finalization may account for candidates scanned
 	// by a failed/canceled batch, but it may never invent committed effects.
 	if finish.PurgedRelays != checkpoint.PurgedRelays ||
+		finish.PurgedDiscoveries != checkpoint.PurgedDiscoveries ||
+		finish.PurgedObservations != checkpoint.PurgedObservations ||
 		finish.PurgedLifecycleEvents != checkpoint.PurgedLifecycleEvents ||
 		finish.Skipped != checkpoint.Skipped ||
 		finish.Batches < checkpoint.Batches ||
@@ -486,6 +632,8 @@ func (repository *RelayRepository) FinishRetentionRun(
 		`UPDATE retention_runs
          SET candidates_scanned = ?,
              purged_relays = ?,
+             purged_discoveries = ?,
+             purged_observations = ?,
              purged_lifecycle_events = ?,
              skipped = ?,
              batches = ?,
@@ -496,6 +644,8 @@ func (repository *RelayRepository) FinishRetentionRun(
            AND outcome = 'running'`,
 		finish.CandidatesScanned,
 		finish.PurgedRelays,
+		finish.PurgedDiscoveries,
+		finish.PurgedObservations,
 		finish.PurgedLifecycleEvents,
 		finish.Skipped,
 		finish.Batches,

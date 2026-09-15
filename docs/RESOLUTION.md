@@ -3,9 +3,11 @@
 ## Status
 
 `internal/actorresolver.Resolver` implements the version 1 RFC 9421 key-resolver
-interface. Constructing it performs no DNS or HTTP work. The running directory
-constructs it only when the complete lifecycle graph is explicitly enabled;
-source admission occurs before any handler can trigger actor retrieval.
+interface and the 1.1 local actor/inbox probe primitives. Constructing it
+performs no DNS or HTTP work. The running service constructs it for the complete
+lifecycle graph only when lifecycle is explicitly enabled; the local operator
+discovery command may also construct it directly under the operating-system
+authorization boundary. No public directory GET triggers discovery probing.
 
 The resolver follows the ActivityPub and ActivityStreams actor representation
 defined by:
@@ -59,16 +61,19 @@ closed.
 
 JSON permits unknown ActivityStreams extensions but rejects duplicate member
 names at every object depth, trailing values, nesting beyond 32 levels, and
-containers above 4096 entries. The actor must:
+containers above 4096 entries. The actor must have an `id` exactly equal to the fragment-free requested URL and
+include `Application` or `Service` in its type. RFC 9421 key resolution further
+requires no more than eight embedded public keys and exactly one key whose `id`
+is the requested key ID and whose `owner` is the actor ID.
 
-- have an `id` exactly equal to the fragment-free requested URL;
-- include `Application` or `Service` in its type;
-- publish no more than eight embedded public keys; and
-- publish exactly one key whose `id` is the requested key ID and whose `owner`
-  is the actor ID.
-
-No secondary key URL, JSON-LD context, inbox, image, attachment, or other actor-
-controlled URL is fetched.
+The 1.1 actor probe reuses the same GET, media-type, size, JSON, identity, and
+type checks without requiring one particular historical signing key. A present
+actor-declared inbox must be a canonical HTTPS URL. Discovery may then issue one
+non-mutating `OPTIONS` request to that inbox through the same proxy-free,
+address-pinning client. HTTP 405/501 is retained as method-rejection diagnostic
+evidence rather than being mistaken for proof that the inbox is absent. No
+synthetic ActivityPub POST is sent. RFC 9421 key resolution itself still fetches
+no secondary key URL, JSON-LD context, image, attachment, or inbox resource.
 
 ## RSA key boundary
 

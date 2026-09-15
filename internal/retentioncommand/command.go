@@ -27,7 +27,7 @@ const (
 	OutputHuman = OutputFormat("human")
 	OutputJSON  = OutputFormat("json")
 
-	outputSchema = "activity-relay-directory.retention-admin.v1"
+	outputSchema = "activity-relay-directory.retention-admin.v2"
 )
 
 var ErrInvalidCommand = errors.New("local inactive-retention command is invalid")
@@ -92,7 +92,7 @@ func Confirm(request Request, input io.Reader, output io.Writer, retentionDays i
 	phrase := fmt.Sprintf("PURGE %d", retentionDays)
 	if _, err := fmt.Fprintf(
 		output,
-		"This permanently deletes eligible inactive relay rows and lifecycle events.\nType %q to continue: ",
+		"This permanently deletes eligible inactive relay/discovery state and lifecycle events.\nType %q to continue: ",
 		phrase,
 	); err != nil {
 		return err
@@ -165,6 +165,8 @@ func ExecutePurge(
 			CutoffUnix:            result.CutoffUnix,
 			CandidatesScanned:     result.CandidateCount,
 			PurgedRelays:          result.PurgedRelays,
+			PurgedDiscoveries:     result.PurgedDiscoveries,
+			PurgedObservations:    result.PurgedObservations,
 			PurgedLifecycleEvents: result.PurgedLifecycleEvents,
 			Skipped:               result.Skipped,
 			Batches:               result.Batches,
@@ -174,12 +176,14 @@ func ExecutePurge(
 	}
 	_, err = fmt.Fprintf(
 		standardOutput,
-		"retention_days=%d\nobserved_at_unix=%d\ncutoff_at_unix=%d\ncandidates_scanned=%d\npurged_relays=%d\npurged_lifecycle_events=%d\nskipped=%d\nbatches=%d\ntruncated=%t\nbackup_sha256=%s\n",
+		"retention_days=%d\nobserved_at_unix=%d\ncutoff_at_unix=%d\ncandidates_scanned=%d\npurged_relays=%d\npurged_discoveries=%d\npurged_observations=%d\npurged_lifecycle_events=%d\nskipped=%d\nbatches=%d\ntruncated=%t\nbackup_sha256=%s\n",
 		retentionDays,
 		result.ObservedUnix,
 		result.CutoffUnix,
 		result.CandidateCount,
 		result.PurgedRelays,
+		result.PurgedDiscoveries,
+		result.PurgedObservations,
 		result.PurgedLifecycleEvents,
 		result.Skipped,
 		result.Batches,
@@ -291,6 +295,8 @@ type purgeDocument struct {
 	CutoffUnix            int64  `json:"cutoff_at_unix"`
 	CandidatesScanned     int    `json:"candidates_scanned"`
 	PurgedRelays          int    `json:"purged_relays"`
+	PurgedDiscoveries     int    `json:"purged_discoveries"`
+	PurgedObservations    int    `json:"purged_observations"`
 	PurgedLifecycleEvents int    `json:"purged_lifecycle_events"`
 	Skipped               int    `json:"skipped"`
 	Batches               int    `json:"batches"`

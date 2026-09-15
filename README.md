@@ -10,7 +10,8 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/status`
-- default-off `GET /v1/relays` public JSON listing and `GET /` human-readable view
+- default-off compatibility `GET /v1/relays` JSON listing plus the 1.1-development
+  `GET /v2/relays` evidence projection and `GET /` human-readable view
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
 - signed register, heartbeat, and unregister APIs, disabled together by default
@@ -40,6 +41,14 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - local audited `admin enrollment status|open|close` policy commands
 - local `admin suspend|restore|show|audit` moderation commands with bounded
   private audit pagination
+- 1.1-development local `admin discovery add|remove|import` commands with
+  SSRF-resistant actor verification, bounded file import, private provenance, and
+  non-mutating inbox diagnostics
+- default-off bounded background actor reachability maintenance with fixed
+  hourly cadence, fair oldest-check-first scheduling, and pruning safeguards
+- 1.1-development bounded `/v2/relays` projection and human cards that keep
+  heartbeat, reachability, inbox diagnostics, and positive RFC 9421 evidence
+  independent while preserving `/v1/relays` compatibility
 - local read-only `admin pruning dry-run` candidate inspection
 - strict default-zero inactive-record retention with identity-free dry-run,
   backup-gated local purge, bounded transactional revalidation, and private
@@ -86,6 +95,7 @@ and logging overrides.
 | `DIRECTORY_DATABASE_PATH` | required absolute secure local path | SQLite database |
 | `DIRECTORY_LIFECYCLE_ENABLED` | `false` | Enable signed register/heartbeat/unregister routes together |
 | `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON and human directory views |
+| `DIRECTORY_REACHABILITY_ENABLED` | `false` | Enable fixed bounded background actor/inbox reachability maintenance |
 | `DIRECTORY_SOFT_PRUNING_ENABLED` | `false` | Enable automatic reversible pruning |
 | `DIRECTORY_SOFT_PRUNING_INTERVAL` | `24h`; `0` only while pruning is disabled; otherwise minimum `1h` | Automatic pruning interval |
 | `DIRECTORY_INACTIVE_RETENTION_DAYS` | `0` | Inactive-record retention; `0` means indefinite |
@@ -149,6 +159,45 @@ Audit output contains private moderator and reason tokens. Protect command
 output as carefully as the database. The CLI does not create a preemptive
 blocklist and does not add a remote administrative endpoint.
 
+The 1.1 development line also supports local operator discovery without
+fabricating lifecycle participation. A single candidate may be a base URL,
+`/actor`, or `/inbox` hint; ARD independently validates the canonical `/actor`
+through the production SSRF-resistant resolver before storing an active
+discovery. A validated actor-declared inbox is recorded and receives one
+non-mutating `OPTIONS` diagnostic; ARD never sends a synthetic ActivityPub POST
+for discovery.
+
+```sh
+activity-relay-directory admin discovery add \
+  --url https://relay.example/inbox \
+  --operator operator-id \
+  --reason public_relay
+
+activity-relay-directory admin discovery import \
+  --file ./relay-candidates.txt \
+  --operator operator-id \
+  --reason public_list \
+  --source-label curated_list
+
+activity-relay-directory admin discovery remove \
+  --actor https://relay.example/actor \
+  --operator operator-id \
+  --reason no_longer_public
+```
+
+Imports accept at most 256 KiB, 2,048 bytes per line, and 100 non-comment
+candidates, with at most eight concurrent remote checks. Blank lines and lines
+whose first non-space character is `#` are ignored. The source label is a
+bounded private token; the local file path is never persisted. Imports are
+prospective first and show ready, duplicate, and failed candidates before
+confirmation. Interactive imports require `IMPORT <ready-count>`; `--yes` is the
+explicit noninteractive acknowledgement. Successfully validated entries may be
+applied even when other candidates fail, and the command returns a nonzero
+operational result when any candidate failed so automation cannot mistake a
+partial import for complete success. Removing a discovery does not unregister a
+separately self-registered relay, and a later file omission never removes an
+entry automatically. See `docs/DISCOVERY-REACHABILITY.md`. Background maintenance is documented in `docs/REACHABILITY.md`.
+
 Soft pruning is a reversible lifecycle transition, not deletion. A dry run opens
 an existing current-schema database through a query-only connection and reads
 one bounded candidate page without migrating or mutating state:
@@ -159,22 +208,45 @@ activity-relay-directory admin pruning dry-run \
   --format json
 ```
 
-Automatic maintenance is disabled by default. Operators may explicitly enable
+Automatic pruning is disabled by default. Operators may explicitly enable
 it with `DIRECTORY_SOFT_PRUNING_ENABLED=true`; the interval defaults to `24h`.
+Independent background reachability is separately default-off behind
+`DIRECTORY_REACHABILITY_ENABLED=true`. When both are enabled, pruning waits
+for recent complete reachability coverage and fresh current actor success
+protects a stale-heartbeat relay from reversible pruning.
 An explicit interval of `0` is valid only while pruning is disabled; when
 pruning is enabled, the interval must be at least `1h`. Each run captures one
 server time, processes at most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
 
+The 1.1 development public projection is `GET /v2/relays`. It is gated by
+the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` switch as `/v1/relays`
+and `/`, but it does not replace or reinterpret the version 1 JSON contract. A
+v2 entry exposes canonical actor/base identity, heartbeat state and optional
+last authenticated observation, current actor reachability/check history, the
+validated actor-declared inbox plus non-mutating diagnostic state, and positive
+RFC 9421 evidence. Discovery provenance, operator/reason tokens, audit events,
+and internal participation flags remain private.
+
+The v2 walk is bounded by canonical actor keyset: pages default to 50 and cap at
+100, while one request examines at most 400 retained identities. Sparse pages
+may therefore contain zero public rows and still return a continuation cursor.
+The human `/` page consumes this same projection and cursor. Discovered-only
+entries require a current successful actor check within the fixed six-hour
+freshness window; if background reachability is disabled, they naturally age
+out of public eligibility once their last validated actor observation becomes
+stale.
+
 ## Inactive-record retention
 
 Hard retention is a separate irreversible local maintenance path.
 `DIRECTORY_INACTIVE_RETENTION_DAYS=0` is the default and retains inactive rows
 indefinitely. A positive canonical integer, for example `365`, makes only
-administratively active `unregistered` or `pruned` rows eligible after that many
-complete days from their unregister/prune transition. Registered and suspended
-rows are never automatic purge candidates.
+administratively active `unregistered` or `pruned` lifecycle rows and already
+`removed` operator-discovery rows eligible after the configured age. Registered
+and suspended lifecycle rows and active discoveries are never automatic purge
+candidates.
 
 The initial implementation has no hard-retention scheduler or HTTP route. The
 read-only local command reports bounded aggregate candidate counts without actor
@@ -276,8 +348,8 @@ The stable package uses application version `1.0.0` and Debian version
 `1.0.0-1`. Package installation is deliberately separate from activation: the systemd unit is installed disabled and is not started
 automatically. The packaged environment binds to loopback, stores SQLite state
 under `/var/lib/activity-relay-directory`, and keeps lifecycle, public listing,
-automatic soft pruning, positive inactive retention, and administrator email
-disabled until an operator explicitly changes them.
+background reachability, automatic soft pruning, positive inactive retention,
+and administrator email disabled until an operator explicitly changes them.
 
 Removing or purging the package never deletes the SQLite state automatically.
 See `debian/README.Debian` and `docs/RELEASING.md` before package installation,

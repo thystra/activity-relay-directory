@@ -3,26 +3,28 @@ package sqlite
 import (
 	"context"
 	"testing"
-	"time"
-
-	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
-	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 func TestInactiveRetentionMigrationPreservesRowsAndAddsGuardedObjects(t *testing.T) {
 	database := openTestDatabase(t)
 	applyMigrationsThrough(t, database, 5)
-	repository := newTestRelayRepository(t, database)
-	assertOutcome(t, transitionResultOf(repository.Register(
-		context.Background(),
-		storage.RegisterIntent{RelayActor: testRelayActor, PublicBaseURL: testPublicBase},
-		time.Unix(100, 0),
-	)), v1.OutcomeCreated)
-	assertOutcome(t, transitionResultOf(repository.Unregister(
-		context.Background(),
-		storage.IdentityIntent{RelayActor: testRelayActor},
-		time.Unix(200, 0),
-	)), v1.OutcomeRemoved)
+
+	// Seed the version-5 fixture through its own schema rather than the current
+	// repository implementation. The current repository intentionally requires
+	// the fully migrated schema, including relay_observations from version 8.
+	unregisteredAt := int64(200)
+	insertRelay(
+		t, database, testRelayActor, lifecycleUnregistered, administrativeActive,
+		100, 200, nil, &unregisteredAt, nil, true,
+	)
+	if _, err := database.Exec(
+		`INSERT INTO relay_events (relay_actor, event_kind, recorded_at_unix)
+		 VALUES (?, ?, ?), (?, ?, ?)`,
+		testRelayActor, eventRegisterCreated, 100,
+		testRelayActor, eventUnregisterRemoved, 200,
+	); err != nil {
+		t.Fatalf("seed version-5 relay events: %v", err)
+	}
 
 	var relayBefore, eventsBefore int
 	if err := database.QueryRow(`SELECT COUNT(*) FROM relays`).Scan(&relayBefore); err != nil {

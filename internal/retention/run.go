@@ -30,6 +30,8 @@ type Summary struct {
 type Result struct {
 	Summary
 	PurgedRelays          int
+	PurgedDiscoveries     int
+	PurgedObservations    int
 	PurgedLifecycleEvents int
 	Skipped               int
 }
@@ -183,13 +185,18 @@ func Run(
 			runErr = err
 			break
 		}
+		primaryPurged := batch.PurgedRelays + batch.PurgedDiscoveries
 		if batch.Attempted != len(page.Candidates) ||
-			batch.PurgedRelays < 0 || batch.PurgedLifecycleEvents < 0 ||
-			batch.Skipped < 0 || batch.PurgedRelays+batch.Skipped != batch.Attempted {
+			batch.PurgedRelays < 0 || batch.PurgedDiscoveries < 0 ||
+			batch.PurgedObservations < 0 || batch.PurgedObservations > primaryPurged ||
+			batch.PurgedLifecycleEvents < 0 || batch.Skipped < 0 ||
+			primaryPurged+batch.Skipped != batch.Attempted {
 			runErr = ErrConfiguration
 			break
 		}
 		result.PurgedRelays += batch.PurgedRelays
+		result.PurgedDiscoveries += batch.PurgedDiscoveries
+		result.PurgedObservations += batch.PurgedObservations
 		result.PurgedLifecycleEvents += batch.PurgedLifecycleEvents
 		result.Skipped += batch.Skipped
 
@@ -216,6 +223,8 @@ func Run(
 		RunID:                 runID,
 		CandidatesScanned:     result.CandidateCount,
 		PurgedRelays:          result.PurgedRelays,
+		PurgedDiscoveries:     result.PurgedDiscoveries,
+		PurgedObservations:    result.PurgedObservations,
 		PurgedLifecycleEvents: result.PurgedLifecycleEvents,
 		Skipped:               result.Skipped,
 		Batches:               result.Batches,
@@ -259,6 +268,7 @@ func validatePage(
 		current := storage.PurgeCandidateCursor{
 			InactiveUnix: candidate.InactiveUnix,
 			RelayActor:   candidate.RelayActor,
+			Kind:         candidate.Kind,
 		}
 		if err != nil || canonical != candidate.RelayActor || !candidate.Valid() ||
 			candidate.InactiveUnix > cutoffUnix || !cursorAfter(current, position) {
@@ -275,8 +285,16 @@ func validatePage(
 }
 
 func cursorAfter(candidate, previous storage.PurgeCandidateCursor) bool {
-	return candidate.InactiveUnix > previous.InactiveUnix ||
-		(candidate.InactiveUnix == previous.InactiveUnix && candidate.RelayActor > previous.RelayActor)
+	if previous == (storage.PurgeCandidateCursor{}) {
+		return true
+	}
+	if candidate.InactiveUnix != previous.InactiveUnix {
+		return candidate.InactiveUnix > previous.InactiveUnix
+	}
+	if candidate.RelayActor != previous.RelayActor {
+		return candidate.RelayActor > previous.RelayActor
+	}
+	return candidate.Kind > previous.Kind
 }
 
 func validRetentionDays(days int) bool {

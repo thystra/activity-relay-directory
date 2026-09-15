@@ -24,7 +24,7 @@ var (
 )
 
 type humanDirectoryPage struct {
-	Listing             publicListingResponse
+	Listing             directoryProjectionResponse
 	NextURL             string
 	Stylesheet          string
 	HasOperator         bool
@@ -64,7 +64,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
-	listing, failure := handler.loadPublicListing(request)
+	listing, failure := handler.loadDirectoryProjection(request)
 	if failure != nil {
 		if failure.retryAfter != "" {
 			response.Header().Set("Retry-After", failure.retryAfter)

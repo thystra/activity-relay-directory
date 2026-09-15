@@ -4,7 +4,7 @@ import "testing"
 
 func TestInactiveRetentionBoundsAreFixed(t *testing.T) {
 	if MaximumInactiveRetentionDays != 36500 || MaximumPurgeCandidatePage != 100 ||
-		MaximumPurgeAttemptsPerRun != 1000 || RetentionPolicyVersion != 1 {
+		MaximumPurgeAttemptsPerRun != 1000 || RetentionPolicyVersion != 2 {
 		t.Fatalf(
 			"retention bounds = days:%d page:%d run:%d policy:%d",
 			MaximumInactiveRetentionDays,
@@ -19,12 +19,14 @@ func TestPurgeCandidateCursorValidity(t *testing.T) {
 	if !(PurgeCandidateCursor{}).Valid() {
 		t.Fatal("zero cursor must be valid")
 	}
-	if !(PurgeCandidateCursor{InactiveUnix: 0, RelayActor: "https://relay.example/actor"}).Valid() {
+	if !(PurgeCandidateCursor{InactiveUnix: 0, RelayActor: "https://relay.example/actor", Kind: PurgeCandidateLifecycle}).Valid() {
 		t.Fatal("complete cursor must be valid")
 	}
 	for _, cursor := range []PurgeCandidateCursor{
-		{InactiveUnix: -1, RelayActor: "https://relay.example/actor"},
-		{InactiveUnix: 1},
+		{InactiveUnix: -1, RelayActor: "https://relay.example/actor", Kind: PurgeCandidateLifecycle},
+		{InactiveUnix: 1, Kind: PurgeCandidateLifecycle},
+		{InactiveUnix: 1, RelayActor: "https://relay.example/actor"},
+		{InactiveUnix: 1, RelayActor: "https://relay.example/actor", Kind: PurgeCandidateKind("other")},
 	} {
 		if cursor.Valid() {
 			t.Fatalf("cursor %#v unexpectedly valid", cursor)
@@ -32,15 +34,28 @@ func TestPurgeCandidateCursorValidity(t *testing.T) {
 	}
 }
 
-func TestPurgeCandidateRequiresInactiveLifecycle(t *testing.T) {
+func TestPurgeCandidateRequiresReviewedInactiveState(t *testing.T) {
 	for _, state := range []RelayLifecycleState{LifecycleUnregistered, LifecyclePruned} {
-		candidate := PurgeCandidate{RelayActor: "https://relay.example/actor", LifecycleState: state, InactiveUnix: 1, UpdatedUnix: 1}
+		candidate := PurgeCandidate{
+			Kind: PurgeCandidateLifecycle, RelayActor: "https://relay.example/actor",
+			LifecycleState: state, InactiveUnix: 1, UpdatedUnix: 1, ObservationRevision: 0,
+		}
 		if !candidate.Valid() {
 			t.Fatalf("candidate %#v invalid", candidate)
 		}
 	}
-	if (PurgeCandidate{RelayActor: "https://relay.example/actor", LifecycleState: LifecycleRegistered, InactiveUnix: 1, UpdatedUnix: 1}).Valid() {
+	if (PurgeCandidate{
+		Kind: PurgeCandidateLifecycle, RelayActor: "https://relay.example/actor",
+		LifecycleState: LifecycleRegistered, InactiveUnix: 1, UpdatedUnix: 1, ObservationRevision: 0,
+	}).Valid() {
 		t.Fatal("registered relay must not be a purge candidate")
+	}
+	discovery := PurgeCandidate{
+		Kind: PurgeCandidateDiscovery, RelayActor: "https://relay.example/actor",
+		InactiveUnix: 1, UpdatedUnix: 1, LatestDiscoveryEventID: 1, ObservationRevision: 0,
+	}
+	if !discovery.Valid() {
+		t.Fatalf("discovery candidate %#v invalid", discovery)
 	}
 }
 

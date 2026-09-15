@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 7
+const CurrentSchemaVersion = 8
 
 var (
 	ErrMigrationConfiguration = errors.New("SQLite migration configuration is invalid")
@@ -68,6 +68,7 @@ var migrationManifest = []struct {
 	{version: 5, name: "soft_pruning", path: "migrations/0005_soft_pruning.sql"},
 	{version: 6, name: "inactive_retention", path: "migrations/0006_inactive_retention.sql"},
 	{version: 7, name: "database_growth_guard", path: "migrations/0007_database_growth_guard.sql"},
+	{version: 8, name: "discovery_reachability", path: "migrations/0008_discovery_reachability.sql"},
 }
 
 const migrationTableSQL = `

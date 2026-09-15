@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema through version 5
+## Schema through version 8
 
 The initial migration creates four owned tables:
 
@@ -83,6 +83,12 @@ pruned state to its timestamp and require pruning time to be at or after the
 retained last-seen value. The migration recreates the health index and adds
 `(lifecycle_state, last_seen_at_unix, relay_actor)` for bounded candidate scans;
 a late index-creation failure rolls the entire migration back to version 4.
+
+Schema versions 6 and 7 add inactive-retention and database-growth state; their
+operational contracts are described below. Version 8 adds operator discovery,
+independent reachability/RFC 9421 evidence, and hard-retention policy version 2
+without changing the released `relays` lifecycle columns or version 1
+`last_seen_at_unix` semantics.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -134,6 +140,13 @@ already unregistered relay is `absent`. Repeated authenticated absent intents
 may each receive an audit event but never create or duplicate relay state.
 Unregister remains permitted for a suspended relay and preserves its suspension
 timestamp and audit history.
+
+Schema version 8 records positive RFC 9421 evidence independently in
+`relay_observations`. Accepted register and heartbeat operations advance that
+evidence transactionally with lifecycle state. An authenticated unregister also
+advances it when the actor already has retained lifecycle or discovery identity.
+None of these writes substitute an actor probe or change the version 1 rule that
+only register/heartbeat acceptance advances `last_seen_at_unix`.
 
 Acceptance time must be at or after the actor's current state time and its
 latest lifecycle or moderation event time. This prevents a clock regression
@@ -362,6 +375,51 @@ WAL/SHM filesystem planning bound. That formula intentionally excludes schema
 migration, whose spill-enabled pool requires separately planned host free space.
 At hard state current-schema data remains readable and `/healthz` stays live, but
 readiness and mutating operations fail closed. See `docs/STORAGE-GROWTH.md`.
+
+## Schema version 8: discovery and reachability
+
+Schema version 8 adds three identity-bearing responsibilities while preserving
+the released lifecycle table and public `/v1/relays` contract.
+
+`relay_discoveries` stores one current local discovery decision per canonical
+actor: canonical public base URL, `active|removed` state, first-discovery time,
+current state time, and removal time. It contains no registration or heartbeat
+fields. `discovery_events` is a separate append-only private audit containing
+canonical actor, decision kind, bounded operator/reason/source tokens, and
+server acceptance time. Discovery audit intentionally has no foreign key to the
+current discovery row so hard retention can remove inactive discovery state
+without erasing administrative history.
+
+`relay_observations` stores server-owned diagnostic evidence: actor
+`unknown|reachable|unreachable`, last actor check/success, the currently
+validated actor-declared HTTPS inbox and declaration time, non-mutating inbox
+probe status/time, positive RFC 9421 verification time, and an aggregate update
+version. An insert/update guard prevents changing the observation identity to an
+actor that has neither lifecycle nor discovery state. Observation repositories
+apply nonregressing evidence times. A successful actor check replaces the
+currently declared inbox (including clearing a stale declaration); a failed
+actor check preserves the last successful actor/inbox evidence.
+
+Upgrade from schema 7 backfills each retained lifecycle actor with only the
+evidence the released contract proves: actor state remains `unknown`, actor
+check/success stay absent, and RFC 9421 is marked verified at the retained
+`last_seen_at_unix`. The migration does not fabricate reachability. It preserves
+the 16-byte retention database identity, advances current hard-retention policy
+to version 2, and preserves historical policy-1 `retention_runs` with zeroed new
+discovery/observation counters.
+
+Hard-retention policy 2 merges two bounded candidate sources: administratively
+active unregistered/pruned lifecycle rows and removed discovery rows. The stable
+keyset is `(inactive_at_unix, relay_actor, candidate_kind)`, with each source
+limited before the merge. Lifecycle snapshots bind row/update time and latest
+lifecycle/moderation event IDs; discovery snapshots bind row/update time and the
+latest discovery-event ID. Both also snapshot the monotonic `relay_observations.revision` (`0` when
+absent). Every observation mutation increments the revision, so even a
+same-second fresh observation invalidates stale destructive work. Discovery
+events and moderation events are never deleted. An observation row is deleted
+only after a primary lifecycle/discovery row is purged and no
+other lifecycle or discovery owner remains. See `docs/RETENTION.md` and
+`docs/DISCOVERY-REACHABILITY.md`.
 
 ## Backup and recovery boundary
 

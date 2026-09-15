@@ -1,5 +1,5 @@
-// Package actorresolver provides bounded, SSRF-resistant ActivityPub actor and
-// RSA signing-key resolution for explicitly enabled lifecycle handlers.
+// Package actorresolver provides bounded, SSRF-resistant ActivityPub actor,
+// endpoint-probe, and RSA signing-key resolution.
 package actorresolver
 
 import (
@@ -45,7 +45,30 @@ var (
 	ErrPublicKey     = errors.New("ActivityPub RSA public key is invalid")
 )
 
-// Resolver resolves an RFC 9421 key from its canonical ActivityPub actor.
+// ActorProbeResult is the validated identity/capability result of one actor
+// fetch. InboxURL is empty when the actor document does not declare an inbox.
+type ActorProbeResult struct {
+	ActorID  string
+	InboxURL string
+}
+
+// InboxProbeResult is the conservative outcome of one non-mutating inbox
+// diagnostic. It does not imply that a POST was attempted.
+type InboxProbeResult string
+
+const (
+	InboxProbeResponsive     InboxProbeResult = "responsive"
+	InboxProbeMethodRejected InboxProbeResult = "method_rejected"
+	InboxProbeUnreachable    InboxProbeResult = "unreachable"
+)
+
+func (result InboxProbeResult) Valid() bool {
+	return result == InboxProbeResponsive || result == InboxProbeMethodRejected ||
+		result == InboxProbeUnreachable
+}
+
+// Resolver resolves RFC 9421 keys and performs bounded ActivityPub endpoint
+// probes through one shared SSRF-resistant transport.
 type Resolver struct {
 	client    *http.Client
 	userAgent string
@@ -89,13 +112,87 @@ func (resolver *Resolver) ResolveRFC9421Key(
 	if err != nil {
 		return v1.RFC9421ResolvedKey{}, err
 	}
-	if err := ctx.Err(); err != nil {
-		return v1.RFC9421ResolvedKey{}, errors.Join(ErrActorFetch, err)
+	body, err := resolver.fetchActorBody(ctx, actorURL)
+	if err != nil {
+		return v1.RFC9421ResolvedKey{}, err
 	}
+	return resolveActorDocument(body, actorURL, keyID)
+}
 
+// ProbeActor retrieves and validates one canonical ActivityPub relay actor
+// without requiring a particular public key. This is the reachability/discovery
+// primitive; it deliberately shares the exact production fetch boundary used by
+// RFC 9421 key resolution.
+func (resolver *Resolver) ProbeActor(ctx context.Context, actorURL string) (ActorProbeResult, error) {
+	if resolver == nil || resolver.client == nil || ctx == nil {
+		return ActorProbeResult{}, ErrConfiguration
+	}
+	canonical, err := v1.NormalizeRelayActorURL(actorURL)
+	if err != nil || canonical != actorURL {
+		return ActorProbeResult{}, ErrActorDocument
+	}
+	parsed, err := url.Parse(actorURL)
+	if err != nil || validateActorFetchURL(parsed) != nil {
+		return ActorProbeResult{}, ErrNetworkTarget
+	}
+	body, err := resolver.fetchActorBody(ctx, actorURL)
+	if err != nil {
+		return ActorProbeResult{}, err
+	}
+	return probeActorDocument(body, actorURL)
+}
+
+// ProbeInbox performs one bounded OPTIONS request against a canonical inbox. A
+// successful actor declaration is the capability evidence; this result is only
+// an additional non-mutating diagnostic.
+func (resolver *Resolver) ProbeInbox(ctx context.Context, inboxURL string) (InboxProbeResult, error) {
+	if resolver == nil || resolver.client == nil || ctx == nil {
+		return "", ErrConfiguration
+	}
+	canonical, err := v1.NormalizeRelayActorURL(inboxURL)
+	if err != nil || canonical != inboxURL {
+		return "", ErrActorDocument
+	}
+	parsed, err := url.Parse(inboxURL)
+	if err != nil || validateActorFetchURL(parsed) != nil {
+		return "", ErrNetworkTarget
+	}
+	if err := ctx.Err(); err != nil {
+		return "", errors.Join(ErrActorFetch, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodOptions, inboxURL, nil)
+	if err != nil {
+		return "", ErrActorFetch
+	}
+	request.Header.Set("User-Agent", resolver.userAgent)
+	response, err := resolver.client.Do(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return "", errors.Join(ErrActorFetch, ctx.Err())
+		}
+		return InboxProbeUnreachable, nil
+	}
+	if response == nil || response.Body == nil {
+		return InboxProbeUnreachable, nil
+	}
+	defer response.Body.Close()
+	switch {
+	case response.StatusCode >= 200 && response.StatusCode < 400:
+		return InboxProbeResponsive, nil
+	case response.StatusCode == http.StatusMethodNotAllowed || response.StatusCode == http.StatusNotImplemented:
+		return InboxProbeMethodRejected, nil
+	default:
+		return InboxProbeUnreachable, nil
+	}
+}
+
+func (resolver *Resolver) fetchActorBody(ctx context.Context, actorURL string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, errors.Join(ErrActorFetch, err)
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, actorURL, nil)
 	if err != nil {
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
 	request.Header.Set("Accept", activityStreamsAccept)
 	request.Header.Set("User-Agent", resolver.userAgent)
@@ -103,28 +200,27 @@ func (resolver *Resolver) ResolveRFC9421Key(
 	response, err := resolver.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
-			return v1.RFC9421ResolvedKey{}, errors.Join(ErrActorFetch, ctx.Err())
+			return nil, errors.Join(ErrActorFetch, ctx.Err())
 		}
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
 	if response == nil || response.Body == nil {
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK ||
 		!validActivityStreamsContentType(response.Header.Values("Content-Type")) {
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
 	if response.ContentLength > maximumActorBodyBytes {
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maximumActorBodyBytes+1))
 	if err != nil || len(body) == 0 || len(body) > maximumActorBodyBytes {
-		return v1.RFC9421ResolvedKey{}, ErrActorFetch
+		return nil, ErrActorFetch
 	}
-
-	return resolveActorDocument(body, actorURL, keyID)
+	return body, nil
 }
 
 func actorURLFromKeyID(keyID string) (string, error) {
@@ -211,6 +307,7 @@ func profileContainsActivityStreams(profile string) bool {
 type actorDocument struct {
 	ID        string          `json:"id"`
 	Type      json.RawMessage `json:"type"`
+	Inbox     string          `json:"inbox"`
 	PublicKey json.RawMessage `json:"publicKey"`
 }
 
@@ -218,6 +315,30 @@ type actorPublicKey struct {
 	ID           string `json:"id"`
 	Owner        string `json:"owner"`
 	PublicKeyPEM string `json:"publicKeyPem"`
+}
+
+func probeActorDocument(body []byte, actorURL string) (ActorProbeResult, error) {
+	if err := validateJSONDocument(body); err != nil {
+		return ActorProbeResult{}, err
+	}
+	var document actorDocument
+	if err := json.Unmarshal(body, &document); err != nil ||
+		document.ID != actorURL || !validRelayActorType(document.Type) {
+		return ActorProbeResult{}, ErrActorDocument
+	}
+	result := ActorProbeResult{ActorID: document.ID}
+	if document.Inbox != "" {
+		canonical, err := v1.NormalizeRelayActorURL(document.Inbox)
+		if err != nil || canonical != document.Inbox {
+			return ActorProbeResult{}, ErrActorDocument
+		}
+		parsed, err := url.Parse(document.Inbox)
+		if err != nil || validateActorFetchURL(parsed) != nil {
+			return ActorProbeResult{}, ErrNetworkTarget
+		}
+		result.InboxURL = document.Inbox
+	}
+	return result, nil
 }
 
 func resolveActorDocument(

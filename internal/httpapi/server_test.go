@@ -257,12 +257,14 @@ func TestPublicHTTPDoesNotExposeLocalMaintenance(t *testing.T) {
 	}
 }
 
-func TestPublicListingRouteIsDefaultOff(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/v1/relays", nil)
-	response := httptest.NewRecorder()
-	testHandler().ServeHTTP(response, request)
-	if response.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", response.Code)
+func TestPublicListingRoutesAreDefaultOff(t *testing.T) {
+	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		testHandler().ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s status = %d, want 404", path, response.Code)
+		}
 	}
 }
 
@@ -281,11 +283,13 @@ func TestPublicListingIsIndependentOfLifecycleAvailability(t *testing.T) {
 		listing,
 	)
 
-	listingRequest := httptest.NewRequest(http.MethodGet, "/v1/relays", nil)
-	listingResponse := httptest.NewRecorder()
-	handler.ServeHTTP(listingResponse, listingRequest)
-	if listingResponse.Code != http.StatusOK {
-		t.Fatalf("listing status = %d, body = %q", listingResponse.Code, listingResponse.Body.String())
+	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+		listingRequest := httptest.NewRequest(http.MethodGet, path, nil)
+		listingResponse := httptest.NewRecorder()
+		handler.ServeHTTP(listingResponse, listingRequest)
+		if listingResponse.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, body = %q", path, listingResponse.Code, listingResponse.Body.String())
+		}
 	}
 
 	lifecycleRequest := httptest.NewRequest(http.MethodPost, v1.HeartbeatEndpointPath, nil)
@@ -315,18 +319,20 @@ func TestEnabledListingWithMissingGraphFailsClosed(t *testing.T) {
 		nil,
 		nil,
 	)
-	request := httptest.NewRequest(http.MethodGet, "/v1/relays", nil)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "nil") {
-		t.Fatalf("response = status %d body %q", response.Code, response.Body.String())
-	}
+	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "nil") {
+			t.Fatalf("%s response = status %d body %q", path, response.Code, response.Body.String())
+		}
 
-	post := httptest.NewRequest(http.MethodPost, "/v1/relays", strings.NewReader("{}"))
-	postResponse := httptest.NewRecorder()
-	handler.ServeHTTP(postResponse, post)
-	if postResponse.Code != http.StatusMethodNotAllowed || postResponse.Header().Get("Allow") != "GET, HEAD" {
-		t.Fatalf("POST response = status %d Allow %q", postResponse.Code, postResponse.Header().Get("Allow"))
+		post := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		postResponse := httptest.NewRecorder()
+		handler.ServeHTTP(postResponse, post)
+		if postResponse.Code != http.StatusMethodNotAllowed || postResponse.Header().Get("Allow") != "GET, HEAD" {
+			t.Fatalf("POST %s response = status %d Allow %q", path, postResponse.Code, postResponse.Header().Get("Allow"))
+		}
 	}
 }
 
@@ -356,7 +362,7 @@ func TestHumanDirectorySharesPublicListingGateAndProjection(t *testing.T) {
 		listing,
 	)
 
-	for _, path := range []string{"/", "/v1/relays", directoryStylesheetPath} {
+	for _, path := range []string{"/", "/v1/relays", directoryProjectionPath, directoryStylesheetPath} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
@@ -420,6 +426,7 @@ func TestGrowthHardLimitFailsReadinessButKeepsLivenessAndPublicReadsAvailable(t 
 		{"/healthz", http.StatusOK},
 		{"/readyz", http.StatusServiceUnavailable},
 		{"/v1/relays", http.StatusOK},
+		{directoryProjectionPath, http.StatusOK},
 		{"/", http.StatusOK},
 		{directoryStylesheetPath, http.StatusOK},
 	} {

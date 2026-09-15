@@ -34,6 +34,33 @@
   prune boundaries at 36 hours, 7 days, and 30 days of server-owned recency.
 - Accepted register and heartbeat operations maintain one nondecreasing
   `last_seen_at_unix`; future values fail closed during projection.
+- Independent ActivityPub reachability observations must never rewrite,
+  refresh, or substitute for authenticated lifecycle recency. Keep heartbeat
+  health and server-originated reachability as separate evidence.
+- Operator discovery must not fabricate registration, heartbeat, or RFC 9421
+  participation. A discovered relay becomes public only through the separately
+  reviewed discovery/reachability eligibility path.
+- Public views must not disclose whether a relay was self-registered, manually
+  added, or imported from a local candidate file. Discovery provenance remains
+  private operator/audit data.
+- RFC 9421 diagnostics are positive-evidence only: report `verified` only after
+  the Directory has accepted an RFC 9421-signed lifecycle request. Absence of
+  that evidence is `not verified`, never proof that the relay lacks support.
+- Discovery and reachability network work must reuse the resolver's proxy-free,
+  SSRF-resistant DNS/address/redirect controls and response bounds; do not use
+  the default HTTP client, environment proxies, shell `curl`, or public-request
+  triggered probing.
+- Local discovery/import is operating-system-authorized administration only.
+  Keep import files regular/UTF-8 and bounded to 256 KiB, 2,048-byte lines, 100
+  candidates, and eight concurrent probes. Treat base, `/actor`, and `/inbox`
+  inputs only as hints; require successful canonical actor validation before an
+  add. Persist a bounded source label, never a local file path. `--yes` bypasses
+  only interactive confirmation, never validation/probing. Candidate omission
+  from a later file is not removal authority.
+- Inbox discovery diagnostics must be non-mutating. The reviewed 1.1 path uses
+  `OPTIONS`; never send fabricated Follow/Announce/Undo or another ActivityPub
+  POST merely to test support. HTTP method rejection is diagnostic evidence,
+  not proof that a declared inbox is absent.
 - Moderation and administrative suspension override automated health state.
 - Protocol compatibility must be versioned and tested with fixtures.
 
@@ -174,6 +201,19 @@ unregistered rows before decoding, perform no writes, and reject future
 last-seen values. Do not add a public listing route or pruning transition in the
 health-projection tranche.
 
+Background reachability code must use `storage.ReachabilityRepository` and the
+shared `actorresolver.Resolver`. Keep it default-off and unreachable from public
+HTTP handlers. The fixed 1.1 policy is one-hour maintenance, six-hour actor
+freshness, pages <=24, runs <=96 actors, and <=8 concurrent remote probes.
+Candidate order is never-checked first, then oldest check, then canonical actor;
+administrative suspension suppresses both registered and discovered eligibility.
+Remote probes may run concurrently, but persistence is serialized and must
+transactionally revalidate eligibility plus equal/newer observation races. A
+complete non-truncated pass may refresh the process-local pruning-coverage gate;
+failed/truncated passes may not. Reachability never updates lifecycle
+`last_seen_at_unix`, registration/heartbeat state, or RFC 9421 evidence. See
+`docs/REACHABILITY.md`.
+
 Soft-pruning code must use `storage.PruningRepository` and remain reversible.
 Candidate reads use the `(lifecycle_state, last_seen_at_unix, relay_actor)` index,
 include suspension without clearing it, and are bounded to 100 rows. One run may
@@ -188,20 +228,31 @@ all HTTP handlers; the local dry-run command must use an existing current-schema
 query-only connection and perform no database creation, migration, or writes.
 
 Hard-retention code must use the separate purge vocabulary and keep
-`DIRECTORY_INACTIVE_RETENTION_DAYS=0` as indefinite/default. Only active
-`unregistered` or `pruned` rows may be candidates, ordered by their current
-inactive-transition timestamp; registered or suspended rows must never pass the
-destructive predicate. Bind a candidate to row update time and the latest
-lifecycle/moderation event IDs and revalidate all of them under the immediate
-write transaction so even idempotent concurrent decisions prevent a stale
-delete. Keep pages <=100 and one run <=1,000 candidates.
+`DIRECTORY_INACTIVE_RETENTION_DAYS=0` as indefinite/default. Policy version 2
+has two primary candidate kinds: administratively active `unregistered` or
+`pruned` lifecycle rows, and operator discovery rows already in `removed`
+state. Registered/suspended lifecycle rows and active discoveries must never
+pass their destructive predicates. Order the merged stream by inactive
+transition, canonical actor, and candidate kind; bound each source before the
+merge, keep pages <=100, and keep one run <=1,000 candidates.
 
-Never delete `moderation_events` in inactive retention. `relay_events` deletion
-may bypass its append-only trigger only transaction-locally, with the trigger
-recreated before commit and rollback restoring it on every failure. Keep the
-aggregate retention audit identity-free: create it before scanning, checkpoint
-committed destructive counts in the same purge transaction, and make it
-immutable when finalized. No public HTTP handler or automatic scheduler may
+Bind lifecycle candidates to row update time plus latest lifecycle/moderation
+event IDs; bind discovery candidates to row update time plus latest discovery
+event ID. Both candidate kinds also snapshot the current monotonic observation revision
+(`0` for absent) so even a same-second reachability/RFC-evidence write invalidates
+stale destructive work. Revalidate every snapshot under the immediate write
+transaction. Remove a `relay_observations` row only after the same transaction
+has removed a primary owner and no lifecycle or discovery row remains for that
+actor.
+
+Never delete `moderation_events` or `discovery_events` in inactive retention.
+`relay_events` deletion may bypass its append-only trigger only
+transaction-locally, with the trigger recreated before commit and rollback
+restoring it on every failure. Keep the aggregate retention audit identity-free:
+create it before scanning, checkpoint lifecycle/discovery/observation and event
+counts in the same purge transaction, and make it immutable when finalized.
+Historical policy-version-1 run rows remain valid audit evidence after schema 8;
+new runs use policy version 2. No public HTTP handler or automatic scheduler may
 invoke hard purge. Purge must preflight an existing current-schema database
 read-only and must not create or migrate its target. Every destructive local run
 must verify a secure same-database current-schema backup before confirmation and
@@ -238,17 +289,24 @@ credentials, relay host, or notification enablement. See
 `docs/STORAGE-GROWTH.md`.
 
 Public directory presentation must use the same `httpapi.PublicListingHandler`
-projection for JSON and human-readable output. Do not add a second HTML-specific
-repository query, health classifier, moderation filter, or eligibility rule.
-`GET`/`HEAD` `/` and its bundled static assets remain under the same default-off
-`DIRECTORY_PUBLIC_LISTING_ENABLED` gate as `/v1/relays`. HTML must use Go
-`html/template`, automatic escaping, local assets only, a strict CSP, the same
-bounded authenticated cursor and one-minute cache policy, and no relay-provided
-HTML, scripts, fonts, analytics, or relay-controlled image fetches. Health-state
-meaning must never depend on hue alone: retain a visible state word plus a
-distinct non-color visual cue, preserve automated light/dark text-contrast
-coverage, and treat color-vision-deficiency simulation as a review diagnostic
-rather than a substitute for operator browser review.
+projection for v2 JSON and human-readable output. Do not add a second
+HTML-specific repository query, heartbeat/reachability classifier, moderation
+filter, or eligibility rule. Keep `/v1/relays` byte/semantic compatible with the
+1.0 health listing. `GET`/`HEAD` `/`, `/v2/relays`, and bundled static assets
+remain under the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` gate. The
+v2 projection may serialize only canonical identity plus reviewed
+heartbeat/reachability/inbox/RFC 9421 evidence; never serialize discovery
+source/provenance, operator/reason data, audit events, probe errors, client
+addresses, signing-key identifiers, or internal registered/discovered flags.
+Bound v2 pages to 100 public rows and at most 400 retained actor identities per
+request, advancing a signed canonical-actor keyset even through sparse inactive
+rows. HTML must use Go `html/template`, automatic escaping, local assets only, a
+strict CSP, the same v2 authenticated cursor and one-minute cache policy, and no
+relay-provided HTML, scripts, fonts, analytics, or relay-controlled image
+fetches. Evidence-state meaning must never depend on hue alone: retain visible
+state words plus distinct non-color visual cues, preserve automated light/dark
+text-contrast coverage, and treat color-vision-deficiency simulation as a review
+diagnostic rather than a substitute for operator browser review.
 
 The container workflow must use the reviewed Node-24-compatible Docker action
 majors `docker/setup-buildx-action@v4` and `docker/build-push-action@v7`. Keep the

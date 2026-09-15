@@ -1,14 +1,28 @@
 # Inactive-record retention
 
-Roadmap Tranche 16 adds a deliberately narrow **purge** policy for durable
-inactive relay state. Purge is irreversible. It is not the 30-day **prune**
-transition: soft pruning remains reversible, keeps the relay row and history,
-and is used by the health/public-visibility lifecycle.
+Hard retention is a deliberately narrow **purge** policy for durable inactive
+Directory state. Purge is irreversible. It is not the 30-day **prune**
+transition: soft pruning remains reversible, keeps the relay lifecycle row and
+history, and is used by the health/public-visibility lifecycle. Schema version 8
+advances the hard-retention contract to policy version 2 so removed discovery
+state and unowned observation state are covered without erasing private
+discovery audit.
 
 No public HTTP request and no background scheduler can start hard retention.
 The initial implementation is local-administrator-only. A positive policy says
 which inactive rows are old enough to purge; an operator must still invoke the
 local purge command with a verified pre-retention backup.
+
+### Reachability and reversible soft pruning
+
+Hard retention remains independent from actor reachability. For reversible
+soft pruning, however, 1.1 treats fresh current actor reachability as separate
+evidence from lifecycle heartbeat recency. When background reachability is
+enabled, automatic soft pruning waits for recent complete reachability coverage
+and both candidate selection and the final pruning transaction protect a relay
+whose current actor state is `reachable` with a success inside the fixed
+six-hour window. See `docs/REACHABILITY.md`.
+
 
 ## Threat model
 
@@ -18,9 +32,10 @@ filesystem write access. The main failure cases are:
 
 - an accidental nonzero policy: `0` remains the default and purge refuses to run
   at zero;
-- a stale candidate racing a register, unregister, suspend, restore, or other
-  lifecycle/moderation decision: row/update/event versions are rechecked under
-  the immediate write transaction;
+- a stale candidate racing a register, unregister, suspend, restore, discovery
+  decision, or fresh reachability/RFC-evidence write: the applicable row/event
+  versions plus the observation update version are rechecked under the immediate
+  write transaction;
 - an interrupted purge: lifecycle-event deletion, relay deletion, trigger
   recreation, and aggregate run checkpoint commit in one transaction;
 - loss of audit evidence after a committed batch: the private run row exists
@@ -56,69 +71,79 @@ inactive-record deletion.
 
 The cutoff is inclusive: `inactive_at_unix <= observed_at - days*86400` is
 eligible. The age starts at the most recent transition to the current inactive
-state, not at the last healthy heartbeat. Unregistered rows use
-`unregistered_at_unix`; soft-pruned rows use `pruned_at_unix`.
+state, not at the last healthy heartbeat. Lifecycle candidates use
+`unregistered_at_unix` or `pruned_at_unix`; discovery candidates use
+`removed_at_unix`.
 
 Changing a positive setting back to `0` prevents future purge commands from
 running. It cannot reconstruct rows already deleted.
 
 ## Eligibility and moderation boundary
 
-A row is a purge candidate only when all of these are true at candidate-read
-**and** destructive-transaction time:
+Policy version 2 has two primary candidate kinds. A **lifecycle** candidate must
+be `unregistered` or `pruned`, administratively `active`, and old enough at both
+candidate-read and destructive-transaction time. A **discovery** candidate must
+already be `removed` and its `removed_at_unix` must be old enough. Registered or
+suspended lifecycle rows and active discoveries are never primary candidates.
 
-1. lifecycle state is `unregistered` or `pruned`;
-2. administrative state is `active`;
-3. the authoritative inactive timestamp is at or before the configured cutoff;
-4. the relay row has not changed since the candidate was read; and
-5. no new lifecycle or moderation event has been accepted since the candidate
-   was read.
+Lifecycle snapshots contain the row update time plus latest lifecycle and
+moderation event IDs. Discovery snapshots contain the discovery-row update time
+plus latest discovery event ID. Both snapshot the current monotonic `relay_observations.revision`, using `0`
+when no observation exists. Every actor/inbox/RFC evidence write increments the
+revision. The purge transaction rereads those values under the same immediate
+write lock, so even a same-second fresh observation makes an old candidate skip
+rather than delete. A later maintenance run may reconsider the new state from
+scratch.
 
-Registered rows are never candidates. Suspended rows are never candidates,
-even when unregistered or pruned: automatic deletion must not erase an active
-moderation decision.
+Deleting a lifecycle row does not delete a separately retained discovery row,
+and deleting a removed discovery row does not delete separately retained
+lifecycle state. `relay_observations` is shared evidence: after one primary row
+is deleted, its observation is deleted only if no lifecycle **and** no discovery
+row remains for that canonical actor. This rule also makes two same-actor
+candidate kinds safe when they occur in one page or across a page boundary.
 
-Candidate snapshots include the row update time plus the latest lifecycle-event
-and moderation-event IDs. The purge transaction rereads all of them under the
-same immediate write lock. A register, repeated unregister, suspend, restore,
-or other accepted lifecycle/moderation decision therefore makes an old
-candidate skip rather than delete. A later maintenance run may reconsider the
-new state from scratch.
-
-After an active inactive relay is purged, no retained relay row remains. If the
-actor later registers again, enrollment treats it as a never-accepted actor and
-the current enrollment policy applies.
+After the final retained identity row is purged, a future authenticated register
+is first-time lifecycle enrollment again. Retained private moderation/discovery
+audit does not itself authorize public inclusion or preserve an observation row.
 
 ## Data-class consequences
 
-| Data class | Tranche 16 behavior | Restoration consequence |
+| Data class | Policy-version-2 behavior | Restoration consequence |
 | --- | --- | --- |
-| `relays` row | Eligible active inactive row is deleted | Identity/lifecycle metadata is recovered only from backup; a later register is first-time enrollment |
-| `relay_events` | All lifecycle events for the purged actor are deleted in the same batch transaction | Lifecycle history is recovered only from backup |
-| `moderation_events` | Never deleted by inactive retention | Private historical moderation evidence remains even after an eligible active relay row is purged |
-| `retention_runs` | Guarded aggregate run audit; no relay identity list | Running rows retain committed checkpoints; finalized rows are immutable local evidence |
-| `retention_metadata` | Persistent random database identity and policy version remain | Used to prove that a supplied backup belongs to this database |
+| `relays` row | Eligible active inactive lifecycle row is deleted | Identity/lifecycle metadata is recovered only from backup; a later register is first-time lifecycle enrollment unless discovery independently remains |
+| `relay_events` | All lifecycle events for a purged lifecycle actor are deleted in the same batch transaction | Lifecycle history is recovered only from backup |
+| `relay_discoveries` | Eligible `removed` discovery row is deleted | Current discovery decision is recovered only from backup; active discovery is never a candidate |
+| `discovery_events` | Never deleted by inactive retention | Private operator/source provenance remains append-only even after current discovery state is purged |
+| `relay_observations` | Deleted only when a purged primary row leaves no lifecycle or discovery owner | Server-observed reachability/inbox/RFC evidence is recovered only from backup or future observations |
+| `moderation_events` | Never deleted by inactive retention | Private historical moderation evidence remains after lifecycle state purge |
+| `retention_runs` | Guarded aggregate run audit; historical policy 1 and current policy 2 rows remain | Running rows retain committed checkpoints; finalized rows are immutable local evidence |
+| `retention_metadata` | Persistent random database identity remains while current policy version advances | Used to prove that a supplied backup belongs to this database |
 | `replay_reservations` | Unchanged; independent protocol-bounded ten-minute expiry | Hard retention cannot extend or weaken replay behavior |
 | enrollment policy/events | Unchanged | Enrollment history and current policy remain intact |
-| public JSON/HTML projection | Unchanged | Purged rows are absent because no relay row exists; public filtering does not depend on purge timing |
+| public JSON/HTML projection | No direct mutation | Public eligibility is computed independently; hard purge only removes state already inactive under its own authority |
 
-The migration keeps lifecycle events append-only normally. A purge batch drops
-the `relay_events_no_delete` trigger only inside its immediate transaction,
-deletes the revalidated actors' lifecycle events and relay rows, recreates the
-trigger, then commits. SQLite transactional DDL means any error or cancellation
-rolls back both the deletions and the temporary trigger removal.
+Historical policy-1 rows remain immutable audit evidence after migration. A
+policy-1 row that was left `running` by an interrupted pre-upgrade process is
+not eligible for policy-2 destructive batches or finalization; a new policy-2
+run must be started for any later maintenance.
 
-Private moderation events are intentionally outside that delete scope and keep
-their append-only triggers at all times.
+The migration keeps lifecycle and discovery events append-only normally. A purge
+batch drops only `relay_events_no_delete`, and only inside its immediate
+transaction, when lifecycle-event deletion is required. Discovery events and
+moderation events keep their append-only triggers throughout hard retention.
+SQLite transactional DDL means an error rolls back lifecycle deletions and the
+temporary trigger change together.
 
 ## Bounded execution and restart behavior
 
-Candidate reads use stable `(inactive_at_unix, relay_actor)` keyset ordering and
-the `relays_retention_candidates_idx` index. Dedicated actor/event-ID indexes
-bound the latest lifecycle/moderation decision snapshots used for stale-candidate
-revalidation. One page is at most 100 candidates;
-one command scans at most 1,000 candidates. A one-row lookahead determines
-whether more work remains.
+Candidate reads merge two separately bounded indexed sources and use stable
+`(inactive_at_unix, relay_actor, candidate_kind)` keyset ordering. Lifecycle
+reads use `relays_retention_candidates_idx`; discovery reads use
+`relay_discoveries_retention_candidates_idx`. Dedicated event-ID indexes bound
+latest lifecycle/moderation/discovery decision snapshots, and the observation
+row supplies its single update-version snapshot. Each source is limited to one
+page plus lookahead before the merge; one returned page is at most 100
+candidates and one command scans at most 1,000 candidates.
 
 A private `retention_runs` row is created with outcome `running` before any
 destructive scan. Every successfully committed purge page updates aggregate
@@ -133,7 +158,9 @@ row, after which database guards make it immutable and nondeletable.
 Dry-run output and the private retention-run audit contain aggregate counts and
 oldest/newest inactive timestamps, never relay identity lists. The run audit
 also records policy version, retention days, observation/cutoff times, batch and
-purge counts, outcome, truncation state, and the verified backup SHA-256.
+lifecycle/discovery/observation/event purge counts, outcome, truncation state,
+and the verified backup SHA-256. Local JSON output is schema
+`activity-relay-directory.retention-admin.v2`; it remains identity-free.
 
 ## Verified backup gate
 

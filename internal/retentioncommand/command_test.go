@@ -74,8 +74,8 @@ func TestExecuteDryRunIsIdentityFreeForHumanAndJSON(t *testing.T) {
 	for _, format := range []OutputFormat{OutputHuman, OutputJSON} {
 		t.Run(string(format), func(t *testing.T) {
 			repository := &commandRepository{candidates: []storage.PurgeCandidate{{
-				RelayActor: commandTestActor, LifecycleState: storage.LifecycleUnregistered,
-				InactiveUnix: 100, UpdatedUnix: 100, LatestRelayEventID: 7,
+				Kind: storage.PurgeCandidateLifecycle, RelayActor: commandTestActor, LifecycleState: storage.LifecycleUnregistered,
+				InactiveUnix: 100, UpdatedUnix: 100, LatestRelayEventID: 7, ObservationRevision: 0,
 			}}}
 			var stdout, stderr bytes.Buffer
 			code := ExecuteDryRun(
@@ -128,8 +128,8 @@ func TestExecuteDryRunAtZeroDoesNotQueryRepository(t *testing.T) {
 
 func TestExecutePurgeOutputsAggregatesAndAuditWithoutRelayIdentity(t *testing.T) {
 	repository := &commandRepository{candidates: []storage.PurgeCandidate{{
-		RelayActor: commandTestActor, LifecycleState: storage.LifecyclePruned,
-		InactiveUnix: 100, UpdatedUnix: 100, LatestRelayEventID: 9,
+		Kind: storage.PurgeCandidateLifecycle, RelayActor: commandTestActor, LifecycleState: storage.LifecyclePruned,
+		InactiveUnix: 100, UpdatedUnix: 100, LatestRelayEventID: 9, ObservationRevision: 0,
 	}}}
 	digest := strings.Repeat("d", 64)
 	var stdout, stderr bytes.Buffer
@@ -147,7 +147,8 @@ func TestExecutePurgeOutputsAggregatesAndAuditWithoutRelayIdentity(t *testing.T)
 		t.Fatalf("ExecutePurge() = code:%d stdout:%q stderr:%q", code, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stdout.String(), commandTestActor) || len(repository.starts) != 1 || len(repository.finishes) != 1 ||
-		repository.finishes[0].PurgedRelays != 1 || repository.starts[0].BackupSHA256 != digest {
+		repository.finishes[0].PurgedRelays != 1 || repository.starts[0].BackupSHA256 != digest ||
+		!strings.Contains(stdout.String(), `"purged_discoveries":0`) || !strings.Contains(stdout.String(), `"purged_observations":0`) {
 		t.Fatalf("purge output/audit stdout=%q starts=%#v finishes=%#v", stdout.String(), repository.starts, repository.finishes)
 	}
 }
