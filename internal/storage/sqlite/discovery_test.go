@@ -105,6 +105,83 @@ func TestDiscoveryRejectsInvalidAndRegressingInput(t *testing.T) {
 	}
 }
 
+func TestTranche23AcceptanceParticipationTransitionsRemainIndependent(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://independent-paths.example/actor"
+	base := "https://independent-paths.example"
+
+	if _, err := repository.Register(
+		ctx,
+		storage.RegisterIntent{
+			RelayActor:    actor,
+			PublicBaseURL: base,
+		},
+		time.Unix(100, 0),
+	); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+
+	if _, err := repository.AddDiscovery(
+		ctx,
+		discoveryAdd(actor, base),
+		time.Unix(110, 0),
+	); err != nil {
+		t.Fatalf("AddDiscovery() error = %v", err)
+	}
+
+	// Removing discovery leaves the independent lifecycle registration.
+	if outcome, err := repository.RemoveDiscovery(
+		ctx,
+		discoveryRemove(actor),
+		time.Unix(120, 0),
+	); err != nil || outcome != storage.DiscoveryRemovedOK {
+		t.Fatalf("RemoveDiscovery() = (%q, %v)", outcome, err)
+	}
+
+	if relay := readTestRelay(t, database, actor); relay.lifecycleState != lifecycleRegistered {
+		t.Fatalf("discovery removal changed lifecycle = %#v", relay)
+	}
+
+	var state string
+	if err := database.QueryRow(
+		`SELECT discovery_state FROM relay_discoveries WHERE relay_actor=?`,
+		actor,
+	).Scan(&state); err != nil || state != discoveryRemoved {
+		t.Fatalf("removed discovery state = %q, %v", state, err)
+	}
+
+	// Reactivate discovery, then unregister lifecycle participation.
+	if _, err := repository.AddDiscovery(
+		ctx,
+		discoveryAdd(actor, base),
+		time.Unix(130, 0),
+	); err != nil {
+		t.Fatalf("reactivate discovery error = %v", err)
+	}
+
+	if _, err := repository.Unregister(
+		ctx,
+		storage.IdentityIntent{RelayActor: actor},
+		time.Unix(140, 0),
+	); err != nil {
+		t.Fatalf("Unregister() error = %v", err)
+	}
+
+	if relay := readTestRelay(t, database, actor); relay.lifecycleState != lifecycleUnregistered {
+		t.Fatalf("unregister lifecycle = %#v", relay)
+	}
+
+	state = ""
+	if err := database.QueryRow(
+		`SELECT discovery_state FROM relay_discoveries WHERE relay_actor=?`,
+		actor,
+	).Scan(&state); err != nil || state != discoveryActive {
+		t.Fatalf("active discovery after unregister = %q, %v", state, err)
+	}
+}
+
 func TestObservationTracksActorAndInboxIndependently(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)
@@ -225,6 +302,19 @@ func TestSignedUnregisterCanVerifyDiscoveredOnlyRelayWithoutFabricatingLifecycle
 	if _, err := repository.AddDiscovery(ctx, discoveryAdd(actor, "https://discovery.example"), time.Unix(100, 0)); err != nil {
 		t.Fatal(err)
 	}
+	before, ok, err := repository.GetObservation(
+		ctx,
+		storage.IdentityIntent{RelayActor: actor},
+	)
+	if err != nil || (ok && before.RFC9421VerifiedUnix != nil) {
+		t.Fatalf(
+			"pre-lifecycle RFC 9421 evidence = %#v, %t, %v",
+			before,
+			ok,
+			err,
+		)
+	}
+
 	outcome, err := repository.Unregister(ctx, storage.IdentityIntent{RelayActor: actor}, time.Unix(110, 0))
 	if err != nil || outcome != v1.OutcomeAbsent {
 		t.Fatalf("Unregister(discovered only) = (%q, %v)", outcome, err)

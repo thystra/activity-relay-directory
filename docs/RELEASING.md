@@ -1,11 +1,31 @@
 # Releasing
 
+
+### 1.1 acceptance prerequisite
+
+Before producing canonical 1.1 release bytes or validating release packages,
+run:
+
+    ./scripts/acceptance-1.1.sh
+
+The acceptance runner is intentionally separate from packaging and deployment.
+It pins the released `v1.0.0` tag and schema-7 migration history and exercises
+the reviewed Tranche 23 discovery/reachability acceptance matrix. A passing
+acceptance matrix is required before canonical release bytes, package/container
+validation, publication, deployment, activation, or production verification.
+
+
 ## Versioning and authority
 
-The pre-1.0 release-candidate series is `v0.1.0-rcN`, with embedded version
-`0.1.0-rcN` and Debian version `0.1.0~rcN-<revision>`. The first stable release
-jumps directly to `v1.0.0` / `1.0.0` with Debian
-`1.0.0-1`. Do not publish a `v0.1.0` final tag.
+The historical pre-1.0 release-candidate series is `v0.1.0-rcN`, with
+embedded version `0.1.0-rcN` and Debian version
+`0.1.0~rcN-<revision>`. The first stable release jumps directly to `v1.0.0` /
+`1.0.0` with Debian `1.0.0-1`; there is no final `v0.1.0` tag.
+
+After 1.0.0, release candidates use normal semantic-version prerelease
+identity: `vX.Y.Z-rcN` / `X.Y.Z-rcN` with Debian
+`X.Y.Z~rcN-<revision>`. Stable releases remain `vX.Y.Z` / `X.Y.Z` with the
+normal Debian revision form.
 
 Forgejo is authoritative. `.forgejo/workflows/package.yml` and the GitHub
 package workflow are validation only. `.forgejo/workflows/release.yml` is a
@@ -30,8 +50,8 @@ translated to `-` when present.
 The manually dispatched Forgejo canonical workflow is release-generic but
 fail-closed. Its `version` input must:
 
-- match the reviewed pre-1.0 form `0.1.0-rcN` or a stable `X.Y.Z` semantic
-  version with major version 1 or greater;
+- match the historical pre-1.0 form `0.1.0-rcN`, or for major version 1
+  or greater match either release candidate `X.Y.Z-rcN` or stable `X.Y.Z`;
 - equal the application version derived from the top Debian changelog entry;
 - have a matching `docs/releases/v<version>.md` draft;
 - use exact confirmation `BUILD <version>`; and
@@ -57,9 +77,11 @@ candidate version before Go setup, package construction, or container work.
 ## Debian package contract
 
 Pre-1.0 release-candidate packages use `activity-relay-directory` with Debian
-version `0.1.0~rcN-<revision>` for application `0.1.0-rcN`. Stable packages use
-the normal Debian revision form, for example application `1.0.0` with package
-version `1.0.0-1`. The package installs a
+version `0.1.0~rcN-<revision>` for application `0.1.0-rcN`. For major version 1
+or greater, release candidates use application `X.Y.Z-rcN` with Debian
+`X.Y.Z~rcN-<revision>`. Stable packages use the normal Debian revision form,
+for example application `1.0.0` with package version `1.0.0-1`. The package
+installs a
 dedicated system account, owner-only
 `/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked

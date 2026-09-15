@@ -107,6 +107,228 @@ func TestDirectoryProjectionEligibilityKeepsParticipationPathsIndependent(t *tes
 	}
 }
 
+func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(50_000_000, 0).UTC()
+	fresh := observed.Add(-time.Second)
+
+	healthyActor := "https://a-healthy-registered.example/actor"
+	healthyBase := "https://a-healthy-registered.example"
+
+	deadActor := "https://b-dead-reachable.example/actor"
+	deadBase := "https://b-dead-reachable.example"
+
+	discoveredActor := "https://c-discovered-only.example/actor"
+	discoveredBase := "https://c-discovered-only.example"
+
+	suspendedRegistered := "https://d-suspended-registered.example/actor"
+	suspendedDiscovered := "https://e-suspended-discovered.example/actor"
+
+	// Case 2: real lifecycle registration + heartbeat, followed by an
+	// independent successful actor observation.
+	if _, err := repository.Register(
+		ctx,
+		storage.RegisterIntent{
+			RelayActor:    healthyActor,
+			PublicBaseURL: healthyBase,
+		},
+		observed.Add(-20*time.Second),
+	); err != nil {
+		t.Fatalf("healthy Register() error = %v", err)
+	}
+	if _, err := repository.Heartbeat(
+		ctx,
+		storage.IdentityIntent{RelayActor: healthyActor},
+		observed.Add(-10*time.Second),
+	); err != nil {
+		t.Fatalf("healthy Heartbeat() error = %v", err)
+	}
+	if err := repository.RecordActorObservation(
+		ctx,
+		storage.ActorObservationIntent{
+			RelayActor: healthyActor,
+			State:      storage.ReachabilityReachable,
+		},
+		fresh,
+	); err != nil {
+		t.Fatalf("healthy RecordActorObservation() error = %v", err)
+	}
+
+	// Case 3: heartbeat evidence is independently dead while the actor is
+	// currently reachable.
+	deadSeen := observed.Add(-storage.StaleBefore)
+	if _, err := repository.Register(
+		ctx,
+		storage.RegisterIntent{
+			RelayActor:    deadActor,
+			PublicBaseURL: deadBase,
+		},
+		deadSeen.Add(-time.Second),
+	); err != nil {
+		t.Fatalf("dead Register() error = %v", err)
+	}
+	if _, err := repository.Heartbeat(
+		ctx,
+		storage.IdentityIntent{RelayActor: deadActor},
+		deadSeen,
+	); err != nil {
+		t.Fatalf("dead Heartbeat() error = %v", err)
+	}
+	if err := repository.RecordActorObservation(
+		ctx,
+		storage.ActorObservationIntent{
+			RelayActor: deadActor,
+			State:      storage.ReachabilityReachable,
+		},
+		fresh,
+	); err != nil {
+		t.Fatalf("dead RecordActorObservation() error = %v", err)
+	}
+
+	// Case 4: operator discovery plus successful reachability creates no
+	// lifecycle row and therefore no heartbeat timestamp.
+	if _, err := repository.AddDiscovery(
+		ctx,
+		storage.DiscoveryAddIntent{
+			RelayActor:    discoveredActor,
+			PublicBaseURL: discoveredBase,
+			OperatorID:    "tranche23",
+			ReasonCode:    "public_relay",
+			SourceKind:    storage.DiscoverySourceManual,
+			SourceLabel:   "acceptance",
+		},
+		observed.Add(-100*time.Second),
+	); err != nil {
+		t.Fatalf("discovered AddDiscovery() error = %v", err)
+	}
+	if err := repository.RecordActorObservation(
+		ctx,
+		storage.ActorObservationIntent{
+			RelayActor: discoveredActor,
+			State:      storage.ReachabilityReachable,
+		},
+		fresh,
+	); err != nil {
+		t.Fatalf("discovered RecordActorObservation() error = %v", err)
+	}
+
+	// Case 10a: suspension hides registration eligibility.
+	insertPublicListingRelay(
+		t,
+		database,
+		suspendedRegistered,
+		lifecycleRegistered,
+		administrativeSuspended,
+		observed.Unix()-10,
+	)
+	insertDirectoryObservation(
+		t,
+		database,
+		suspendedRegistered,
+		storage.ReachabilityReachable,
+		fresh.Unix(),
+		int64PointerSQLite(fresh.Unix()),
+		true,
+	)
+
+	// Case 10b: suspension also hides discovery eligibility.
+	insertPublicListingRelay(
+		t,
+		database,
+		suspendedDiscovered,
+		lifecycleUnregistered,
+		administrativeSuspended,
+		observed.Unix()-100,
+	)
+	insertReachabilityDiscovery(
+		t,
+		database,
+		suspendedDiscovered,
+		discoveryActive,
+		100,
+	)
+	insertDirectoryObservation(
+		t,
+		database,
+		suspendedDiscovered,
+		storage.ReachabilityReachable,
+		fresh.Unix(),
+		int64PointerSQLite(fresh.Unix()),
+		false,
+	)
+
+	page, err := repository.ListDirectoryRelays(
+		ctx,
+		storage.DirectoryProjectionQuery{
+			Limit:      storage.MaximumDirectoryProjectionPage,
+			ObservedAt: observed,
+		},
+	)
+	if err != nil {
+		t.Fatalf("ListDirectoryRelays() error = %v", err)
+	}
+
+	got := make(map[string]storage.DirectoryProjectionRelay)
+	for _, relay := range page.Relays {
+		got[relay.RelayActor] = relay
+	}
+
+	if len(got) != 3 {
+		t.Fatalf("acceptance projection actors = %#v", mapKeys(got))
+	}
+
+	healthy, ok := got[healthyActor]
+	if !ok ||
+		healthy.HeartbeatState != storage.HeartbeatHealthy ||
+		healthy.ActorState != storage.ReachabilityReachable ||
+		healthy.LastSeenUnix == nil ||
+		!healthy.Registered ||
+		healthy.Discovered {
+		t.Fatalf(
+			"healthy registered acceptance relay = %#v, present=%t",
+			healthy,
+			ok,
+		)
+	}
+
+	dead, ok := got[deadActor]
+	if !ok ||
+		dead.HeartbeatState != storage.HeartbeatDead ||
+		dead.ActorState != storage.ReachabilityReachable ||
+		dead.LastSeenUnix == nil ||
+		!dead.Registered ||
+		dead.Discovered {
+		t.Fatalf(
+			"dead/reachable registered acceptance relay = %#v, present=%t",
+			dead,
+			ok,
+		)
+	}
+
+	discovered, ok := got[discoveredActor]
+	if !ok ||
+		discovered.HeartbeatState != storage.HeartbeatNotObserved ||
+		discovered.ActorState != storage.ReachabilityReachable ||
+		discovered.LastSeenUnix != nil ||
+		discovered.Registered ||
+		!discovered.Discovered {
+		t.Fatalf(
+			"discovered-only acceptance relay = %#v, present=%t",
+			discovered,
+			ok,
+		)
+	}
+
+	if _, ok := got[suspendedRegistered]; ok {
+		t.Fatal("suspended registered relay remained public")
+	}
+	if _, ok := got[suspendedDiscovered]; ok {
+		t.Fatal("suspended discovered relay remained public")
+	}
+}
+
 func TestDirectoryProjectionPaginatesByCanonicalActor(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)
