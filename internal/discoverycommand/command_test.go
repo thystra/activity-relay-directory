@@ -127,19 +127,23 @@ func TestPrepareDeduplicatesCanonicalActorsAndProbesInbox(t *testing.T) {
 	}
 	plan, err := prepareCandidates(context.Background(), []Candidate{
 		{Line: 1, URL: "https://one.example/"},
-		{Line: 2, URL: "https://one.example/inbox"},
-		{Line: 3, URL: "https://two.example/actor"},
-		{Line: 4, URL: "https://bad.example/not-relay"},
+		{Line: 2, URL: "https://one.example/actor"},
+		{Line: 3, URL: "https://one.example/inbox"},
+		{Line: 4, URL: "https://two.example/actor"},
+		{Line: 5, URL: "https://bad.example/not-relay"},
 	}, prober)
 	if err != nil {
 		t.Fatalf("prepareCandidates() error = %v", err)
 	}
-	if plan.CandidateCount != 4 || len(plan.Ready) != 2 || len(plan.Duplicates) != 1 || len(plan.Failed) != 1 {
+	if plan.CandidateCount != 5 || len(plan.Ready) != 2 || len(plan.Duplicates) != 2 || len(plan.Failed) != 1 {
 		t.Fatalf("plan = %#v", plan)
 	}
 	if plan.Ready[0].RelayActor != "https://one.example/actor" ||
 		plan.Ready[0].InboxProbeState != storage.InboxMethodRejected ||
-		plan.Duplicates[0].Line != 2 || plan.Failed[0].Code != "invalid_candidate" {
+		plan.Duplicates[0].Line != 2 ||
+		plan.Duplicates[1].Line != 3 ||
+		plan.Failed[0].Line != 5 ||
+		plan.Failed[0].Code != "invalid_candidate" {
 		t.Fatalf("plan details = %#v", plan)
 	}
 }

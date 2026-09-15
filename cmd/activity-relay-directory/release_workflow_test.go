@@ -64,7 +64,7 @@ func TestCanonicalReleaseWorkflowAcceptsRCAndStableVersions(t *testing.T) {
 
 	required := []string{
 		`[[ "$VERSION" =~ ^0\.1\.0-rc[1-9][0-9]*$ ]]`,
-		`[[ "$VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+$ ]]`,
+		`[[ "$VERSION" =~ ^[1-9][0-9]*\.[0-9]+\.[0-9]+(-rc[1-9][0-9]*)?$ ]]`,
 		`echo "unsupported release version: $VERSION" >&2`,
 	}
 	for _, marker := range required {

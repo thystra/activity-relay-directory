@@ -267,6 +267,47 @@ func TestResolverEnforcesResponseBoundary(t *testing.T) {
 	}
 }
 
+func TestResolverExplicitTimeoutAndTLSFailuresStayFailClosed(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		transportErr error
+	}{
+		{
+			name:         "timeout",
+			transportErr: context.DeadlineExceeded,
+		},
+		{
+			name:         "TLS failure",
+			transportErr: errors.New("tls handshake failed: sensitive tls detail"),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := newTestResolver(
+				t,
+				func(*http.Request) (*http.Response, error) {
+					return nil, test.transportErr
+				},
+			)
+
+			result, err := resolver.ProbeActor(
+				context.Background(),
+				testActorURL,
+			)
+			if result != (ActorProbeResult{}) ||
+				!errors.Is(err, ErrActorFetch) {
+				t.Fatalf(
+					"ProbeActor() = %#v, %v; want fail-closed ErrActorFetch",
+					result,
+					err,
+				)
+			}
+			if strings.Contains(err.Error(), "sensitive tls detail") {
+				t.Fatalf("resolver disclosed transport detail: %v", err)
+			}
+		})
+	}
+}
+
 func TestResolverRejectsAmbiguousActorDocuments(t *testing.T) {
 	validPEM, _ := loadTestPublicKey(t)
 	validKey := map[string]any{
@@ -282,6 +323,7 @@ func TestResolverRejectsAmbiguousActorDocuments(t *testing.T) {
 		body []byte
 		err  error
 	}{
+		{name: "invalid JSON", body: []byte(`{"id":`), err: ErrActorDocument},
 		{name: "non-object", body: []byte(`[]`), err: ErrActorDocument},
 		{name: "trailing value", body: append(append([]byte{}, testActorDocument(t, "Application", validKey)...), []byte(` {}`)...), err: ErrActorDocument},
 		{name: "duplicate member", body: []byte(`{"id":"https://relay.example/actor","id":"https://relay.example/actor","type":"Application","publicKey":{}}`), err: ErrActorDocument},

@@ -758,6 +758,16 @@ probe errors, or internal registration/discovery flags.
 
 ### Tranche 23: 1.1 acceptance and release gate
 
+Acceptance status: **PASS** on the reviewed 1.1 tree. The reproducible
+acceptance entry point is `scripts/acceptance-1.1.sh`; it exercises all twelve
+cases below, including exact v1.0.0/schema-7 migration identity and a real
+RFC 9421 signed lifecycle request persisted through the SQLite repository.
+
+The acceptance result does **not** authorize or imply canonical release bytes,
+package/container publication, deployment, activation, or production
+verification. Those remain separate release gates.
+
+
 Repository: Directory.
 
 Acceptance must exercise at least:

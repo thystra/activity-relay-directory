@@ -23,6 +23,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/config"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	"github.com/thystra/activity-relay-directory/internal/storage"
+	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
 
 const (
@@ -432,6 +433,198 @@ func TestLifecycleRegisterRouteAcceptsActivityRelayClientFixture(t *testing.T) {
 		repository.register.PublicBaseURL != lifecycleTestBase {
 		t.Fatalf("register intent = %#v", repository.register)
 	}
+	store := replayStore.(*allowingReplayStore)
+	store.mu.Lock()
+	replayCalls := store.calls
+	store.mu.Unlock()
+	if replayCalls != 1 {
+		t.Fatalf("replay reservations = %d, want 1", replayCalls)
+	}
+}
+
+func TestTranche23AcceptanceSignedLifecyclePersistsRFC9421Evidence(t *testing.T) {
+	fixtureBytes, err := os.ReadFile(filepath.Join(
+		"..",
+		"..",
+		"testdata",
+		"directory",
+		"v1",
+		"activity-relay-register.valid.json",
+	))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	var fixture struct {
+		Method         string `json:"method"`
+		Scheme         string `json:"scheme"`
+		Authority      string `json:"authority"`
+		Target         string `json:"target"`
+		ContentType    string `json:"content_type"`
+		ContentDigest  string `json:"content_digest"`
+		Date           string `json:"date"`
+		Body           string `json:"body"`
+		SignatureInput string `json:"signature_input"`
+		Signature      string `json:"signature"`
+		KeyID          string `json:"key_id"`
+		KeyOwner       string `json:"key_owner"`
+		KeyActor       string `json:"key_actor"`
+		PublicKeyPEM   string `json:"public_key_pem"`
+	}
+	if err := json.Unmarshal(fixtureBytes, &fixture); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+
+	fixtureNow, err := http.ParseTime(fixture.Date)
+	if err != nil {
+		t.Fatalf("parse fixture date: %v", err)
+	}
+
+	block, trailing := pem.Decode([]byte(fixture.PublicKeyPEM))
+	if block == nil || len(trailing) != 0 || block.Type != "PUBLIC KEY" {
+		t.Fatal("fixture key is not one public-key block")
+	}
+
+	parsed, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse fixture key: %v", err)
+	}
+	publicKey, ok := parsed.(*rsa.PublicKey)
+	if !ok {
+		t.Fatalf("fixture key type = %T", parsed)
+	}
+
+	resolver := v1.RFC9421KeyResolverFunc(func(
+		context.Context,
+		string,
+	) (v1.RFC9421ResolvedKey, error) {
+		return v1.RFC9421ResolvedKey{
+			KeyID:     fixture.KeyID,
+			Owner:     fixture.KeyOwner,
+			ActorID:   fixture.KeyActor,
+			PublicKey: publicKey,
+		}, nil
+	})
+
+	verifier, err := v1.NewRFC9421Verifier(v1.RFC9421VerifierOptions{
+		Authority:   fixture.Authority,
+		KeyResolver: resolver,
+		Now:         func() time.Time { return fixtureNow },
+	})
+	if err != nil {
+		t.Fatalf("NewRFC9421Verifier() error = %v", err)
+	}
+
+	ctx := context.Background()
+	databasePath := filepath.Join(t.TempDir(), "directory.sqlite")
+
+	database, err := storageSQLite.Open(ctx, databasePath)
+	if err != nil {
+		t.Fatalf("sqlite.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	if err := storageSQLite.Migrate(ctx, database); err != nil {
+		t.Fatalf("sqlite.Migrate() error = %v", err)
+	}
+
+	repository, err := storageSQLite.NewRelayRepository(
+		database,
+		storage.AllowWrites,
+	)
+	if err != nil {
+		t.Fatalf("NewRelayRepository() error = %v", err)
+	}
+
+	if _, err := repository.SetEnrollment(
+		ctx,
+		true,
+		storage.EnrollmentIntent{OperatorID: "tranche23"},
+		lifecycleTestNow.Add(-time.Second),
+	); err != nil {
+		t.Fatalf("SetEnrollment(open) error = %v", err)
+	}
+
+	before, present, err := repository.GetObservation(
+		ctx,
+		storage.IdentityIntent{RelayActor: lifecycleTestActor},
+	)
+	if err != nil {
+		t.Fatalf("GetObservation(before) error = %v", err)
+	}
+	if present || before.RFC9421VerifiedUnix != nil {
+		t.Fatalf(
+			"pre-request RFC 9421 evidence = %#v, present=%t",
+			before,
+			present,
+		)
+	}
+
+	handler, replayStore := lifecycleTestHTTPHandler(
+		t,
+		verifier,
+		repository,
+		generousLifecycleLimiter(t),
+		4096,
+	)
+
+	request, err := http.NewRequest(
+		fixture.Method,
+		fixture.Scheme+"://"+fixture.Authority+fixture.Target,
+		bytes.NewBufferString(fixture.Body),
+	)
+	if err != nil {
+		t.Fatalf("create fixture request: %v", err)
+	}
+
+	request.Host = fixture.Authority
+	request.RemoteAddr = "192.0.2.1:1234"
+	request.Header.Set("Content-Type", fixture.ContentType)
+	request.Header.Set("Content-Digest", fixture.ContentDigest)
+	request.Header.Set("Date", fixture.Date)
+	request.Header.Set("Signature-Input", fixture.SignatureInput)
+	request.Header.Set("Signature", fixture.Signature)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf(
+			"signed register status = %d, body = %q",
+			response.Code,
+			response.Body.String(),
+		)
+	}
+
+	after, present, err := repository.GetObservation(
+		ctx,
+		storage.IdentityIntent{RelayActor: lifecycleTestActor},
+	)
+	if err != nil {
+		t.Fatalf("GetObservation(after) error = %v", err)
+	}
+	if !present ||
+		after.RFC9421VerifiedUnix == nil ||
+		*after.RFC9421VerifiedUnix != lifecycleTestNow.Unix() {
+		t.Fatalf(
+			"post-request RFC 9421 evidence = %#v, present=%t; want verified=%d",
+			after,
+			present,
+			lifecycleTestNow.Unix(),
+		)
+	}
+
+	// A signed lifecycle request is positive authentication evidence, not an
+	// actor reachability probe.
+	if after.ActorState != storage.ReachabilityUnknown ||
+		after.ActorLastCheckedUnix != nil ||
+		after.ActorLastSuccessUnix != nil {
+		t.Fatalf(
+			"signed lifecycle request fabricated reachability = %#v",
+			after,
+		)
+	}
+
 	store := replayStore.(*allowingReplayStore)
 	store.mu.Lock()
 	replayCalls := store.calls
