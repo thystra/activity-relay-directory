@@ -8,11 +8,12 @@ their interaction with the existing version 1 lifecycle contract.
 
 Schema version 8 persistence, the local operator discovery/import surface, the
 default-off bounded background reachability worker, and the richer public 1.1
-Directory projection are implemented on the 1.1 development line. See
-`docs/REACHABILITY.md` for worker scheduling/soft-pruning interaction and
-`docs/PUBLIC-LISTING.md` for the public projection contract. The released
+Directory projection are implemented and source-accepted for the 1.1 release
+line. See `docs/REACHABILITY.md` for worker scheduling/soft-pruning interaction
+and `docs/PUBLIC-LISTING.md` for the public projection contract. The released
 1.0.0 lifecycle and `/v1/relays` representation remain compatibility
-authorities until 1.1 is accepted and released.
+authorities in 1.1; the richer projection is additive rather than a
+reinterpretation of version 1.
 
 The motivating interoperability case is a relay that successfully registered
 and heartbeated but later stopped sending Directory heartbeats while its public

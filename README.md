@@ -5,12 +5,13 @@ discovering public Activity-Relay instances.
 
 ## Current state
 
-Activity-Relay Directory 1.0 provides a stable service implementation with:
+Activity-Relay Directory 1.1.0-rc1 extends the stable 1.0 service
+implementation with:
 
 - `GET /healthz`
 - `GET /readyz`
 - `GET /v1/status`
-- default-off compatibility `GET /v1/relays` JSON listing plus the 1.1-development
+- default-off compatibility `GET /v1/relays` JSON listing plus the 1.1 release-candidate
   `GET /v2/relays` evidence projection and `GET /` human-readable view
 - strict configuration validation
 - lifecycle routes disabled by default and enrollment independently closed by default
@@ -41,12 +42,12 @@ Activity-Relay Directory 1.0 provides a stable service implementation with:
 - local audited `admin enrollment status|open|close` policy commands
 - local `admin suspend|restore|show|audit` moderation commands with bounded
   private audit pagination
-- 1.1-development local `admin discovery add|remove|import` commands with
+- 1.1 release-candidate local `admin discovery add|remove|import` commands with
   SSRF-resistant actor verification, bounded file import, private provenance, and
   non-mutating inbox diagnostics
 - default-off bounded background actor reachability maintenance with fixed
   hourly cadence, fair oldest-check-first scheduling, and pruning safeguards
-- 1.1-development bounded `/v2/relays` projection and human cards that keep
+- 1.1 release-candidate bounded `/v2/relays` projection and human cards that keep
   heartbeat, reachability, inbox diagnostics, and positive RFC 9421 evidence
   independent while preserving `/v1/relays` compatibility
 - local read-only `admin pruning dry-run` candidate inspection
@@ -159,7 +160,7 @@ Audit output contains private moderator and reason tokens. Protect command
 output as carefully as the database. The CLI does not create a preemptive
 blocklist and does not add a remote administrative endpoint.
 
-The 1.1 development line also supports local operator discovery without
+The 1.1 release-candidate line also supports local operator discovery without
 fabricating lifecycle participation. A single candidate may be a base URL,
 `/actor`, or `/inbox` hint; ARD independently validates the canonical `/actor`
 through the production SSRF-resistant resolver before storing an active
@@ -220,7 +221,7 @@ server time, processes at most 1,000 candidates in indexed pages of at most 100,
 the transition transaction, preserves suspension and all audit history, and
 performs no hard deletion. No public HTTP request can start maintenance.
 
-The 1.1 development public projection is `GET /v2/relays`. It is gated by
+The 1.1 release-candidate public projection is `GET /v2/relays`. It is gated by
 the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` switch as `/v1/relays`
 and `/`, but it does not replace or reinterpret the version 1 JSON contract. A
 v2 entry exposes canonical actor/base identity, heartbeat state and optional

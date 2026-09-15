@@ -46,8 +46,8 @@ observation time so stable data does not change health classification or the
 
 ## `/v2/relays` 1.1 evidence projection
 
-`/v2/relays` is the richer public projection introduced by the 1.1 development
-line. Each relay object contains only reviewed public evidence:
+`/v2/relays` is the richer public projection introduced in 1.1. Each relay
+object contains only reviewed public evidence:
 
 - canonical `relay_actor` and `public_base_url`;
 - `heartbeat.state` plus authenticated `last_seen_at`, or `not_observed` and
