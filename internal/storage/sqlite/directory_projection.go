@@ -24,14 +24,25 @@ FROM relay_discoveries
 WHERE relay_actor > ?
 ORDER BY relay_actor
 LIMIT ?`
+
+	directoryRelayPreviousCandidateSQL = `SELECT relay_actor
+FROM relays
+WHERE relay_actor < ?
+ORDER BY relay_actor DESC
+LIMIT ?`
+
+	directoryDiscoveryPreviousCandidateSQL = `SELECT relay_actor
+FROM relay_discoveries
+WHERE relay_actor < ?
+ORDER BY relay_actor DESC
+LIMIT ?`
 )
 
 // ListDirectoryRelays returns one bounded actor-ordered page for the richer
-// public 1.1 projection. Candidate identity reads use each table's primary-key
-// order without scanning by mutable state. At most MaximumDirectoryProjectionScan
-// retained actors are then joined by primary key and evaluated in memory. This
-// keeps sparse/inactive datasets bounded while allowing a cursor to advance
-// across actors that are not currently public.
+// public 1.1 projection. After and Before are mutually exclusive canonical
+// actor keysets. Forward and reverse reads both inspect at most
+// MaximumDirectoryProjectionScan retained actors, while returned relays are
+// always in ascending canonical-actor order.
 func (repository *RelayRepository) ListDirectoryRelays(
 	ctx context.Context,
 	query storage.DirectoryProjectionQuery,
@@ -39,7 +50,9 @@ func (repository *RelayRepository) ListDirectoryRelays(
 	if repository == nil || repository.database == nil || ctx == nil {
 		return storage.DirectoryProjectionPage{}, storage.ErrRepositoryConfiguration
 	}
-	if !query.After.Valid() || query.Limit <= 0 || query.Limit > storage.MaximumDirectoryProjectionPage {
+	if !query.After.Valid() || !query.Before.Valid() ||
+		(query.After != (storage.DirectoryProjectionCursor{}) && query.Before != (storage.DirectoryProjectionCursor{})) ||
+		query.Limit <= 0 || query.Limit > storage.MaximumDirectoryProjectionPage {
 		return storage.DirectoryProjectionPage{}, storage.ErrDirectoryProjectionInput
 	}
 	observedUnix := query.ObservedAt.UTC().Unix()
@@ -47,6 +60,17 @@ func (repository *RelayRepository) ListDirectoryRelays(
 		return storage.DirectoryProjectionPage{}, storage.ErrDirectoryProjectionInput
 	}
 
+	if query.Before != (storage.DirectoryProjectionCursor{}) {
+		return repository.listDirectoryRelaysBefore(ctx, query, observedUnix)
+	}
+	return repository.listDirectoryRelaysAfter(ctx, query, observedUnix)
+}
+
+func (repository *RelayRepository) listDirectoryRelaysAfter(
+	ctx context.Context,
+	query storage.DirectoryProjectionQuery,
+	observedUnix int64,
+) (storage.DirectoryProjectionPage, error) {
 	readLimit := storage.MaximumDirectoryProjectionScan + 1
 	relayActors, err := readDirectoryCandidateActors(
 		ctx, repository.database, directoryRelayCandidateSQL, query.After.RelayActor, readLimit,
@@ -65,10 +89,7 @@ func (repository *RelayRepository) ListDirectoryRelays(
 		return storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}, nil
 	}
 
-	scanCount := len(candidates)
-	if scanCount > storage.MaximumDirectoryProjectionScan {
-		scanCount = storage.MaximumDirectoryProjectionScan
-	}
+	scanCount := minInt(len(candidates), storage.MaximumDirectoryProjectionScan)
 	details, err := repository.readDirectoryProjectionDetails(ctx, candidates[:scanCount], observedUnix)
 	if err != nil {
 		return storage.DirectoryProjectionPage{}, err
@@ -77,6 +98,10 @@ func (repository *RelayRepository) ListDirectoryRelays(
 	page := storage.DirectoryProjectionPage{
 		Relays: make([]storage.DirectoryProjectionRelay, 0, query.Limit),
 	}
+	if query.After != (storage.DirectoryProjectionCursor{}) {
+		page.Previous = storage.DirectoryProjectionCursor{RelayActor: candidates[0]}
+	}
+
 	lastProcessed := ""
 	for index, actor := range candidates[:scanCount] {
 		lastProcessed = actor
@@ -111,14 +136,83 @@ func (repository *RelayRepository) ListDirectoryRelays(
 	return page, nil
 }
 
+func (repository *RelayRepository) listDirectoryRelaysBefore(
+	ctx context.Context,
+	query storage.DirectoryProjectionQuery,
+	observedUnix int64,
+) (storage.DirectoryProjectionPage, error) {
+	readLimit := storage.MaximumDirectoryProjectionScan + 1
+	relayActors, err := readDirectoryCandidateActors(
+		ctx, repository.database, directoryRelayPreviousCandidateSQL, query.Before.RelayActor, readLimit,
+	)
+	if err != nil {
+		return storage.DirectoryProjectionPage{}, err
+	}
+	discoveryActors, err := readDirectoryCandidateActors(
+		ctx, repository.database, directoryDiscoveryPreviousCandidateSQL, query.Before.RelayActor, readLimit,
+	)
+	if err != nil {
+		return storage.DirectoryProjectionPage{}, err
+	}
+	candidates := mergeDirectoryActorsDescending(relayActors, discoveryActors, readLimit)
+	if len(candidates) == 0 {
+		return storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}, nil
+	}
+
+	scanCount := minInt(len(candidates), storage.MaximumDirectoryProjectionScan)
+	details, err := repository.readDirectoryProjectionDetails(ctx, candidates[:scanCount], observedUnix)
+	if err != nil {
+		return storage.DirectoryProjectionPage{}, err
+	}
+
+	page := storage.DirectoryProjectionPage{
+		Relays: make([]storage.DirectoryProjectionRelay, 0, query.Limit),
+		Next:   storage.DirectoryProjectionCursor{RelayActor: candidates[0]},
+	}
+	lastProcessed := ""
+	for index, actor := range candidates[:scanCount] {
+		lastProcessed = actor
+		relay, exists := details[actor]
+		if !exists {
+			return storage.DirectoryProjectionPage{}, storageFailure(
+				"validate public directory projection",
+				errors.New("retained directory candidate disappeared"),
+			)
+		}
+		if relay == nil {
+			continue
+		}
+		if err := storage.ValidateDirectoryProjectionEvidence(*relay, observedUnix); err != nil {
+			return storage.DirectoryProjectionPage{}, storageFailure("validate public directory projection", err)
+		}
+		if !relay.PublicEligible(observedUnix) {
+			continue
+		}
+		page.Relays = append(page.Relays, *relay)
+		if len(page.Relays) == query.Limit {
+			if index+1 < scanCount || len(candidates) > scanCount {
+				page.Previous = storage.DirectoryProjectionCursor{RelayActor: lastProcessed}
+			}
+			reverseDirectoryRelays(page.Relays)
+			return page, nil
+		}
+	}
+
+	if len(candidates) > scanCount {
+		page.Previous = storage.DirectoryProjectionCursor{RelayActor: lastProcessed}
+	}
+	reverseDirectoryRelays(page.Relays)
+	return page, nil
+}
+
 func readDirectoryCandidateActors(
 	ctx context.Context,
 	database *sql.DB,
 	statement string,
-	after string,
+	boundary string,
 	limit int,
 ) ([]string, error) {
-	rows, err := database.QueryContext(ctx, statement, after, limit)
+	rows, err := database.QueryContext(ctx, statement, boundary, limit)
 	if err != nil {
 		return nil, storageFailure("read public directory candidates", err)
 	}
@@ -170,6 +264,39 @@ func mergeDirectoryActors(left, right []string, limit int) []string {
 		merged = append(merged, actor)
 	}
 	return merged
+}
+
+func mergeDirectoryActorsDescending(left, right []string, limit int) []string {
+	merged := make([]string, 0, minInt(limit, len(left)+len(right)))
+	for leftIndex, rightIndex := 0, 0; len(merged) < limit && (leftIndex < len(left) || rightIndex < len(right)); {
+		var actor string
+		switch {
+		case rightIndex >= len(right):
+			actor = left[leftIndex]
+			leftIndex++
+		case leftIndex >= len(left):
+			actor = right[rightIndex]
+			rightIndex++
+		case left[leftIndex] > right[rightIndex]:
+			actor = left[leftIndex]
+			leftIndex++
+		case right[rightIndex] > left[leftIndex]:
+			actor = right[rightIndex]
+			rightIndex++
+		default:
+			actor = left[leftIndex]
+			leftIndex++
+			rightIndex++
+		}
+		merged = append(merged, actor)
+	}
+	return merged
+}
+
+func reverseDirectoryRelays(relays []storage.DirectoryProjectionRelay) {
+	for left, right := 0, len(relays)-1; left < right; left, right = left+1, right-1 {
+		relays[left], relays[right] = relays[right], relays[left]
+	}
 }
 
 func (repository *RelayRepository) readDirectoryProjectionDetails(

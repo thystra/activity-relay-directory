@@ -43,7 +43,7 @@
       </dl>
     </section>
 
-    <section class="panel directory-panel" aria-labelledby="relay-list-heading">
+    <section id="relay-list" class="panel directory-panel" aria-labelledby="relay-list-heading">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Directory</p>
@@ -109,15 +109,15 @@
       </div>
 {{else}}
       <div class="empty-state">
-{{if .NextURL}}        <p class="empty-title">No public relays on this page</p>
-        <p>This page contains no relays to show right now. Continue to the next page to keep browsing.</p>
+{{if or .PreviousURL .NextURL}}        <p class="empty-title">No public relays on this page</p>
+        <p>This page contains no relays to show right now. Use the page controls to keep browsing.</p>
 {{else}}        <p class="empty-title">No relays are listed yet</p>
         <p>Relay instances will appear here after they join the directory or are added by the directory operator.</p>
 {{end}}      </div>
 {{end}}
 
       <nav class="pagination" aria-label="Directory pages">
-        {{if .NextURL}}<a class="button-link pagination-next" rel="next" href="{{.NextURL}}">Next page</a>{{else}}<span class="muted pagination-next">End of directory</span>{{end}}
+        {{if .PreviousURL}}<a class="button-link pagination-previous" rel="prev" href="{{.PreviousURL}}">Previous page</a>{{end}}{{if .NextURL}}<a class="button-link pagination-next" rel="next" href="{{.NextURL}}">Next page</a>{{else}}<span class="muted pagination-next">End of directory</span>{{end}}
       </nav>
     </section>
   </main>

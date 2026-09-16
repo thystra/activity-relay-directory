@@ -29,6 +29,7 @@ var (
 
 type humanDirectoryPage struct {
 	Listing             directoryProjectionResponse
+	PreviousURL         string
 	NextURL             string
 	Stylesheet          string
 	HasOperator         bool
@@ -125,7 +126,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
-	listing, failure := handler.loadDirectoryProjection(request)
+	listing, failure := handler.loadHumanDirectoryProjection(request)
 	if failure != nil {
 		if failure.retryAfter != "" {
 			response.Header().Set("Retry-After", failure.retryAfter)
@@ -134,13 +135,8 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
-	nextURL := ""
-	if listing.Pagination.NextCursor != "" {
-		values := url.Values{}
-		values.Set("limit", strconv.Itoa(listing.Pagination.Limit))
-		values.Set("cursor", listing.Pagination.NextCursor)
-		nextURL = "/?" + values.Encode()
-	}
+	previousURL := humanDirectoryPaginationURL("before", listing.Pagination.PreviousCursor, listing.Pagination.Limit)
+	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit)
 
 	operator := handler.operator
 	operatorEmailURL := ""
@@ -150,6 +146,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
 		Listing:             listing,
+		PreviousURL:         previousURL,
 		NextURL:             nextURL,
 		Stylesheet:          directoryStylesheetPath,
 		HasOperator:         !operator.Empty(),
@@ -168,6 +165,16 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	response.Header().Set("Content-Security-Policy", humanDirectoryCSP)
 	writeCacheablePublicRepresentation(response, request, humanDirectoryContentType, body)
+}
+
+func humanDirectoryPaginationURL(parameter, cursor string, limit int) string {
+	if cursor == "" {
+		return ""
+	}
+	values := url.Values{}
+	values.Set("limit", strconv.Itoa(limit))
+	values.Set(parameter, cursor)
+	return "/?" + values.Encode() + "#relay-list"
 }
 
 func humanDirectoryFailureMessage(failure *publicListingFailure) string {

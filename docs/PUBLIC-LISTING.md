@@ -108,10 +108,12 @@ an actor whose eligibility changes behind an already-consumed cursor may not
 appear until a client starts a new walk from the first page.
 
 HTTP presentation revalidates canonical identities, evidence relationships,
-strict actor ordering, page bounds, and forward-only repository cursors before
-serialization. Malformed, noncanonical, oversized, expired, future-time,
-foreign-process, duplicate, tampered, cross-version, or otherwise invalid
-pagination fails with a fixed redacted error.
+strict actor ordering, page bounds, and direction-appropriate repository
+keysets before serialization. `/v2/relays` remains forward-only; reverse
+keysets are used only by the human directory's **Previous page** control.
+Malformed, noncanonical, oversized, expired, future-time, foreign-process,
+duplicate, tampered, cross-version, or otherwise invalid pagination fails with
+a fixed redacted error.
 
 ## HTTP caching and admission
 
@@ -130,15 +132,24 @@ inherited from the common HTTP wrapper and there is no CORS write surface.
 
 `GET`/`HEAD` `/` renders the **v2** bounded projection through Go
 `html/template`; it does not have a second repository query or eligibility rule.
-Its pagination therefore uses the same v2 actor-keyset cursor, current-per-page
-evidence evaluation, page-size bounds, and five-minute walk lifetime. A cursor
-issued by `/v2/relays` is accepted by `/` and vice versa; neither is accepted by
-`/v1/relays`.
+Its pagination uses the same signed v2 actor-keyset token format,
+current-per-page evidence evaluation, page-size bounds, and five-minute walk
+lifetime. Forward links use the existing `cursor` query parameter. The human
+page additionally accepts a `before` query parameter for bounded reverse
+traversal; `/v2/relays` remains forward-only and rejects `before`. Both
+directions preserve the cursor's original issue time, so moving backward does
+not restart the five-minute walk lifetime. A signed cursor token issued by
+`/v2/relays` is accepted by `/` and vice versa; neither token format is accepted
+by `/v1/relays`.
 
-Relay cards show visible heartbeat and reachability badges plus actor, heartbeat
-observation time, actor check/success times, declared inbox and its diagnostic,
-and RFC 9421 positive-evidence state. A bounded page containing no public rows
-but a continuation cursor is presented as an empty **page**, not as an empty
+The human page uses compact responsive relay rows. Each row shows the relay,
+heartbeat, reachability, last heartbeat, and last reachability check. Expanding
+a row shows the actor, inbox, and last successful check. Inbox probe diagnostics
+and RFC 9421 verification details remain part of the v2 JSON projection but are
+intentionally omitted from the human directory.
+
+A bounded page containing no public rows but at least one previous/next
+continuation cursor is presented as an empty **page**, not as an empty
 directory.
 
 Go templates provide automatic HTML escaping. Relay public base URLs are the
