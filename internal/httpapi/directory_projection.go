@@ -40,8 +40,19 @@ func (handler *PublicListingHandler) serveDirectoryProjection(response http.Resp
 }
 
 func (handler *PublicListingHandler) loadDirectoryProjection(request *http.Request) (directoryProjectionResponse, *publicListingFailure) {
+	return handler.loadDirectoryProjectionWithParser(request, handler.parseDirectoryProjectionQuery)
+}
+
+func (handler *PublicListingHandler) loadHumanDirectoryProjection(request *http.Request) (directoryProjectionResponse, *publicListingFailure) {
+	return handler.loadDirectoryProjectionWithParser(request, handler.parseHumanDirectoryProjectionQuery)
+}
+
+func (handler *PublicListingHandler) loadDirectoryProjectionWithParser(
+	request *http.Request,
+	parse func(string, time.Time) (directoryProjectionQuery, error),
+) (directoryProjectionResponse, *publicListingFailure) {
 	if handler == nil || handler.directoryRepository == nil || handler.now == nil || handler.semaphore == nil ||
-		len(handler.cursorKey) != publicListingCursorKeySize {
+		len(handler.cursorKey) != publicListingCursorKeySize || parse == nil {
 		return directoryProjectionResponse{}, &publicListingFailure{
 			status:  http.StatusServiceUnavailable,
 			code:    "temporarily_unavailable",
@@ -61,7 +72,7 @@ func (handler *PublicListingHandler) loadDirectoryProjection(request *http.Reque
 		}
 	}
 
-	parsed, err := handler.parseDirectoryProjectionQuery(request.URL.RawQuery, handler.now())
+	parsed, err := parse(request.URL.RawQuery, handler.now())
 	if err != nil {
 		return directoryProjectionResponse{}, &publicListingFailure{
 			status:  http.StatusBadRequest,
@@ -74,6 +85,7 @@ func (handler *PublicListingHandler) loadDirectoryProjection(request *http.Reque
 	defer cancel()
 	page, err := handler.directoryRepository.ListDirectoryRelays(ctx, storage.DirectoryProjectionQuery{
 		After:      parsed.after,
+		Before:     parsed.before,
 		Limit:      parsed.limit,
 		ObservedAt: parsed.observedAt,
 	})
@@ -98,19 +110,41 @@ func (handler *PublicListingHandler) loadDirectoryProjection(request *http.Reque
 		},
 	}
 	observedUnix := parsed.observedAt.Unix()
-	previousActor := parsed.after.RelayActor
+	previousActor := ""
 	for _, relay := range page.Relays {
 		if err := storage.ValidateDirectoryProjectionRelay(relay, observedUnix); err != nil ||
-			(previousActor != "" && relay.RelayActor <= previousActor) {
+			(previousActor != "" && relay.RelayActor <= previousActor) ||
+			(parsed.after.RelayActor != "" && relay.RelayActor <= parsed.after.RelayActor) ||
+			(parsed.before.RelayActor != "" && relay.RelayActor >= parsed.before.RelayActor) {
 			return directoryProjectionResponse{}, directoryProjectionUnavailable()
 		}
 		previousActor = relay.RelayActor
 		result.Relays = append(result.Relays, presentDirectoryProjectionRelay(relay))
 	}
+
+	if page.Previous != (storage.DirectoryProjectionCursor{}) {
+		if !page.Previous.Valid() ||
+			(parsed.after.RelayActor != "" && page.Previous.RelayActor <= parsed.after.RelayActor) ||
+			(parsed.before.RelayActor != "" && page.Previous.RelayActor >= parsed.before.RelayActor) ||
+			(len(page.Relays) != 0 && page.Previous.RelayActor > page.Relays[0].RelayActor) {
+			return directoryProjectionResponse{}, directoryProjectionUnavailable()
+		}
+		cursor, err := handler.encodeDirectoryProjectionCursor(directoryProjectionCursor{
+			Version:    directoryProjectionCursorVersion,
+			IssuedUnix: parsed.cursorIssuedUnix,
+			RelayActor: page.Previous.RelayActor,
+		})
+		if err != nil {
+			return directoryProjectionResponse{}, directoryProjectionUnavailable()
+		}
+		result.Pagination.PreviousCursor = cursor
+	}
+
 	if page.Next != (storage.DirectoryProjectionCursor{}) {
 		if !page.Next.Valid() ||
 			(parsed.after.RelayActor != "" && page.Next.RelayActor <= parsed.after.RelayActor) ||
-			(previousActor != "" && page.Next.RelayActor < previousActor) {
+			(parsed.before.RelayActor != "" && page.Next.RelayActor >= parsed.before.RelayActor) ||
+			(len(page.Relays) != 0 && page.Next.RelayActor < page.Relays[len(page.Relays)-1].RelayActor) {
 			return directoryProjectionResponse{}, directoryProjectionUnavailable()
 		}
 		cursor, err := handler.encodeDirectoryProjectionCursor(directoryProjectionCursor{
@@ -141,6 +175,7 @@ func directoryProjectionUnavailable() *publicListingFailure {
 type directoryProjectionQuery struct {
 	limit            int
 	after            storage.DirectoryProjectionCursor
+	before           storage.DirectoryProjectionCursor
 	observedAt       time.Time
 	cursorIssuedUnix int64
 	currentCursor    string
@@ -217,9 +252,10 @@ func (inbox directoryProjectionInbox) DisplayState() string {
 }
 
 type directoryProjectionPagination struct {
-	Limit         int    `json:"limit"`
-	NextCursor    string `json:"next_cursor"`
-	CurrentCursor string `json:"-"`
+	Limit          int    `json:"limit"`
+	NextCursor     string `json:"next_cursor"`
+	CurrentCursor  string `json:"-"`
+	PreviousCursor string `json:"-"`
 }
 
 type directoryProjectionErrorEnvelope struct {
@@ -274,12 +310,30 @@ func formatProjectionUnix(value *int64) *string {
 }
 
 func (handler *PublicListingHandler) parseDirectoryProjectionQuery(rawQuery string, now time.Time) (directoryProjectionQuery, error) {
+	return handler.parseDirectoryProjectionQueryMode(rawQuery, now, false)
+}
+
+func (handler *PublicListingHandler) parseHumanDirectoryProjectionQuery(rawQuery string, now time.Time) (directoryProjectionQuery, error) {
+	return handler.parseDirectoryProjectionQueryMode(rawQuery, now, true)
+}
+
+func (handler *PublicListingHandler) parseDirectoryProjectionQueryMode(
+	rawQuery string,
+	now time.Time,
+	allowBefore bool,
+) (directoryProjectionQuery, error) {
 	values, err := url.ParseQuery(rawQuery)
 	if err != nil {
 		return directoryProjectionQuery{}, err
 	}
 	for key, entries := range values {
-		if (key != "limit" && key != "cursor") || len(entries) != 1 {
+		allowed := key == "limit" || key == "cursor" || (allowBefore && key == "before")
+		if !allowed || len(entries) != 1 {
+			return directoryProjectionQuery{}, errors.New("invalid directory projection query")
+		}
+	}
+	if _, hasCursor := values["cursor"]; hasCursor {
+		if _, hasBefore := values["before"]; hasBefore {
 			return directoryProjectionQuery{}, errors.New("invalid directory projection query")
 		}
 	}
@@ -300,6 +354,7 @@ func (handler *PublicListingHandler) parseDirectoryProjectionQuery(rawQuery stri
 	}
 	result.observedAt = current
 	result.cursorIssuedUnix = current.Unix()
+
 	if entries, exists := values["cursor"]; exists {
 		cursor, err := handler.decodeDirectoryProjectionCursor(entries[0])
 		if err != nil || cursor.IssuedUnix > current.Unix() ||
@@ -309,6 +364,15 @@ func (handler *PublicListingHandler) parseDirectoryProjectionQuery(rawQuery stri
 		result.cursorIssuedUnix = cursor.IssuedUnix
 		result.currentCursor = entries[0]
 		result.after = storage.DirectoryProjectionCursor{RelayActor: cursor.RelayActor}
+	}
+	if entries, exists := values["before"]; exists {
+		cursor, err := handler.decodeDirectoryProjectionCursor(entries[0])
+		if err != nil || cursor.IssuedUnix > current.Unix() ||
+			current.Unix()-cursor.IssuedUnix > int64(publicListingCursorMaxAge/time.Second) {
+			return directoryProjectionQuery{}, errors.New("invalid directory projection cursor")
+		}
+		result.cursorIssuedUnix = cursor.IssuedUnix
+		result.before = storage.DirectoryProjectionCursor{RelayActor: cursor.RelayActor}
 	}
 	return result, nil
 }

@@ -21,97 +21,97 @@
     <section class="hero" aria-labelledby="page-title">
       <p class="eyebrow">ActivityPub infrastructure</p>
       <h1 id="page-title">Public relay directory</h1>
-      <p class="lede">Discover relay instances currently eligible through authenticated Directory activity or independently observed ActivityPub reachability.</p>
+      <p class="lede">Find participating relays and see whether they are still sending heartbeats and reachable on the network.</p>
     </section>
 
-    <section class="panel directory-panel" aria-labelledby="relay-list-heading">
+    <section class="status-help panel" aria-labelledby="status-heading">
+      <div class="section-heading">
+        <div>
+          <h2 id="status-heading">What the statuses mean</h2>
+          <p class="muted">Heartbeat and reachability tell you different things about a relay.</p>
+        </div>
+      </div>
+      <dl class="status-grid">
+        <div class="status-definition">
+          <dt>Heartbeat</dt>
+          <dd><strong>Healthy</strong> means the relay sent a recent heartbeat. <strong>Stale</strong> or <strong>Dead</strong> means that heartbeat is getting old, even if the relay is still reachable.</dd>
+        </div>
+        <div class="status-definition">
+          <dt>Reachability</dt>
+          <dd><strong>Reachable</strong> means the directory could recently connect to the relay's public actor. <strong>Unreachable</strong> means the latest check failed. <strong>Not checked</strong> means there is no recent check to show.</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section id="relay-list" class="panel directory-panel" aria-labelledby="relay-list-heading">
       <div class="section-heading">
         <div>
           <p class="eyebrow">Directory</p>
           <h2 id="relay-list-heading">Participating relays</h2>
-          <p class="muted">1 public relay on this page.</p>
+          <p class="muted">1 public relay on this page. Click on a relay's line for details.</p>
         </div>
       </div>
 
 
-      <ul class="relay-list">
+      <div class="relay-table" aria-label="Participating relays">
+        <div class="relay-table-header" aria-hidden="true">
+          <span>Relay</span>
+          <span>Heartbeat</span>
+          <span>Reachability</span>
+          <span>Last heartbeat</span>
+          <span>Last checked</span>
+        </div>
+        <ul class="relay-rows">
 
-        <li>
-          <article class="relay-card">
-            <div class="relay-card-heading">
-              <h3><a href="https://relay.example" rel="noreferrer">https://relay.example</a></h3>
-              <div class="signal-badges" aria-label="Current evidence summary">
-                <span class="signal-badge heartbeat-healthy">Heartbeat: healthy</span>
-                <span class="signal-badge reachability-reachable">Reachability: reachable</span>
+          <li>
+            <details class="relay-row">
+              <summary class="relay-summary">
+                <span class="relay-name">
+                  <a href="https://relay.example" rel="noreferrer">relay.example</a>
+                </span>
+                <span class="relay-cell relay-heartbeat">
+                  <span class="cell-label">Heartbeat</span>
+                  <span class="signal-badge heartbeat-healthy">Healthy</span>
+                </span>
+                <span class="relay-cell relay-reachability">
+                  <span class="cell-label">Reachability</span>
+                  <span class="signal-badge reachability-reachable">Reachable</span>
+                </span>
+                <span class="relay-cell relay-time">
+                  <span class="cell-label">Last heartbeat</span>
+                  <time datetime="1970-01-02T03:46:40Z">1970-01-02 03:46 UTC</time>
+                </span>
+                <span class="relay-cell relay-time">
+                  <span class="cell-label">Last checked</span>
+                  <time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time>
+                </span>
+              </summary>
+              <div class="relay-details">
+                <dl>
+                  <div>
+                    <dt>Actor</dt>
+                    <dd><code>https://relay.example/a&amp;b</code></dd>
+                  </div>
+                  <div>
+                    <dt>Inbox</dt>
+                    <dd><code>https://relay.example/inbox/a&amp;b</code></dd>
+                  </div>
+                  <div>
+                    <dt>Last successful check</dt>
+                    <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time></dd>
+                  </div>
+                </dl>
               </div>
-            </div>
-            <dl class="relay-meta">
-              <div>
-                <dt>Actor</dt>
-                <dd><code>https://relay.example/a&amp;b</code></dd>
-              </div>
-              <div>
-                <dt>Last authenticated Directory observation</dt>
-                <dd><time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
-              </div>
-              <div>
-                <dt>Actor last checked</dt>
-                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
-              </div>
-              <div>
-                <dt>Actor last successful check</dt>
-                <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
-              </div>
-              <div>
-                <dt>Declared inbox</dt>
-                <dd><code>https://relay.example/inbox/a&amp;b</code> · declared <time datetime="1970-01-02T03:47:20Z">1970-01-02T03:47:20Z</time></dd>
-              </div>
-              <div>
-                <dt>Inbox diagnostic</dt>
-                <dd>method rejected · checked <time datetime="1970-01-02T03:47:30Z">1970-01-02T03:47:30Z</time></dd>
-              </div>
-              <div>
-                <dt>RFC 9421</dt>
-                <dd>verified · evidence recorded <time datetime="1970-01-02T03:46:40Z">1970-01-02T03:46:40Z</time></dd>
-              </div>
-            </dl>
-          </article>
-        </li>
+            </details>
+          </li>
 
-      </ul>
+        </ul>
+      </div>
 
 
       <nav class="pagination" aria-label="Directory pages">
-        <span class="muted">End of directory</span>
+        <span class="muted pagination-next">End of directory</span>
       </nav>
-    </section>
-
-    <section class="evidence-help panel" aria-labelledby="evidence-heading">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Evidence</p>
-          <h2 id="evidence-heading">Independent directory signals</h2>
-          <p class="muted">Heartbeat and server-observed reachability are intentionally separate. One does not rewrite the other.</p>
-        </div>
-      </div>
-      <dl class="evidence-grid">
-        <div class="evidence-definition">
-          <dt>Heartbeat</dt>
-          <dd><strong>healthy</strong> through 36 hours; <strong>stale</strong> after 36 hours and before 7 days; <strong>dead</strong> from 7 days to before 30 days; <strong>prune boundary</strong> at 30 days or older. <strong>not observed</strong> means no retained authenticated Directory observation exists for the entry.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>Reachability</dt>
-          <dd><strong>reachable</strong> means the most recent bounded actor validation succeeded; <strong>unreachable</strong> means the latest check failed; <strong>unknown</strong> means no current actor check has been recorded.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>Inbox diagnostic</dt>
-          <dd>The actor-declared inbox may be <strong>responsive</strong>, <strong>method rejected</strong>, <strong>unreachable</strong>, or <strong>not checked</strong>. Method rejection does not mean the inbox is absent.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>RFC 9421</dt>
-          <dd><strong>verified</strong> means this directory has accepted a signed lifecycle request from the relay. <strong>not verified</strong> means only that the directory has no such positive evidence.</dd>
-        </div>
-      </dl>
     </section>
   </main>
 

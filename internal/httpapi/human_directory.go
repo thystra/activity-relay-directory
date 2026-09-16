@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 const (
@@ -25,6 +29,7 @@ var (
 
 type humanDirectoryPage struct {
 	Listing             directoryProjectionResponse
+	PreviousURL         string
 	NextURL             string
 	Stylesheet          string
 	HasOperator         bool
@@ -37,8 +42,65 @@ type humanDirectoryPage struct {
 	OperatorDiagnostics []string
 }
 
+func humanRelayLabel(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return raw
+	}
+	label := parsed.Host
+	path := strings.TrimSuffix(parsed.EscapedPath(), "/")
+	if path != "" {
+		label += path
+	}
+	return label
+}
+
+func humanDirectoryTime(value *string) string {
+	if value == nil || *value == "" {
+		return ""
+	}
+	parsed, err := time.Parse(time.RFC3339, *value)
+	if err != nil {
+		return *value
+	}
+	return parsed.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+func humanHeartbeatLabel(state storage.PublicHeartbeatState) string {
+	switch state {
+	case storage.HeartbeatHealthy:
+		return "Healthy"
+	case storage.HeartbeatStale:
+		return "Stale"
+	case storage.HeartbeatDead:
+		return "Dead"
+	case storage.HeartbeatPrune:
+		return "Inactive"
+	case storage.HeartbeatNotObserved:
+		return "No heartbeat"
+	default:
+		return "Unknown"
+	}
+}
+
+func humanReachabilityLabel(state storage.ReachabilityState) string {
+	switch state {
+	case storage.ReachabilityReachable:
+		return "Reachable"
+	case storage.ReachabilityUnreachable:
+		return "Unreachable"
+	default:
+		return "Not checked"
+	}
+}
+
 func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), error) {
-	parsed, err := template.New("directory.html").Parse(humanDirectoryTemplateSource)
+	parsed, err := template.New("directory.html").Funcs(template.FuncMap{
+		"relayLabel":        humanRelayLabel,
+		"humanTime":         humanDirectoryTime,
+		"heartbeatLabel":    humanHeartbeatLabel,
+		"reachabilityLabel": humanReachabilityLabel,
+	}).Parse(humanDirectoryTemplateSource)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +126,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
-	listing, failure := handler.loadDirectoryProjection(request)
+	listing, failure := handler.loadHumanDirectoryProjection(request)
 	if failure != nil {
 		if failure.retryAfter != "" {
 			response.Header().Set("Retry-After", failure.retryAfter)
@@ -73,13 +135,8 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
-	nextURL := ""
-	if listing.Pagination.NextCursor != "" {
-		values := url.Values{}
-		values.Set("limit", strconv.Itoa(listing.Pagination.Limit))
-		values.Set("cursor", listing.Pagination.NextCursor)
-		nextURL = "/?" + values.Encode()
-	}
+	previousURL := humanDirectoryPaginationURL("before", listing.Pagination.PreviousCursor, listing.Pagination.Limit)
+	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit)
 
 	operator := handler.operator
 	operatorEmailURL := ""
@@ -89,6 +146,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
 		Listing:             listing,
+		PreviousURL:         previousURL,
 		NextURL:             nextURL,
 		Stylesheet:          directoryStylesheetPath,
 		HasOperator:         !operator.Empty(),
@@ -107,6 +165,16 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	response.Header().Set("Content-Security-Policy", humanDirectoryCSP)
 	writeCacheablePublicRepresentation(response, request, humanDirectoryContentType, body)
+}
+
+func humanDirectoryPaginationURL(parameter, cursor string, limit int) string {
+	if cursor == "" {
+		return ""
+	}
+	values := url.Values{}
+	values.Set("limit", strconv.Itoa(limit))
+	values.Set(parameter, cursor)
+	return "/?" + values.Encode() + "#relay-list"
 }
 
 func humanDirectoryFailureMessage(failure *publicListingFailure) string {

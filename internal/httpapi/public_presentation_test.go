@@ -43,20 +43,30 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 			t.Fatalf("human directory CSP missing %q: %q", required, csp)
 		}
 	}
+	body := response.Body.String()
+	statusIndex := strings.Index(body, "What the statuses mean")
+	directoryIndex := strings.Index(body, "Participating relays")
+	if statusIndex < 0 || directoryIndex < 0 || statusIndex > directoryIndex {
+		t.Fatalf("status help must appear before relay table: status=%d directory=%d", statusIndex, directoryIndex)
+	}
+	if strings.Contains(body, `<p class="eyebrow">Status</p>`) {
+		t.Fatal("status help includes redundant Status eyebrow")
+	}
+
 	for _, forbidden := range []string{"'unsafe-inline'", "'unsafe-eval'"} {
 		if strings.Contains(csp, forbidden) {
 			t.Fatalf("human directory CSP contains %q: %q", forbidden, csp)
 		}
 	}
 
-	body := response.Body.String()
 	for _, required := range []string{
 		`rel="stylesheet" href="/assets/directory.css"`,
 		"ActivityPub infrastructure",
 		"Public relay directory",
 		"Participating relays",
 		"No relays are listed yet",
-		"Independent directory signals",
+		"What the statuses mean",
+		"Click on a relay's line for details.",
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("human directory body missing %q", required)
@@ -80,11 +90,15 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		".site-header",
 		".hero h1",
 		".panel",
+		".relay-table",
+		".relay-summary",
 		".heartbeat-healthy",
 		".reachability-reachable",
-		".evidence-grid",
+		".status-grid",
 		".empty-state",
 		".pagination",
+		".pagination-previous",
+		".pagination-next",
 	} {
 		if !strings.Contains(stylesheet, required) {
 			t.Fatalf("stylesheet missing public-presentation contract %q", required)
@@ -99,17 +113,28 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 
 func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 	for _, required := range []string{
-		`Heartbeat: {{.Heartbeat.DisplayState}}`,
-		`Reachability: {{.Reachability.DisplayState}}`,
-		`<strong>not observed</strong>`,
-		`<strong>reachable</strong>`,
-		`<strong>unreachable</strong>`,
-		`<strong>unknown</strong>`,
-		`<strong>method rejected</strong>`,
-		`<strong>not verified</strong>`,
+		`{{heartbeatLabel .Heartbeat.State}}`,
+		`{{reachabilityLabel .Reachability.State}}`,
+		`<strong>Healthy</strong>`,
+		`<strong>Stale</strong>`,
+		`<strong>Dead</strong>`,
+		`<strong>Reachable</strong>`,
+		`<strong>Unreachable</strong>`,
+		`<strong>Not checked</strong>`,
 	} {
 		if !strings.Contains(humanDirectoryTemplateSource, required) {
 			t.Fatalf("directory template missing visible evidence label %q", required)
+		}
+	}
+
+	for _, forbidden := range []string{
+		"Inbox diagnostic",
+		"RFC 9421",
+		"evidence recorded",
+		"Last authenticated Directory observation",
+	} {
+		if strings.Contains(humanDirectoryTemplateSource, forbidden) {
+			t.Fatalf("human directory template exposes engineering wording %q", forbidden)
 		}
 	}
 

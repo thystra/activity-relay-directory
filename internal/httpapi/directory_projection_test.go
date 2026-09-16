@@ -281,6 +281,7 @@ func TestDirectoryProjectionRejectsInvalidQueryWithFixedRedactedError(t *testing
 		directoryProjectionPath + "?limit=01",
 		directoryProjectionPath + "?limit=1&limit=2",
 		directoryProjectionPath + "?cursor=not-base64!",
+		directoryProjectionPath + "?before=not-base64!",
 		directoryProjectionPath + "?unknown=1",
 	} {
 		response := httptest.NewRecorder()

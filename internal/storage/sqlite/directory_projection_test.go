@@ -371,6 +371,73 @@ func TestDirectoryProjectionPaginatesByCanonicalActor(t *testing.T) {
 	}
 }
 
+func TestDirectoryProjectionPaginatesBackwardByCanonicalActor(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	observed := time.Unix(20_000_000, 0).UTC()
+	actors := []string{
+		"https://a.example/actor",
+		"https://b.example/actor",
+		"https://c.example/actor",
+		"https://d.example/actor",
+		"https://e.example/actor",
+	}
+	for index, actor := range actors {
+		insertReachabilityDiscovery(t, database, actor, discoveryActive, int64(index+1))
+		checked := observed.Unix() - int64(index+1)
+		insertDirectoryObservation(t, database, actor, storage.ReachabilityReachable, checked, &checked, false)
+	}
+
+	first, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("first page error = %v", err)
+	}
+	second, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		After: first.Next, Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("second page error = %v", err)
+	}
+	third, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		After: second.Next, Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("third page error = %v", err)
+	}
+	if third.Previous == (storage.DirectoryProjectionCursor{}) {
+		t.Fatalf("third page missing previous cursor: %#v", third)
+	}
+
+	backSecond, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		Before: third.Previous, Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("back to second page error = %v", err)
+	}
+	if got := relayActors(backSecond.Relays); !equalStrings(got, actors[2:4]) {
+		t.Fatalf("back second actors = %#v, want %#v", got, actors[2:4])
+	}
+	if backSecond.Previous == (storage.DirectoryProjectionCursor{}) ||
+		backSecond.Next != second.Next {
+		t.Fatalf("back second cursors = previous %#v next %#v; want previous and next %#v", backSecond.Previous, backSecond.Next, second.Next)
+	}
+
+	backFirst, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		Before: backSecond.Previous, Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("back to first page error = %v", err)
+	}
+	if got := relayActors(backFirst.Relays); !equalStrings(got, actors[:2]) {
+		t.Fatalf("back first actors = %#v, want %#v", got, actors[:2])
+	}
+	if backFirst.Previous != (storage.DirectoryProjectionCursor{}) || backFirst.Next != first.Next {
+		t.Fatalf("back first cursors = previous %#v next %#v; want zero previous and next %#v", backFirst.Previous, backFirst.Next, first.Next)
+	}
+}
+
 func TestDirectoryProjectionBoundsSparseInactiveCandidatesAndAdvancesCursor(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)
@@ -402,8 +469,19 @@ func TestDirectoryProjectionBoundsSparseInactiveCandidatesAndAdvancesCursor(t *t
 		t.Fatalf("second ListDirectoryRelays() error = %v", err)
 	}
 	if len(second.Relays) != 1 || second.Relays[0].RelayActor != eligibleActor ||
-		second.Next != (storage.DirectoryProjectionCursor{}) {
-		t.Fatalf("second page = %#v, want final eligible relay", second)
+		second.Next != (storage.DirectoryProjectionCursor{}) ||
+		second.Previous == (storage.DirectoryProjectionCursor{}) {
+		t.Fatalf("second page = %#v, want final eligible relay with previous cursor", second)
+	}
+
+	back, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		Before: second.Previous, Limit: 1, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("reverse sparse ListDirectoryRelays() error = %v", err)
+	}
+	if len(back.Relays) != 0 || back.Previous != (storage.DirectoryProjectionCursor{}) || back.Next != first.Next {
+		t.Fatalf("reverse sparse page = %#v, want original empty bounded page", back)
 	}
 }
 
@@ -439,6 +517,8 @@ func TestDirectoryProjectionRejectsInvalidInputAndFutureEvidence(t *testing.T) {
 		{Limit: storage.MaximumDirectoryProjectionPage + 1, ObservedAt: observed},
 		{Limit: 1, ObservedAt: time.Unix(-1, 0)},
 		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{RelayActor: "HTTPS://relay.example/actor"}},
+		{Limit: 1, ObservedAt: observed, Before: storage.DirectoryProjectionCursor{RelayActor: "HTTPS://relay.example/actor"}},
+		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{RelayActor: "https://a.example/actor"}, Before: storage.DirectoryProjectionCursor{RelayActor: "https://b.example/actor"}},
 	} {
 		_, err := repository.ListDirectoryRelays(context.Background(), query)
 		if !errors.Is(err, storage.ErrDirectoryProjectionInput) {
@@ -477,8 +557,16 @@ func TestDirectoryProjectionStateValidatorsRejectUnknownValues(t *testing.T) {
 
 func TestDirectoryProjectionQueryPlanUsesActorKeysets(t *testing.T) {
 	database := openMigratedTestDatabase(t)
-	for _, statement := range []string{directoryRelayCandidateSQL, directoryDiscoveryCandidateSQL} {
-		rows, err := database.Query(`EXPLAIN QUERY PLAN `+statement, "https://m.example/actor", storage.MaximumDirectoryProjectionScan+1)
+	for _, test := range []struct {
+		statement string
+		keyset    string
+	}{
+		{directoryRelayCandidateSQL, "PRIMARY KEY (relay_actor>?)"},
+		{directoryDiscoveryCandidateSQL, "PRIMARY KEY (relay_actor>?)"},
+		{directoryRelayPreviousCandidateSQL, "PRIMARY KEY (relay_actor<?)"},
+		{directoryDiscoveryPreviousCandidateSQL, "PRIMARY KEY (relay_actor<?)"},
+	} {
+		rows, err := database.Query(`EXPLAIN QUERY PLAN `+test.statement, "https://m.example/actor", storage.MaximumDirectoryProjectionScan+1)
 		if err != nil {
 			t.Fatalf("EXPLAIN QUERY PLAN error = %v", err)
 		}
@@ -496,7 +584,7 @@ func TestDirectoryProjectionQueryPlanUsesActorKeysets(t *testing.T) {
 			t.Fatalf("close query-plan rows: %v", err)
 		}
 		joined := strings.Join(details, "\n")
-		if !strings.Contains(joined, "PRIMARY KEY (relay_actor>?)") || strings.Contains(strings.ToUpper(joined), "TEMP B-TREE") {
+		if !strings.Contains(joined, test.keyset) || strings.Contains(strings.ToUpper(joined), "TEMP B-TREE") {
 			t.Fatalf("candidate query plan is not actor-keyset bounded:\n%s", joined)
 		}
 	}
@@ -543,6 +631,14 @@ func nullableTestInt(value *int64) any {
 }
 
 func int64PointerSQLite(value int64) *int64 { return &value }
+
+func relayActors(relays []storage.DirectoryProjectionRelay) []string {
+	actors := make([]string, 0, len(relays))
+	for _, relay := range relays {
+		actors = append(actors, relay.RelayActor)
+	}
+	return actors
+}
 
 func mapKeys(values map[string]storage.DirectoryProjectionRelay) []string {
 	result := make([]string, 0, len(values))

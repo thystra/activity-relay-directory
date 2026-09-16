@@ -69,13 +69,15 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`href="#directory">Skip to directory</a>`,
 		`<main id="directory"`,
 		`<nav class="pagination" aria-label="Directory pages">`,
-		`<section class="evidence-help panel" aria-labelledby="evidence-heading">`,
-		`Heartbeat: healthy`,
-		`Reachability: reachable`,
-		`Inbox diagnostic`,
-		`method rejected`,
-		`RFC 9421`,
-		`verified`,
+		`<section class="status-help panel" aria-labelledby="status-heading">`,
+		`class="relay-table"`,
+		`class="relay-row"`,
+		`>Healthy</span>`,
+		`>Reachable</span>`,
+		`Last heartbeat`,
+		`Last checked`,
+		`Last successful check`,
+		`>relay.example</a>`,
 		`https://relay.example/a&amp;b`,
 		`https://relay.example/inbox/a&amp;b`,
 		`href="https://github.com/thystra/activity-relay-directory"`,
@@ -89,6 +91,8 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		"https://relay.example/a&b", "https://relay.example/inbox/a&b",
 		"<script", "analytics", "fonts.googleapis",
 		"source_kind", "source_label", "reason_code", "operator_id", "discovery_added",
+		"Inbox diagnostic", "method rejected", "RFC 9421", "evidence recorded",
+		"Last authenticated Directory observation", "Actor last checked",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("unsafe/private content %q present: %q", forbidden, body)
@@ -101,6 +105,36 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	handler.serveHumanDirectory(conditionalResponse, conditional)
 	if conditionalResponse.Code != http.StatusNotModified || conditionalResponse.Body.Len() != 0 {
 		t.Fatalf("conditional response = status %d body %q", conditionalResponse.Code, conditionalResponse.Body.String())
+	}
+}
+
+func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
+	if got := humanRelayLabel("https://relay.example/path/"); got != "relay.example/path" {
+		t.Fatalf("humanRelayLabel() = %q", got)
+	}
+	stamp := "2026-09-15T23:12:28Z"
+	if got := humanDirectoryTime(&stamp); got != "2026-09-15 23:12 UTC" {
+		t.Fatalf("humanDirectoryTime() = %q", got)
+	}
+	for state, want := range map[storage.PublicHeartbeatState]string{
+		storage.HeartbeatHealthy:     "Healthy",
+		storage.HeartbeatStale:       "Stale",
+		storage.HeartbeatDead:        "Dead",
+		storage.HeartbeatPrune:       "Inactive",
+		storage.HeartbeatNotObserved: "No heartbeat",
+	} {
+		if got := humanHeartbeatLabel(state); got != want {
+			t.Fatalf("humanHeartbeatLabel(%q) = %q, want %q", state, got, want)
+		}
+	}
+	for state, want := range map[storage.ReachabilityState]string{
+		storage.ReachabilityReachable:   "Reachable",
+		storage.ReachabilityUnreachable: "Unreachable",
+		storage.ReachabilityUnknown:     "Not checked",
+	} {
+		if got := humanReachabilityLabel(state); got != want {
+			t.Fatalf("humanReachabilityLabel(%q) = %q, want %q", state, got, want)
+		}
 	}
 }
 
@@ -143,8 +177,11 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 		t.Fatalf("url.Parse(next) error = %v", err)
 	}
 	cursor := nextURL.Query().Get("cursor")
-	if cursor == "" || nextURL.Query().Get("limit") != "7" {
+	if cursor == "" || nextURL.Query().Get("limit") != "7" || nextURL.Fragment != "relay-list" {
 		t.Fatalf("next URL = %q", next)
+	}
+	if !strings.Contains(htmlResponse.Body.String(), `class="button-link pagination-next"`) {
+		t.Fatalf("next-page control is not right-alignment scoped: %q", htmlResponse.Body.String())
 	}
 
 	repository.mu.Lock()
@@ -167,6 +204,114 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 	second := repository.directoryQueries[1]
 	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.RelayActor != "https://relay.example/actor" {
 		t.Fatalf("second query = %#v", second)
+	}
+}
+
+func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *testing.T) {
+	now := time.Unix(2_000, 0).UTC()
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
+		Relays:   []storage.DirectoryProjectionRelay{},
+		Previous: storage.DirectoryProjectionCursor{RelayActor: "https://c.example/actor"},
+	}}
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+	current, err := handler.encodeDirectoryProjectionCursor(directoryProjectionCursor{
+		Version: directoryProjectionCursorVersion, IssuedUnix: now.Unix(), RelayActor: "https://b.example/actor",
+	})
+	if err != nil {
+		t.Fatalf("encode current cursor: %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.serveHumanDirectory(response, httptest.NewRequest(
+		http.MethodGet, "/?limit=7&cursor="+url.QueryEscape(current), nil,
+	))
+	if response.Code != http.StatusOK {
+		t.Fatalf("forward HTML status = %d body = %q", response.Code, response.Body.String())
+	}
+	previous := extractHTMLAttribute(t, response.Body.String(), `rel="prev" href="`, `"`)
+	previousURL, err := url.Parse(previous)
+	if err != nil {
+		t.Fatalf("url.Parse(previous) error = %v", err)
+	}
+	before := previousURL.Query().Get("before")
+	if before == "" || previousURL.Query().Get("limit") != "7" || previousURL.Query().Get("cursor") != "" ||
+		previousURL.Fragment != "relay-list" {
+		t.Fatalf("previous URL = %q", previous)
+	}
+	decodedBefore, err := handler.decodeDirectoryProjectionCursor(before)
+	if err != nil ||
+		decodedBefore.IssuedUnix != now.Unix() ||
+		decodedBefore.RelayActor != "https://c.example/actor" {
+		t.Fatalf("previous cursor = %#v error=%v", decodedBefore, err)
+	}
+	originalIssuedUnix := decodedBefore.IssuedUnix
+	if !strings.Contains(response.Body.String(), `class="button-link pagination-previous"`) {
+		t.Fatalf("previous-page control is not left-alignment scoped: %q", response.Body.String())
+	}
+
+	now = now.Add(30 * time.Second)
+	repository.mu.Lock()
+	repository.directoryPage = storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{},
+		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://b.example/actor"},
+	}
+	repository.mu.Unlock()
+
+	backResponse := httptest.NewRecorder()
+	handler.serveHumanDirectory(backResponse, httptest.NewRequest(
+		http.MethodGet, "/?limit=7&before="+url.QueryEscape(before), nil,
+	))
+	if backResponse.Code != http.StatusOK {
+		t.Fatalf("reverse HTML status = %d body = %q", backResponse.Code, backResponse.Body.String())
+	}
+	next := extractHTMLAttribute(t, backResponse.Body.String(), `rel="next" href="`, `"`)
+	nextURL, err := url.Parse(next)
+	if err != nil {
+		t.Fatalf("url.Parse(reverse next) error = %v", err)
+	}
+	nextCursor := nextURL.Query().Get("cursor")
+	if nextCursor == "" || nextURL.Query().Get("limit") != "7" || nextURL.Query().Get("before") != "" ||
+		nextURL.Fragment != "relay-list" {
+		t.Fatalf("reverse next URL = %q", next)
+	}
+	decodedNext, err := handler.decodeDirectoryProjectionCursor(nextCursor)
+	if err != nil ||
+		decodedNext.IssuedUnix != originalIssuedUnix ||
+		decodedNext.RelayActor != "https://b.example/actor" {
+		t.Fatalf("reverse next cursor = %#v error=%v", decodedNext, err)
+	}
+
+	repository.mu.Lock()
+	if len(repository.directoryQueries) != 2 {
+		repository.mu.Unlock()
+		t.Fatalf("queries = %#v", repository.directoryQueries)
+	}
+	second := repository.directoryQueries[1]
+	repository.mu.Unlock()
+	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After != (storage.DirectoryProjectionCursor{}) ||
+		second.Before.RelayActor != "https://c.example/actor" {
+		t.Fatalf("reverse query = %#v", second)
+	}
+
+	v2Response := httptest.NewRecorder()
+	handler.serveDirectoryProjection(v2Response, httptest.NewRequest(
+		http.MethodGet, directoryProjectionPath+"?limit=7&before="+url.QueryEscape(before), nil,
+	))
+	if v2Response.Code != http.StatusBadRequest {
+		t.Fatalf("v2 accepted human-only before cursor: status=%d body=%q", v2Response.Code, v2Response.Body.String())
+	}
+
+	now = time.Unix(originalIssuedUnix, 0).UTC().Add(publicListingCursorMaxAge + time.Second)
+	expiredResponse := httptest.NewRecorder()
+	handler.serveHumanDirectory(expiredResponse, httptest.NewRequest(
+		http.MethodGet, "/?limit=7&before="+url.QueryEscape(before), nil,
+	))
+	if expiredResponse.Code != http.StatusBadRequest ||
+		expiredResponse.Body.String() != "invalid directory request\n" {
+		t.Fatalf("expired previous cursor = status %d body=%q", expiredResponse.Code, expiredResponse.Body.String())
 	}
 }
 

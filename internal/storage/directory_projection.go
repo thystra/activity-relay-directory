@@ -91,6 +91,7 @@ func (cursor DirectoryProjectionCursor) Valid() bool {
 // retained evidence against its own current server time.
 type DirectoryProjectionQuery struct {
 	After      DirectoryProjectionCursor
+	Before     DirectoryProjectionCursor
 	Limit      int
 	ObservedAt time.Time
 }
@@ -232,8 +233,9 @@ func validObservedTime(value *int64, observedUnix int64) bool {
 }
 
 type DirectoryProjectionPage struct {
-	Relays []DirectoryProjectionRelay
-	Next   DirectoryProjectionCursor
+	Relays   []DirectoryProjectionRelay
+	Previous DirectoryProjectionCursor
+	Next     DirectoryProjectionCursor
 }
 
 // DirectoryProjectionRepository reads the richer public 1.1 projection.
