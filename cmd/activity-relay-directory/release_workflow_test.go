@@ -103,7 +103,20 @@ func TestCanonicalReleaseWorkflowInstallsDebianToolsBeforeUse(t *testing.T) {
 			dispatch, install, source, firstParse, goSetup,
 		)
 	}
-	if !strings.Contains(workflow, "debhelper dpkg-dev fakeroot lintian") {
-		t.Fatal("canonical release workflow does not explicitly install dpkg-dev with packaging tools")
+	requiredTools := []string{"debhelper", "dpkg-dev", "fakeroot", "lintian"}
+	for _, tool := range requiredTools {
+		if !strings.Contains(workflow, tool) {
+			t.Fatalf("canonical release workflow does not explicitly install required packaging tool %q", tool)
+		}
+	}
+	for _, marker := range []string{
+		"runs-on: forgejo-workstation",
+		`test "${ID:-}:${VERSION_CODENAME:-}" = "debian:trixie"`,
+		"trixie-backports",
+		`dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.25`,
+	} {
+		if !strings.Contains(workflow, marker) {
+			t.Fatalf("canonical release workflow missing runner/toolchain marker %q", marker)
+		}
 	}
 }

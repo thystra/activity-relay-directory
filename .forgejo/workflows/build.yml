@@ -12,7 +12,7 @@ permissions:
 jobs:
   container:
     name: Container
-    runs-on: forgejo-build
+    runs-on: forgejo-workstation
     steps:
       - name: Check out repository
         uses: https://data.forgejo.org/actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09

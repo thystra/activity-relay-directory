@@ -86,6 +86,8 @@ dedicated system account, owner-only
 `/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked
 with `dh_installsystemd --no-enable --no-start --no-stop-on-upgrade`.
+
+Debian package construction requires debhelper 13.25 or newer. Forgejo packaging jobs run on the shared Node 24 / Debian Trixie execution profile and obtain the required debhelper from `trixie-backports`; the release builder rejects older helper versions so package lifecycle behavior does not depend on the base image's ambient toolchain.
 Fresh package installation must leave the unit disabled and inactive, while a
 package upgrade must not stop or restart an operator-activated service. Loading
 the newly installed binary into an active deployment is a separate,
@@ -97,11 +99,15 @@ inactive retention, and administrator email disabled. Installing the package
 does not configure Nginx/Apache/Caddy, DNS, recipients, credentials, or a mail
 relay. Activation and public exposure are later explicit gates.
 
-Package removal and purge intentionally preserve the SQLite state directory
-and dedicated system account. Purge removes dpkg-managed conffiles but does not
-destroy `/var/lib/activity-relay-directory`; destructive state removal requires
-a verified backup and explicit operator action. In-place database downgrade is
-unsupported and requires restoring the backup matching the older binary.
+Ordinary package removal intentionally preserves the SQLite state directory
+and dedicated system account so a later reinstall retains the instance.
+Package purge is the explicit destructive package-lifecycle boundary: after a
+verified backup, purge removes `/var/lib/activity-relay-directory` and the
+dedicated system user/group while dpkg removes package-managed conffiles.
+Operator-owned `/etc/activity-relay-directory/config.yml` is not a package
+conffile and is not deleted by package maintainer scripts. In-place database
+downgrade is unsupported and requires restoring the backup matching the older
+binary.
 
 The public canonical artifact set consists of the `.deb`, the exact packaged
 standalone binary, CycloneDX JSON SBOM, build metadata, a Docker-loadable

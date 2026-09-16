@@ -394,8 +394,9 @@ and deployments, and remain accountable for the software.
   `--no-stop-on-upgrade`; loading a newly installed binary into an active
   deployment requires an explicit operator-controlled restart after upgrade
   validation. Package removal may stop the service normally.
-- Package removal and purge preserve `/var/lib/activity-relay-directory`; state
-  destruction requires a separate explicit operator action after backup review.
+- Debian package construction requires debhelper >= 13.25. Forgejo packaging jobs use the shared Node 24 / Debian Trixie execution profile and must obtain the required debhelper from trixie-backports; the release builder rejects older helper versions so package lifecycle behavior does not depend on the base image's ambient toolchain.
+- Ordinary package removal preserves `/var/lib/activity-relay-directory` and the dedicated system account/group; package purge is the explicit destructive package lifecycle boundary and removes both state and that dedicated account/group.
+  Operator-owned `/etc/activity-relay-directory/config.yml` is not a package conffile and must not be deleted by package maintainer scripts.
 - The release builder owns the Debian Lintian policy gate. Invoke Lintian with
   `--show-overrides --fail-on none`, capture its output, fail on any
   unoverridden `E:` or `W:` finding, and fail on any nonzero Lintian exit after

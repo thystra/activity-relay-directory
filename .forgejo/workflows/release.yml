@@ -19,7 +19,7 @@ on:
 jobs:
   canonical:
     name: Canonical release artifact set
-    runs-on: forgejo-build
+    runs-on: forgejo-workstation
     env:
       RELEASE_EXPECTED_COMMIT: ${{ inputs.expected_commit }}
       RELEASE_VERSION: ${{ inputs.version }}
@@ -52,9 +52,17 @@ jobs:
       - name: Install Debian packaging tools
         run: |
           set -Eeuo pipefail
+          . /etc/os-release
+          test "${ID:-}:${VERSION_CODENAME:-}" = "debian:trixie"
+          printf '%s\n' 'deb http://deb.debian.org/debian trixie-backports main' > /etc/apt/sources.list.d/activity-relay-directory-trixie-backports.list
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            debhelper dpkg-dev fakeroot lintian
+            dpkg-dev fakeroot lintian
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            -t trixie-backports debhelper
+          DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper)"
+          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.25
+          echo "debhelper_version=$DEBHELPER_VERSION"
           rm -rf /var/lib/apt/lists/*
 
       - name: Require exact source package version
@@ -91,6 +99,7 @@ jobs:
           export RELEASE_COMMIT="$(git rev-parse HEAD)"
           export RELEASE_TREE="$(git rev-parse 'HEAD^{tree}')"
           scripts/release/build-debian-artifacts.sh "$RUNNER_TEMP/canonical-release"
+          scripts/release/check-debian-lifecycle.sh "$RUNNER_TEMP/canonical-release"
 
           cd "$RUNNER_TEMP/canonical-release/public"
           sha256sum -c SHA256SUMS

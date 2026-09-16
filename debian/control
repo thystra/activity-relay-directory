@@ -4,6 +4,7 @@ Priority: optional
 Maintainer: Alan Johnson <alan@argentwolf.org>
 Build-Depends:
  debhelper-compat (= 13),
+               debhelper (>= 13.25),
  golang-go (>= 2:1.26~)
 Rules-Requires-Root: no
 Standards-Version: 4.7.0
