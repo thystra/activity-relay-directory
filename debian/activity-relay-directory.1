@@ -38,8 +38,9 @@ Optional operator-owned public contact metadata; absent by default.
 Packaged operator-metadata example.
 .TP
 .B /var/lib/activity-relay-directory/directory.sqlite
-Default SQLite database path. The state directory is intentionally preserved
-when the package is removed or purged.
+Default SQLite database path. Ordinary package removal preserves this state
+for later reinstallation. Package purge is destructive and removes the state
+directory together with the dedicated service account and group.
 .SH SECURITY
 Do not enable lifecycle handling or public exposure merely because the package
 is installed. Review the trusted-proxy, HTTPS public-base, retention, database

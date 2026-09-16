@@ -97,11 +97,15 @@ inactive retention, and administrator email disabled. Installing the package
 does not configure Nginx/Apache/Caddy, DNS, recipients, credentials, or a mail
 relay. Activation and public exposure are later explicit gates.
 
-Package removal and purge intentionally preserve the SQLite state directory
-and dedicated system account. Purge removes dpkg-managed conffiles but does not
-destroy `/var/lib/activity-relay-directory`; destructive state removal requires
-a verified backup and explicit operator action. In-place database downgrade is
-unsupported and requires restoring the backup matching the older binary.
+Ordinary package removal intentionally preserves the SQLite state directory
+and dedicated system account so a later reinstall retains the instance.
+Package purge is the explicit destructive package-lifecycle boundary: after a
+verified backup, purge removes `/var/lib/activity-relay-directory` and the
+dedicated system user/group while dpkg removes package-managed conffiles.
+Operator-owned `/etc/activity-relay-directory/config.yml` is not a package
+conffile and is not deleted by package maintainer scripts. In-place database
+downgrade is unsupported and requires restoring the backup matching the older
+binary.
 
 The public canonical artifact set consists of the `.deb`, the exact packaged
 standalone binary, CycloneDX JSON SBOM, build metadata, a Docker-loadable

@@ -32,6 +32,7 @@ jobs:
           go vet ./...
           go test -race -count=1 ./...
           scripts/release/build-debian-artifacts.sh "$RUNNER_TEMP/activity-relay-directory-package"
+          scripts/release/check-debian-lifecycle.sh "$RUNNER_TEMP/activity-relay-directory-package"
 
       - name: Verify public checksums
         run: |

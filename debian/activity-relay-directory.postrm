@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+account="activity-relay-directory"
+state="/var/lib/activity-relay-directory"
+config_dir="/etc/activity-relay-directory"
+
+if [ "${1:-}" = "purge" ] && [ -n "${DPKG_ROOT:-}" ]; then
+    echo "activity-relay-directory purge with DPKG_ROOT is not supported" >&2
+    exit 1
+fi
+
+#DEBHELPER#
+
+if [ "${1:-}" = "purge" ]; then
+    rm -rf -- "$state"
+
+    if getent passwd "$account" >/dev/null 2>&1; then
+        deluser --system --quiet "$account"
+    fi
+
+    if getent group "$account" >/dev/null 2>&1; then
+        delgroup --system --quiet "$account"
+    fi
+
+    # config.yml is operator-owned, not a package conffile. Remove only an
+    # otherwise-empty package-created parent directory.
+    rmdir "$config_dir" 2>/dev/null || true
+fi
+
+exit 0

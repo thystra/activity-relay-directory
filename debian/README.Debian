@@ -19,11 +19,17 @@ Removal/purge safety
 --------------------
 
 Removing the package preserves /var/lib/activity-relay-directory and the
-dedicated system account. Purging removes package conffiles in the normal dpkg
-manner but intentionally does NOT delete the SQLite database or system account.
-This prevents an accidental purge from destroying directory state. After a
-verified backup, an administrator who truly wants to destroy the instance must
-remove the preserved state and account explicitly.
+dedicated system account so the package can be reinstalled without losing
+directory state.
+
+Package purge is destructive. Back up the database before purging. On purge,
+the package removes /var/lib/activity-relay-directory and the dedicated
+activity-relay-directory system user and group. Dpkg removes package-managed
+conffiles in the normal manner.
+
+The optional /etc/activity-relay-directory/config.yml is operator-owned and is
+not a package conffile. Package maintainer scripts do not delete it; the parent
+directory is removed only when it is otherwise empty.
 
 Downgrade safety
 ----------------
