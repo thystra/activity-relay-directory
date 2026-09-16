@@ -7,12 +7,20 @@ OUT="${1:?usage: build-debian-artifacts.sh OUTPUT_DIR}"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 
-for c in go dpkg-buildpackage dpkg-deb dpkg-parsechangelog lintian python3 sha256sum tar; do
+for c in go dpkg dpkg-buildpackage dpkg-deb dpkg-parsechangelog dpkg-query lintian python3 sha256sum tar; do
     command -v "$c" >/dev/null || {
         echo "missing release-build command: $c" >&2
         exit 1
     }
 done
+
+DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper 2>/dev/null || true)"
+if [[ -z "$DEBHELPER_VERSION" ]] || \
+   ! dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.11.6; then
+    echo "debhelper >= 13.11.6 is required for correct /usr/lib/systemd maintainer-script generation; found: ${DEBHELPER_VERSION:-absent}" >&2
+    exit 1
+fi
+echo "debhelper_version=$DEBHELPER_VERSION"
 
 DEB_VERSION="$(dpkg-parsechangelog -l"$ROOT/debian/changelog" -SVersion)"
 PACKAGE="$(dpkg-parsechangelog -l"$ROOT/debian/changelog" -SSource)"

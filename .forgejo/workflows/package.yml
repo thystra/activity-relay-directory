@@ -19,8 +19,18 @@ jobs:
       - name: Install Debian packaging tools
         run: |
           set -Eeuo pipefail
+          . /etc/os-release
+          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
+            printf '%s\n' 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/activity-relay-directory-bookworm-backports.list
+          fi
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             debhelper fakeroot lintian
+          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -t bookworm-backports debhelper
+          fi
+          DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper)"
+          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.11.6
+          echo "debhelper_version=$DEBHELPER_VERSION"
           rm -rf /var/lib/apt/lists/*
 
       - name: Validate source and build package artifacts

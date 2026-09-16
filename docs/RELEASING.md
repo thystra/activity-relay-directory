@@ -86,6 +86,8 @@ dedicated system account, owner-only
 `/var/lib/activity-relay-directory`, `/etc/default/activity-relay-directory`,
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked
 with `dh_installsystemd --no-enable --no-start --no-stop-on-upgrade`.
+
+Debian package construction requires debhelper 13.11.6 or newer. Debhelper 13.11.4, as shipped in Debian Bookworm, does not generate the required systemd maintainer-script integration for units under `/usr/lib/systemd/system`; Forgejo Bookworm packaging jobs therefore obtain a fixed debhelper from `bookworm-backports` and the release builder rejects older versions.
 Fresh package installation must leave the unit disabled and inactive, while a
 package upgrade must not stop or restart an operator-activated service. Loading
 the newly installed binary into an active deployment is a separate,

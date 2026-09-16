@@ -52,9 +52,19 @@ jobs:
       - name: Install Debian packaging tools
         run: |
           set -Eeuo pipefail
+          . /etc/os-release
+          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
+            printf '%s\n' 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/activity-relay-directory-bookworm-backports.list
+          fi
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             debhelper dpkg-dev fakeroot lintian
+          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -t bookworm-backports debhelper
+          fi
+          DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper)"
+          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.11.6
+          echo "debhelper_version=$DEBHELPER_VERSION"
           rm -rf /var/lib/apt/lists/*
 
       - name: Require exact source package version
@@ -91,6 +101,7 @@ jobs:
           export RELEASE_COMMIT="$(git rev-parse HEAD)"
           export RELEASE_TREE="$(git rev-parse 'HEAD^{tree}')"
           scripts/release/build-debian-artifacts.sh "$RUNNER_TEMP/canonical-release"
+          scripts/release/check-debian-lifecycle.sh "$RUNNER_TEMP/canonical-release"
 
           cd "$RUNNER_TEMP/canonical-release/public"
           sha256sum -c SHA256SUMS
