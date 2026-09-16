@@ -4,6 +4,24 @@
 
 _No changes yet._
 
+## 1.1.0-rc2 - 2026-09-16
+
+- Scale the human directory into compact responsive relay rows with clearer
+  heartbeat/reachability presentation, while keeping the underlying v2 evidence
+  model and frozen `/v1/relays` compatibility unchanged.
+- Add signed bidirectional pagination to the human directory so operators and
+  visitors can move to previous as well as next pages; `/v2/relays` remains
+  forward-only.
+- Make Debian package lifecycle boundaries explicit: ordinary removal and
+  upgrade preserve directory state and the dedicated system account, while
+  purge is the destructive boundary. Operator-owned `config.yml` remains
+  outside the package conffile set.
+- Validate the generated Debian maintainer scripts and package ownership
+  boundaries from the built artifact, and require Debian Trixie with
+  `debhelper >= 13.25` for canonical package construction.
+- Converge Forgejo build, package, test, and canonical-release jobs on the
+  shared `forgejo-workstation` execution profile.
+
 ## 1.1.0-rc1 - 2026-09-15
 
 - Add default-off `GET /v2/relays` public 1.1 evidence projection and switch

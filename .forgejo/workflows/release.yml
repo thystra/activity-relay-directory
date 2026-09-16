@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       version:
-        description: Exact source release version, for example 1.1.0-rc1 or 1.1.0
+        description: Exact source release version, for example 1.1.0-rc2 or 1.1.0
         required: true
         type: string
       confirm:

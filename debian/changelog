@@ -1,3 +1,16 @@
+activity-relay-directory (1.1.0~rc2-1) unstable; urgency=medium
+
+  * Scale the human directory presentation and add bounded previous/next
+    keyset navigation without changing the frozen v1 relay contract.
+  * Preserve state and the service account on ordinary package removal and
+    upgrade; reserve destructive cleanup for explicit package purge.
+  * Keep operator-owned config.yml outside package conffiles and validate the
+    generated maintainer-script lifecycle from the built package.
+  * Require Debian Trixie and debhelper 13.25 or newer for release package
+    construction.
+
+ -- Alan Johnson <alan@argentwolf.org>  Wed, 16 Sep 2026 17:50:00 -0400
+
 activity-relay-directory (1.1.0~rc1-1) unstable; urgency=medium
 
   * Add schema 8 operator discovery, reachability evidence, and retention
