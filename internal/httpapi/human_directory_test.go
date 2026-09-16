@@ -69,13 +69,15 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`href="#directory">Skip to directory</a>`,
 		`<main id="directory"`,
 		`<nav class="pagination" aria-label="Directory pages">`,
-		`<section class="evidence-help panel" aria-labelledby="evidence-heading">`,
-		`Heartbeat: healthy`,
-		`Reachability: reachable`,
-		`Inbox diagnostic`,
-		`method rejected`,
-		`RFC 9421`,
-		`verified`,
+		`<section class="status-help panel" aria-labelledby="status-heading">`,
+		`class="relay-table"`,
+		`class="relay-row"`,
+		`>Healthy</span>`,
+		`>Reachable</span>`,
+		`Last heartbeat`,
+		`Last checked`,
+		`Last successful check`,
+		`>relay.example</a>`,
 		`https://relay.example/a&amp;b`,
 		`https://relay.example/inbox/a&amp;b`,
 		`href="https://github.com/thystra/activity-relay-directory"`,
@@ -89,6 +91,8 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		"https://relay.example/a&b", "https://relay.example/inbox/a&b",
 		"<script", "analytics", "fonts.googleapis",
 		"source_kind", "source_label", "reason_code", "operator_id", "discovery_added",
+		"Inbox diagnostic", "method rejected", "RFC 9421", "evidence recorded",
+		"Last authenticated Directory observation", "Actor last checked",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("unsafe/private content %q present: %q", forbidden, body)
@@ -101,6 +105,36 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	handler.serveHumanDirectory(conditionalResponse, conditional)
 	if conditionalResponse.Code != http.StatusNotModified || conditionalResponse.Body.Len() != 0 {
 		t.Fatalf("conditional response = status %d body %q", conditionalResponse.Code, conditionalResponse.Body.String())
+	}
+}
+
+func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
+	if got := humanRelayLabel("https://relay.example/path/"); got != "relay.example/path" {
+		t.Fatalf("humanRelayLabel() = %q", got)
+	}
+	stamp := "2026-09-15T23:12:28Z"
+	if got := humanDirectoryTime(&stamp); got != "2026-09-15 23:12 UTC" {
+		t.Fatalf("humanDirectoryTime() = %q", got)
+	}
+	for state, want := range map[storage.PublicHeartbeatState]string{
+		storage.HeartbeatHealthy:     "Healthy",
+		storage.HeartbeatStale:       "Stale",
+		storage.HeartbeatDead:        "Dead",
+		storage.HeartbeatPrune:       "Inactive",
+		storage.HeartbeatNotObserved: "No heartbeat",
+	} {
+		if got := humanHeartbeatLabel(state); got != want {
+			t.Fatalf("humanHeartbeatLabel(%q) = %q, want %q", state, got, want)
+		}
+	}
+	for state, want := range map[storage.ReachabilityState]string{
+		storage.ReachabilityReachable:   "Reachable",
+		storage.ReachabilityUnreachable: "Unreachable",
+		storage.ReachabilityUnknown:     "Not checked",
+	} {
+		if got := humanReachabilityLabel(state); got != want {
+			t.Fatalf("humanReachabilityLabel(%q) = %q, want %q", state, got, want)
+		}
 	}
 }
 
@@ -145,6 +179,9 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 	cursor := nextURL.Query().Get("cursor")
 	if cursor == "" || nextURL.Query().Get("limit") != "7" {
 		t.Fatalf("next URL = %q", next)
+	}
+	if !strings.Contains(htmlResponse.Body.String(), `class="button-link pagination-next"`) {
+		t.Fatalf("next-page control is not right-alignment scoped: %q", htmlResponse.Body.String())
 	}
 
 	repository.mu.Lock()

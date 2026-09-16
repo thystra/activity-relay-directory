@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
+	"time"
+
+	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
 const (
@@ -37,8 +41,65 @@ type humanDirectoryPage struct {
 	OperatorDiagnostics []string
 }
 
+func humanRelayLabel(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		return raw
+	}
+	label := parsed.Host
+	path := strings.TrimSuffix(parsed.EscapedPath(), "/")
+	if path != "" {
+		label += path
+	}
+	return label
+}
+
+func humanDirectoryTime(value *string) string {
+	if value == nil || *value == "" {
+		return ""
+	}
+	parsed, err := time.Parse(time.RFC3339, *value)
+	if err != nil {
+		return *value
+	}
+	return parsed.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+func humanHeartbeatLabel(state storage.PublicHeartbeatState) string {
+	switch state {
+	case storage.HeartbeatHealthy:
+		return "Healthy"
+	case storage.HeartbeatStale:
+		return "Stale"
+	case storage.HeartbeatDead:
+		return "Dead"
+	case storage.HeartbeatPrune:
+		return "Inactive"
+	case storage.HeartbeatNotObserved:
+		return "No heartbeat"
+	default:
+		return "Unknown"
+	}
+}
+
+func humanReachabilityLabel(state storage.ReachabilityState) string {
+	switch state {
+	case storage.ReachabilityReachable:
+		return "Reachable"
+	case storage.ReachabilityUnreachable:
+		return "Unreachable"
+	default:
+		return "Not checked"
+	}
+}
+
 func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), error) {
-	parsed, err := template.New("directory.html").Parse(humanDirectoryTemplateSource)
+	parsed, err := template.New("directory.html").Funcs(template.FuncMap{
+		"relayLabel":        humanRelayLabel,
+		"humanTime":         humanDirectoryTime,
+		"heartbeatLabel":    humanHeartbeatLabel,
+		"reachabilityLabel": humanReachabilityLabel,
+	}).Parse(humanDirectoryTemplateSource)
 	if err != nil {
 		return nil, err
 	}

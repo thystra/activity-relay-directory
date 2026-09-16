@@ -21,7 +21,26 @@
     <section class="hero" aria-labelledby="page-title">
       <p class="eyebrow">ActivityPub infrastructure</p>
       <h1 id="page-title">Public relay directory</h1>
-      <p class="lede">Discover relay instances currently eligible through authenticated Directory activity or independently observed ActivityPub reachability.</p>
+      <p class="lede">Find participating relays and see whether they are still sending heartbeats and reachable on the network.</p>
+    </section>
+
+    <section class="status-help panel" aria-labelledby="status-heading">
+      <div class="section-heading">
+        <div>
+          <h2 id="status-heading">What the statuses mean</h2>
+          <p class="muted">Heartbeat and reachability tell you different things about a relay.</p>
+        </div>
+      </div>
+      <dl class="status-grid">
+        <div class="status-definition">
+          <dt>Heartbeat</dt>
+          <dd><strong>Healthy</strong> means the relay sent a recent heartbeat. <strong>Stale</strong> or <strong>Dead</strong> means that heartbeat is getting old, even if the relay is still reachable.</dd>
+        </div>
+        <div class="status-definition">
+          <dt>Reachability</dt>
+          <dd><strong>Reachable</strong> means the directory could recently connect to the relay's public actor. <strong>Unreachable</strong> means the latest check failed. <strong>Not checked</strong> means there is no recent check to show.</dd>
+        </div>
+      </dl>
     </section>
 
     <section class="panel directory-panel" aria-labelledby="relay-list-heading">
@@ -29,96 +48,77 @@
         <div>
           <p class="eyebrow">Directory</p>
           <h2 id="relay-list-heading">Participating relays</h2>
-          <p class="muted">{{len .Listing.Relays}} public {{if eq (len .Listing.Relays) 1}}relay{{else}}relays{{end}} on this page.</p>
+          <p class="muted">{{len .Listing.Relays}} public {{if eq (len .Listing.Relays) 1}}relay{{else}}relays{{end}} on this page. Click on a relay's line for details.</p>
         </div>
       </div>
 
 {{if .Listing.Relays}}
-      <ul class="relay-list">
+      <div class="relay-table" aria-label="Participating relays">
+        <div class="relay-table-header" aria-hidden="true">
+          <span>Relay</span>
+          <span>Heartbeat</span>
+          <span>Reachability</span>
+          <span>Last heartbeat</span>
+          <span>Last checked</span>
+        </div>
+        <ul class="relay-rows">
 {{range .Listing.Relays}}
-        <li>
-          <article class="relay-card">
-            <div class="relay-card-heading">
-              <h3><a href="{{.PublicBaseURL}}" rel="noreferrer">{{.PublicBaseURL}}</a></h3>
-              <div class="signal-badges" aria-label="Current evidence summary">
-                <span class="signal-badge heartbeat-{{.Heartbeat.State}}">Heartbeat: {{.Heartbeat.DisplayState}}</span>
-                <span class="signal-badge reachability-{{.Reachability.State}}">Reachability: {{.Reachability.DisplayState}}</span>
+          <li>
+            <details class="relay-row">
+              <summary class="relay-summary">
+                <span class="relay-name">
+                  <a href="{{.PublicBaseURL}}" rel="noreferrer">{{relayLabel .PublicBaseURL}}</a>
+                </span>
+                <span class="relay-cell relay-heartbeat">
+                  <span class="cell-label">Heartbeat</span>
+                  <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
+                </span>
+                <span class="relay-cell relay-reachability">
+                  <span class="cell-label">Reachability</span>
+                  <span class="signal-badge reachability-{{.Reachability.State}}">{{reachabilityLabel .Reachability.State}}</span>
+                </span>
+                <span class="relay-cell relay-time">
+                  <span class="cell-label">Last heartbeat</span>
+                  {{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{humanTime .Heartbeat.LastSeenAt}}</time>{{else}}<span class="muted">None yet</span>{{end}}
+                </span>
+                <span class="relay-cell relay-time">
+                  <span class="cell-label">Last checked</span>
+                  {{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{humanTime .Reachability.LastCheckedAt}}</time>{{else}}<span class="muted">Not checked</span>{{end}}
+                </span>
+              </summary>
+              <div class="relay-details">
+                <dl>
+                  <div>
+                    <dt>Actor</dt>
+                    <dd><code>{{.RelayActor}}</code></dd>
+                  </div>
+                  <div>
+                    <dt>Inbox</dt>
+                    <dd>{{if .Inbox.URL}}<code>{{.Inbox.URL}}</code>{{else}}Not listed{{end}}</dd>
+                  </div>
+                  <div>
+                    <dt>Last successful check</dt>
+                    <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
+                  </div>
+                </dl>
               </div>
-            </div>
-            <dl class="relay-meta">
-              <div>
-                <dt>Actor</dt>
-                <dd><code>{{.RelayActor}}</code></dd>
-              </div>
-              <div>
-                <dt>Last authenticated Directory observation</dt>
-                <dd>{{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{.Heartbeat.LastSeenAt}}</time>{{else}}Not observed{{end}}</dd>
-              </div>
-              <div>
-                <dt>Actor last checked</dt>
-                <dd>{{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{.Reachability.LastCheckedAt}}</time>{{else}}Not checked{{end}}</dd>
-              </div>
-              <div>
-                <dt>Actor last successful check</dt>
-                <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{.Reachability.LastSuccessAt}}</time>{{else}}Not observed{{end}}</dd>
-              </div>
-              <div>
-                <dt>Declared inbox</dt>
-                <dd>{{if .Inbox.URL}}<code>{{.Inbox.URL}}</code>{{if .Inbox.DeclaredAt}} · declared <time datetime="{{.Inbox.DeclaredAt}}">{{.Inbox.DeclaredAt}}</time>{{end}}{{else}}Not observed{{end}}</dd>
-              </div>
-              <div>
-                <dt>Inbox diagnostic</dt>
-                <dd>{{.Inbox.DisplayState}}{{if .Inbox.LastCheckedAt}} · checked <time datetime="{{.Inbox.LastCheckedAt}}">{{.Inbox.LastCheckedAt}}</time>{{end}}</dd>
-              </div>
-              <div>
-                <dt>RFC 9421</dt>
-                <dd>{{.RFC9421.State}}{{if .RFC9421.VerifiedAt}} · evidence recorded <time datetime="{{.RFC9421.VerifiedAt}}">{{.RFC9421.VerifiedAt}}</time>{{end}}</dd>
-              </div>
-            </dl>
-          </article>
-        </li>
+            </details>
+          </li>
 {{end}}
-      </ul>
+        </ul>
+      </div>
 {{else}}
       <div class="empty-state">
 {{if .NextURL}}        <p class="empty-title">No public relays on this page</p>
-        <p>This bounded page contained no currently eligible entries. Continue to the next page to keep browsing.</p>
+        <p>This page contains no relays to show right now. Continue to the next page to keep browsing.</p>
 {{else}}        <p class="empty-title">No relays are listed yet</p>
-        <p>Relay instances will appear here after the directory has sufficient public eligibility evidence.</p>
+        <p>Relay instances will appear here after they join the directory or are added by the directory operator.</p>
 {{end}}      </div>
 {{end}}
 
       <nav class="pagination" aria-label="Directory pages">
-        {{if .NextURL}}<a class="button-link" rel="next" href="{{.NextURL}}">Next page</a>{{else}}<span class="muted">End of directory</span>{{end}}
+        {{if .NextURL}}<a class="button-link pagination-next" rel="next" href="{{.NextURL}}">Next page</a>{{else}}<span class="muted pagination-next">End of directory</span>{{end}}
       </nav>
-    </section>
-
-    <section class="evidence-help panel" aria-labelledby="evidence-heading">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Evidence</p>
-          <h2 id="evidence-heading">Independent directory signals</h2>
-          <p class="muted">Heartbeat and server-observed reachability are intentionally separate. One does not rewrite the other.</p>
-        </div>
-      </div>
-      <dl class="evidence-grid">
-        <div class="evidence-definition">
-          <dt>Heartbeat</dt>
-          <dd><strong>healthy</strong> through 36 hours; <strong>stale</strong> after 36 hours and before 7 days; <strong>dead</strong> from 7 days to before 30 days; <strong>prune boundary</strong> at 30 days or older. <strong>not observed</strong> means no retained authenticated Directory observation exists for the entry.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>Reachability</dt>
-          <dd><strong>reachable</strong> means the most recent bounded actor validation succeeded; <strong>unreachable</strong> means the latest check failed; <strong>unknown</strong> means no current actor check has been recorded.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>Inbox diagnostic</dt>
-          <dd>The actor-declared inbox may be <strong>responsive</strong>, <strong>method rejected</strong>, <strong>unreachable</strong>, or <strong>not checked</strong>. Method rejection does not mean the inbox is absent.</dd>
-        </div>
-        <div class="evidence-definition">
-          <dt>RFC 9421</dt>
-          <dd><strong>verified</strong> means this directory has accepted a signed lifecycle request from the relay. <strong>not verified</strong> means only that the directory has no such positive evidence.</dd>
-        </div>
-      </dl>
     </section>
   </main>
 
