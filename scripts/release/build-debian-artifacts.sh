@@ -16,8 +16,8 @@ done
 
 DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper 2>/dev/null || true)"
 if [[ -z "$DEBHELPER_VERSION" ]] || \
-   ! dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.11.6; then
-    echo "debhelper >= 13.11.6 is required for correct /usr/lib/systemd maintainer-script generation; found: ${DEBHELPER_VERSION:-absent}" >&2
+   ! dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.25; then
+    echo "debhelper >= 13.25 is required by the validated Debian package lifecycle contract; found: ${DEBHELPER_VERSION:-absent}" >&2
     exit 1
 fi
 echo "debhelper_version=$DEBHELPER_VERSION"

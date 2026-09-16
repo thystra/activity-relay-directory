@@ -20,16 +20,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           . /etc/os-release
-          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
-            printf '%s\n' 'deb http://deb.debian.org/debian bookworm-backports main' > /etc/apt/sources.list.d/activity-relay-directory-bookworm-backports.list
-          fi
+          test "${ID:-}:${VERSION_CODENAME:-}" = "debian:trixie"
+          printf '%s\n' 'deb http://deb.debian.org/debian trixie-backports main' > /etc/apt/sources.list.d/activity-relay-directory-trixie-backports.list
           apt-get update
-          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             debhelper fakeroot lintian
-          if [ "${ID:-}:${VERSION_CODENAME:-}" = "debian:bookworm" ]; then
-            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -t bookworm-backports debhelper
-          fi
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            fakeroot lintian
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            -t trixie-backports debhelper
           DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper)"
-          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.11.6
+          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.25
           echo "debhelper_version=$DEBHELPER_VERSION"
           rm -rf /var/lib/apt/lists/*
 
