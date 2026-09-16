@@ -5,7 +5,7 @@ discovering public Activity-Relay instances.
 
 ## Current state
 
-Activity-Relay Directory 1.1.0-rc1 extends the stable 1.0 service
+Activity-Relay Directory 1.1.0-rc2 extends the stable 1.0 service
 implementation with:
 
 - `GET /healthz`
@@ -47,9 +47,10 @@ implementation with:
   non-mutating inbox diagnostics
 - default-off bounded background actor reachability maintenance with fixed
   hourly cadence, fair oldest-check-first scheduling, and pruning safeguards
-- 1.1 release-candidate bounded `/v2/relays` projection and human cards that keep
-  heartbeat, reachability, inbox diagnostics, and positive RFC 9421 evidence
-  independent while preserving `/v1/relays` compatibility
+- 1.1 release-candidate bounded `/v2/relays` projection plus a responsive human
+  directory with signed forward/reverse navigation; heartbeat, reachability,
+  inbox diagnostics, and positive RFC 9421 evidence remain independent while
+  preserving `/v1/relays` compatibility
 - local read-only `admin pruning dry-run` candidate inspection
 - strict default-zero inactive-record retention with identity-free dry-run,
   backup-gated local purge, bounded transactional revalidation, and private
@@ -233,11 +234,13 @@ and internal participation flags remain private.
 The v2 walk is bounded by canonical actor keyset: pages default to 50 and cap at
 100, while one request examines at most 400 retained identities. Sparse pages
 may therefore contain zero public rows and still return a continuation cursor.
-The human `/` page consumes this same projection and cursor. Discovered-only
-entries require a current successful actor check within the fixed six-hour
-freshness window; if background reachability is disabled, they naturally age
-out of public eligibility once their last validated actor observation becomes
-stale.
+`/v2/relays` remains forward-only. The human `/` page consumes the same bounded
+projection and signed cursor format, and additionally supports bounded reverse
+traversal through its `before` parameter so a visitor can return to a previous
+page without restarting the cursor lifetime. Discovered-only entries require a
+current successful actor check within the fixed six-hour freshness window; if
+background reachability is disabled, they naturally age out of public
+eligibility once their last validated actor observation becomes stale.
 
 ## Inactive-record retention
 
