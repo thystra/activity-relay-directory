@@ -4,6 +4,20 @@
 
 _No changes yet._
 
+## 1.1.0 - 2026-09-16
+
+- Promote the accepted `1.1.0-rc2` behavior to stable `1.1.0` without runtime
+  behavior changes.
+- Add operator-controlled relay discovery and independent reachability checks
+  while keeping the V1 Protocol and `/v1/relays` compatible with 1.0.
+- Add the default-off V2 public API at `/v2/relays` with richer discovery and
+  reachability information.
+- Improve the human-facing directory with compact responsive relay rows and
+  Previous/Next navigation.
+- Preserve Directory state and the dedicated service account during normal
+  package upgrade or removal; explicit purge remains the destructive package
+  operation, and operator-owned `config.yml` remains outside package conffiles.
+
 ## 1.1.0-rc2 - 2026-09-16
 
 - Scale the human directory into compact responsive relay rows with clearer

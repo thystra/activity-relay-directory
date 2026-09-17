@@ -1,3 +1,15 @@
+activity-relay-directory (1.1.0-1) stable; urgency=medium
+
+  * Promote the accepted 1.1.0-rc2 behavior to stable without runtime changes.
+  * Add schema-8 relay discovery and independent reachability information while
+    keeping the V1 Protocol and /v1/relays compatible with 1.0.
+  * Add the default-off V2 public API and improved human-facing directory.
+  * Preserve Directory state and the dedicated service account during normal
+    package upgrade or removal; explicit purge remains destructive.
+  * Keep operator-owned config.yml outside the package conffile set.
+
+ -- Alan Johnson <alan@argentwolf.org>  Wed, 16 Sep 2026 22:51:07 -0400
+
 activity-relay-directory (1.1.0~rc2-1) unstable; urgency=medium
 
   * Scale the human directory presentation and add bounded previous/next

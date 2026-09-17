@@ -15,6 +15,28 @@ acceptance matrix is required before canonical release bytes, package/container
 validation, publication, deployment, activation, or production verification.
 
 
+## Public release-documentation style
+
+Versioned release notes and the high-level release/current-state sections of the
+README are user/operator-facing documentation. Describe observable features,
+compatibility, upgrade behavior, safe defaults, and administrator actions in
+plain language.
+
+Keep internal release-process evidence out of those summaries unless it changes
+what an operator must do. Exact source commits and trees, artifact byte proofs,
+workflow run identities, canonical-build terminology, acceptance-gate names,
+and similar engineering evidence belong in this document and in timestamped
+release reports.
+
+Use product-facing names consistently:
+
+- V1 Protocol for the authenticated lifecycle protocol;
+- V1 public API for `/v1/relays`;
+- V2 public API for `/v2/relays`;
+- Human-facing pages for browser-oriented Directory presentation.
+
+The V2 public API is not a V2 lifecycle protocol.
+
 ## Versioning and authority
 
 The historical pre-1.0 release-candidate series is `v0.1.0-rcN`, with
