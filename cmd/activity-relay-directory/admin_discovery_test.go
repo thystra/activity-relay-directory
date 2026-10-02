@@ -201,6 +201,81 @@ func TestAdminDiscoveryImportStoresLabelNotFilePathAndRemoveNeedsNoProbe(t *test
 	}
 }
 
+func TestAdminDiscoveryImportReportsRegisteredLifecycleRelayAsAlreadyKnown(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "directory.sqlite")
+	database, err := initializeDatabase(context.Background(), path)
+	if err != nil {
+		t.Fatalf("initializeDatabase() error = %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO relays (
+			relay_actor,
+			public_base_url,
+			lifecycle_state,
+			administrative_state,
+			first_registered_at_unix,
+			updated_at_unix,
+			last_seen_at_unix
+		) VALUES (?, ?, 'registered', 'active', 100, 100, 100)`,
+		"https://relay.example/actor",
+		"https://relay.example",
+	); err != nil {
+		database.Close()
+		t.Fatalf("seed lifecycle relay: %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close seed database: %v", err)
+	}
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+
+	candidatePath := filepath.Join(directory, "relays.txt")
+	if err := osWriteFile(candidatePath, []byte("relay.example\n")); err != nil {
+		t.Fatalf("write candidates: %v", err)
+	}
+	prober := &adminDiscoveryProber{
+		actor: actorresolver.ActorProbeResult{ActorID: "https://relay.example/actor"},
+	}
+	var stdout, stderr bytes.Buffer
+	code := runDiscoveryAdminWithProberFactory(
+		[]string{
+			"activity-relay-directory", "admin", "discovery", "import",
+			"--file", candidatePath,
+			"--operator", "operator",
+			"--reason", "public_list",
+			"--source-label", "curated_list",
+			"--yes",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+		func() time.Time { return time.Unix(200, 0).UTC() },
+		func() (discoverycommand.Prober, error) { return prober, nil },
+	)
+	if code != discoverycommand.ExitSuccess ||
+		!strings.Contains(stderr.String(), "ready=0 already_known=1 duplicate_input=0 failed=0") ||
+		!strings.Contains(stderr.String(),
+			"already_known line=1 actor=https://relay.example/actor source=lifecycle") ||
+		!strings.Contains(stdout.String(),
+			"line=1 status=already_known actor=https://relay.example/actor") {
+		t.Fatalf("known lifecycle import = (%d, %q, %q)", code, stdout.String(), stderr.String())
+	}
+
+	database, err = initializeDatabase(context.Background(), path)
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	defer database.Close()
+	var discoveryCount int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM relay_discoveries
+		WHERE relay_actor = ?`, "https://relay.example/actor").Scan(&discoveryCount); err != nil {
+		t.Fatalf("count discoveries: %v", err)
+	}
+	if discoveryCount != 0 {
+		t.Fatalf("already-known lifecycle relay created %d discovery rows", discoveryCount)
+	}
+}
+
 type adminDiscoveryProber struct {
 	actor actorresolver.ActorProbeResult
 	inbox actorresolver.InboxProbeResult

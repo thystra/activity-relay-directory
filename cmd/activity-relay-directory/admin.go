@@ -205,12 +205,43 @@ func runDiscoveryAdminWithProberFactory(
 			fmt.Fprintln(stderr, "discovery preparation failed")
 			return discoverycommand.ExitOperational
 		}
+		if request.Action == discoverycommand.ActionImport {
+			knownDatabase, knownErr := initializeReadOnlyDatabase(prepareCtx, databasePath)
+			if knownErr != nil {
+				cancelPrepare()
+				fmt.Fprintln(stderr, "database initialization failed")
+				return discoverycommand.ExitOperational
+			}
+			knownRepository, knownErr := storageSQLite.NewRelayRepository(
+				knownDatabase,
+				storage.DenyWrites,
+			)
+			if knownErr != nil {
+				_ = knownDatabase.Close()
+				cancelPrepare()
+				fmt.Fprintln(stderr, "discovery repository initialization failed")
+				return discoverycommand.ExitOperational
+			}
+			classified, classifyErr := discoverycommand.ClassifyKnown(
+				prepareCtx,
+				request,
+				plan,
+				knownRepository,
+			)
+			closeErr := knownDatabase.Close()
+			if classifyErr != nil || closeErr != nil {
+				cancelPrepare()
+				fmt.Fprintln(stderr, "discovery known-state classification failed")
+				return discoverycommand.ExitOperational
+			}
+			plan = classified
+		}
 		if err := discoverycommand.RenderPlan(stderr, request, plan); err != nil {
 			cancelPrepare()
 			fmt.Fprintln(stderr, "discovery prospective output failed")
 			return discoverycommand.ExitOperational
 		}
-		if len(plan.Ready) == 0 {
+		if len(plan.Ready) == 0 && len(plan.AlreadyKnown) == 0 {
 			cancelPrepare()
 			fmt.Fprintln(stderr, "discovery preparation produced no ready relays")
 			return discoverycommand.ExitOperational

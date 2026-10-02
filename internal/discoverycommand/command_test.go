@@ -150,6 +150,86 @@ func TestPrepareDeduplicatesCanonicalActorsAndProbesInbox(t *testing.T) {
 	}
 }
 
+func TestClassifyKnownImportSeparatesActiveStateFromHistory(t *testing.T) {
+	plan := Plan{
+		CandidateCount: 4,
+		Ready: []PreparedRelay{
+			{Line: 1, RelayActor: "https://lifecycle.example/actor"},
+			{Line: 2, RelayActor: "https://discovery.example/actor"},
+			{Line: 3, RelayActor: "https://both.example/actor"},
+			{Line: 4, RelayActor: "https://history.example/actor"},
+		},
+	}
+	repository := &fakeKnownRepository{
+		discoveries: map[string]storage.DiscoveryRecord{
+			"https://discovery.example/actor": {
+				RelayActor: "https://discovery.example/actor",
+				State:      storage.DiscoveryActive,
+			},
+			"https://both.example/actor": {
+				RelayActor: "https://both.example/actor",
+				State:      storage.DiscoveryActive,
+			},
+			"https://history.example/actor": {
+				RelayActor: "https://history.example/actor",
+				State:      storage.DiscoveryRemoved,
+			},
+		},
+		lifecycle: map[string]storage.ModerationState{
+			"https://lifecycle.example/actor": {
+				RelayActor:     "https://lifecycle.example/actor",
+				LifecycleState: storage.LifecycleRegistered,
+			},
+			"https://both.example/actor": {
+				RelayActor:     "https://both.example/actor",
+				LifecycleState: storage.LifecycleRegistered,
+			},
+			"https://history.example/actor": {
+				RelayActor:     "https://history.example/actor",
+				LifecycleState: storage.LifecycleUnregistered,
+			},
+		},
+	}
+
+	classified, err := ClassifyKnown(
+		context.Background(),
+		Request{Action: ActionImport},
+		plan,
+		repository,
+	)
+	if err != nil {
+		t.Fatalf("ClassifyKnown() error = %v", err)
+	}
+	if len(classified.Ready) != 1 ||
+		classified.Ready[0].RelayActor != "https://history.example/actor" ||
+		len(classified.AlreadyKnown) != 3 {
+		t.Fatalf("classified plan = %#v", classified)
+	}
+	wantSources := []AlreadyKnownSource{
+		AlreadyKnownLifecycle,
+		AlreadyKnownDiscovery,
+		AlreadyKnownLifecycleDiscovery,
+	}
+	for index, want := range wantSources {
+		if classified.AlreadyKnown[index].Source != want {
+			t.Fatalf("AlreadyKnown[%d] = %#v; want source %q",
+				index, classified.AlreadyKnown[index], want)
+		}
+	}
+}
+
+func TestClassifyKnownLeavesManualAddUnchanged(t *testing.T) {
+	plan := Plan{CandidateCount: 1, Ready: []PreparedRelay{{
+		Line: 1, RelayActor: "https://relay.example/actor",
+	}}}
+	classified, err := ClassifyKnown(
+		context.Background(), Request{Action: ActionAdd}, plan, nil,
+	)
+	if err != nil || len(classified.Ready) != 1 || len(classified.AlreadyKnown) != 0 {
+		t.Fatalf("ClassifyKnown(add) = %#v, %v", classified, err)
+	}
+}
+
 func TestRenderPlanDoesNotEchoInvalidCandidate(t *testing.T) {
 	var output bytes.Buffer
 	request := Request{Action: ActionImport}
@@ -181,6 +261,13 @@ func TestConfirmUsesCanonicalActorOrImportCount(t *testing.T) {
 	}
 	if err := Confirm(importRequest, importPlan, strings.NewReader("IMPORT 1\n"), ioDiscard{}); !errors.Is(err, ErrConfirmation) {
 		t.Fatalf("Confirm(wrong) error = %v", err)
+	}
+
+	knownOnly := Plan{AlreadyKnown: []AlreadyKnownCandidate{{
+		Line: 1, RelayActor: "https://relay.example/actor", Source: AlreadyKnownLifecycle,
+	}}}
+	if err := Confirm(importRequest, knownOnly, nil, nil); err != nil {
+		t.Fatalf("Confirm(known-only import) error = %v", err)
 	}
 }
 
@@ -224,6 +311,29 @@ func TestExecuteImportReportsCandidateFailureAfterApplyingReadyEntries(t *testin
 		func() time.Time { return time.Unix(100, 0).UTC() })
 	if code != ExitOperational || len(repository.adds) != 1 || !strings.Contains(stdout.String(), "code=actor_unreachable") {
 		t.Fatalf("Execute() = %d; adds=%d stdout=%q stderr=%q", code, len(repository.adds), stdout.String(), stderr.String())
+	}
+}
+
+func TestExecuteKnownOnlyImportDoesNotWriteDiscovery(t *testing.T) {
+	repository := &fakeRepository{}
+	request := Request{
+		Action: ActionImport, OperatorID: "alan", ReasonCode: "public_list",
+		SourceLabel: "list", Format: OutputHuman,
+	}
+	plan := Plan{
+		CandidateCount: 1,
+		AlreadyKnown: []AlreadyKnownCandidate{{
+			Line: 1, RelayActor: "https://relay.example/actor", Source: AlreadyKnownLifecycle,
+		}},
+	}
+	var stdout, stderr bytes.Buffer
+	code := Execute(context.Background(), request, plan, repository, &stdout, &stderr,
+		func() time.Time { return time.Unix(100, 0).UTC() })
+	if code != ExitSuccess || len(repository.adds) != 0 ||
+		!strings.Contains(stdout.String(),
+			"line=1 status=already_known actor=https://relay.example/actor") {
+		t.Fatalf("Execute() = %d; adds=%d stdout=%q stderr=%q",
+			code, len(repository.adds), stdout.String(), stderr.String())
 	}
 }
 
@@ -281,6 +391,41 @@ func (repository *fakeRepository) RecordInboxObservation(_ context.Context, inte
 
 func (*fakeRepository) GetObservation(context.Context, storage.IdentityIntent) (storage.RelayObservation, bool, error) {
 	return storage.RelayObservation{}, false, nil
+}
+
+type fakeKnownRepository struct {
+	discoveries map[string]storage.DiscoveryRecord
+	lifecycle   map[string]storage.ModerationState
+}
+
+func (repository *fakeKnownRepository) GetDiscovery(
+	_ context.Context,
+	identity storage.IdentityIntent,
+) (storage.DiscoveryRecord, bool, error) {
+	record, found := repository.discoveries[identity.RelayActor]
+	return record, found, nil
+}
+
+func (*fakeKnownRepository) AddDiscovery(context.Context, storage.DiscoveryAddIntent, time.Time) (storage.DiscoveryOutcome, error) {
+	panic("unexpected AddDiscovery")
+}
+
+func (*fakeKnownRepository) RemoveDiscovery(context.Context, storage.DiscoveryRemoveIntent, time.Time) (storage.DiscoveryOutcome, error) {
+	panic("unexpected RemoveDiscovery")
+}
+
+func (repository *fakeKnownRepository) ModerationState(
+	_ context.Context, actor string,
+) (storage.ModerationState, error) {
+	state, found := repository.lifecycle[actor]
+	if !found {
+		return storage.ModerationState{}, storage.ErrRelayAbsent
+	}
+	return state, nil
+}
+
+func (*fakeKnownRepository) ModerationAudit(context.Context, storage.ModerationAuditQuery) (storage.ModerationAuditPage, error) {
+	panic("unexpected ModerationAudit")
 }
 
 type ioDiscard struct{}

@@ -92,6 +92,13 @@ type Repository interface {
 	storage.ObservationRepository
 }
 
+// KnownStateRepository is the read-only state needed to distinguish a new
+// imported relay from one already active through lifecycle or discovery state.
+type KnownStateRepository interface {
+	storage.DiscoveryRepository
+	storage.ModerationReadRepository
+}
+
 type Candidate struct {
 	Line int
 	URL  string
@@ -110,6 +117,20 @@ type DuplicateCandidate struct {
 	RelayActor string
 }
 
+type AlreadyKnownSource string
+
+const (
+	AlreadyKnownLifecycle          AlreadyKnownSource = "lifecycle"
+	AlreadyKnownDiscovery          AlreadyKnownSource = "discovery"
+	AlreadyKnownLifecycleDiscovery AlreadyKnownSource = "lifecycle+discovery"
+)
+
+type AlreadyKnownCandidate struct {
+	Line       int
+	RelayActor string
+	Source     AlreadyKnownSource
+}
+
 type FailedCandidate struct {
 	Line int
 	Code string
@@ -118,6 +139,7 @@ type FailedCandidate struct {
 type Plan struct {
 	CandidateCount int
 	Ready          []PreparedRelay
+	AlreadyKnown   []AlreadyKnownCandidate
 	Duplicates     []DuplicateCandidate
 	Failed         []FailedCandidate
 }
@@ -357,6 +379,63 @@ func prepareCandidates(ctx context.Context, candidates []Candidate, prober Probe
 	return plan, nil
 }
 
+// ClassifyKnown removes already-active identities from an import's mutation
+// set. A removed discovery or inactive lifecycle history remains eligible for a
+// fresh operator discovery; only currently active state is classified as known.
+func ClassifyKnown(
+	ctx context.Context,
+	request Request,
+	plan Plan,
+	repository KnownStateRepository,
+) (Plan, error) {
+	if request.Action != ActionImport {
+		return plan, nil
+	}
+	if ctx == nil || repository == nil {
+		return Plan{}, ErrPreparation
+	}
+
+	ready := make([]PreparedRelay, 0, len(plan.Ready))
+	for _, candidate := range plan.Ready {
+		identity := storage.IdentityIntent{RelayActor: candidate.RelayActor}
+		discovery, found, err := repository.GetDiscovery(ctx, identity)
+		if err != nil {
+			return Plan{}, errors.Join(ErrPreparation, err)
+		}
+		discoveryActive := found && discovery.State == storage.DiscoveryActive
+
+		lifecycleActive := false
+		lifecycle, err := repository.ModerationState(ctx, candidate.RelayActor)
+		switch {
+		case err == nil:
+			lifecycleActive = lifecycle.LifecycleState == storage.LifecycleRegistered
+		case errors.Is(err, storage.ErrRelayAbsent):
+		default:
+			return Plan{}, errors.Join(ErrPreparation, err)
+		}
+
+		if !discoveryActive && !lifecycleActive {
+			ready = append(ready, candidate)
+			continue
+		}
+
+		source := AlreadyKnownDiscovery
+		switch {
+		case lifecycleActive && discoveryActive:
+			source = AlreadyKnownLifecycleDiscovery
+		case lifecycleActive:
+			source = AlreadyKnownLifecycle
+		}
+		plan.AlreadyKnown = append(plan.AlreadyKnown, AlreadyKnownCandidate{
+			Line:       candidate.Line,
+			RelayActor: candidate.RelayActor,
+			Source:     source,
+		})
+	}
+	plan.Ready = ready
+	return plan, nil
+}
+
 func probeCandidate(ctx context.Context, item probeWork, prober Prober) probeResult {
 	actor, err := prober.ProbeActor(ctx, item.actorURL)
 	if err != nil {
@@ -452,8 +531,9 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 		return nil
 	}
 	if _, err := fmt.Fprintf(output,
-		"discovery prospective: candidates=%d ready=%d duplicates=%d failed=%d\n",
-		plan.CandidateCount, len(plan.Ready), len(plan.Duplicates), len(plan.Failed)); err != nil {
+		"discovery prospective: candidates=%d ready=%d already_known=%d duplicate_input=%d failed=%d\n",
+		plan.CandidateCount, len(plan.Ready), len(plan.AlreadyKnown),
+		len(plan.Duplicates), len(plan.Failed)); err != nil {
 		return err
 	}
 	for _, ready := range plan.Ready {
@@ -463,8 +543,15 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 			return err
 		}
 	}
+	for _, known := range plan.AlreadyKnown {
+		if _, err := fmt.Fprintf(output,
+			"already_known line=%d actor=%s source=%s\n",
+			known.Line, known.RelayActor, known.Source); err != nil {
+			return err
+		}
+	}
 	for _, duplicate := range plan.Duplicates {
-		if _, err := fmt.Fprintf(output, "duplicate line=%d actor=%s\n", duplicate.Line, duplicate.RelayActor); err != nil {
+		if _, err := fmt.Fprintf(output, "duplicate_input line=%d actor=%s\n", duplicate.Line, duplicate.RelayActor); err != nil {
 			return err
 		}
 	}
@@ -478,6 +565,10 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 
 func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer) error {
 	if request.AssumeYes {
+		return nil
+	}
+	if request.Action == ActionImport && len(plan.Ready) == 0 &&
+		len(plan.AlreadyKnown) > 0 {
 		return nil
 	}
 	if input == nil || errorOutput == nil {
@@ -565,17 +656,24 @@ func executeAddPlan(
 	standardOutput, errorOutput io.Writer,
 	now func() time.Time,
 ) int {
-	if plan.CandidateCount <= 0 || len(plan.Ready)+len(plan.Duplicates)+len(plan.Failed) == 0 {
+	if plan.CandidateCount <= 0 ||
+		len(plan.Ready)+len(plan.AlreadyKnown)+len(plan.Duplicates)+len(plan.Failed) == 0 {
 		return writeFailure(errorOutput, ExitOperational, "discovery plan is empty")
 	}
 	sourceKind := storage.DiscoverySourceManual
 	if request.Action == ActionImport {
 		sourceKind = storage.DiscoverySourceFile
 	}
-	results := make([]mutationResult, 0, len(plan.Ready)+len(plan.Duplicates)+len(plan.Failed))
+	results := make([]mutationResult, 0,
+		len(plan.Ready)+len(plan.AlreadyKnown)+len(plan.Duplicates)+len(plan.Failed))
 	hadFailure := len(plan.Failed) > 0
 	for _, failed := range plan.Failed {
 		results = append(results, mutationResult{Line: failed.Line, Status: "failed", Code: failed.Code})
+	}
+	for _, known := range plan.AlreadyKnown {
+		results = append(results, mutationResult{
+			Line: known.Line, RelayActor: known.RelayActor, Status: "already_known",
+		})
 	}
 	for _, duplicate := range plan.Duplicates {
 		results = append(results, mutationResult{
@@ -662,6 +760,22 @@ func renderResults(
 			if result.Status == "failed" {
 				if _, err := fmt.Fprintf(standardOutput, "line=%d status=failed code=%s actor=%s\n",
 					result.Line, result.Code, printableOptional(result.RelayActor)); err != nil {
+					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+				}
+				continue
+			}
+			if result.Status == "already_known" {
+				if _, err := fmt.Fprintf(standardOutput,
+					"line=%d status=already_known actor=%s\n",
+					result.Line, printableOptional(result.RelayActor)); err != nil {
+					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+				}
+				continue
+			}
+			if result.Status == "duplicate_input" {
+				if _, err := fmt.Fprintf(standardOutput,
+					"line=%d status=duplicate_input actor=%s\n",
+					result.Line, printableOptional(result.RelayActor)); err != nil {
 					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 				}
 				continue
