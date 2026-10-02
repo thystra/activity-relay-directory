@@ -68,15 +68,16 @@ func (format OutputFormat) valid() bool {
 }
 
 type Request struct {
-	Action      Action
-	Candidate   string
-	RelayActor  string
-	FilePath    string
-	OperatorID  string
-	ReasonCode  string
-	SourceLabel string
-	AssumeYes   bool
-	Format      OutputFormat
+	Action        Action
+	Candidate     string
+	RelayActor    string
+	FilePath      string
+	OperatorID    string
+	ReasonCode    string
+	SourceLabel   string
+	AddDeadRelays bool
+	AssumeYes     bool
+	Format        OutputFormat
 }
 
 // Prober is the safe network capability needed by discovery preparation.
@@ -90,6 +91,10 @@ type Prober interface {
 type Repository interface {
 	storage.DiscoveryRepository
 	storage.ObservationRepository
+}
+
+type CandidateRepository interface {
+	storage.DiscoveryCandidateRepository
 }
 
 // KnownStateRepository is the read-only state needed to distinguish a new
@@ -131,6 +136,14 @@ type AlreadyKnownCandidate struct {
 	Source     AlreadyKnownSource
 }
 
+type RetainedCandidate struct {
+	Line              int
+	CandidateActorURL string
+	PublicBaseURL     string
+	State             storage.DiscoveryCandidateState
+	Failure           storage.DiscoveryCandidateFailure
+}
+
 type FailedCandidate struct {
 	Line int
 	Code string
@@ -139,6 +152,7 @@ type FailedCandidate struct {
 type Plan struct {
 	CandidateCount int
 	Ready          []PreparedRelay
+	Retained       []RetainedCandidate
 	AlreadyKnown   []AlreadyKnownCandidate
 	Duplicates     []DuplicateCandidate
 	Failed         []FailedCandidate
@@ -151,10 +165,11 @@ type probeWork struct {
 }
 
 type probeResult struct {
-	index int
-	line  int
-	ready PreparedRelay
-	code  string
+	index    int
+	line     int
+	actorURL string
+	ready    PreparedRelay
+	code     string
 }
 
 func Parse(arguments []string) (Request, error) {
@@ -177,6 +192,7 @@ func Parse(arguments []string) (Request, error) {
 	sourceLabel := uniqueString{}
 	format := uniqueString{value: string(OutputHuman)}
 	assumeYes := uniqueTrue{}
+	addDeadRelays := uniqueTrue{}
 
 	switch action {
 	case ActionAdd:
@@ -185,6 +201,7 @@ func Parse(arguments []string) (Request, error) {
 		flags.Var(&actor, "actor", "canonical relay actor")
 	case ActionImport:
 		flags.Var(&filePath, "file", "bounded local candidate file")
+		flags.Var(&addDeadRelays, "add-dead-relays", "retain unreachable or incompatible relay candidates")
 	}
 	flags.Var(&operator, "operator", "private operator identifier")
 	flags.Var(&reason, "reason", "private reason code")
@@ -201,6 +218,7 @@ func Parse(arguments []string) (Request, error) {
 	request.OperatorID = operator.value
 	request.ReasonCode = reason.value
 	request.SourceLabel = sourceLabel.value
+	request.AddDeadRelays = addDeadRelays.value
 	request.AssumeYes = assumeYes.value
 	request.Format = OutputFormat(format.value)
 	if !request.Format.valid() {
@@ -299,10 +317,24 @@ func Prepare(ctx context.Context, request Request, prober Prober) (Plan, error) 
 		}
 		candidates = loaded
 	}
-	return prepareCandidates(ctx, candidates, prober)
+	return prepareCandidatesWithPolicy(
+		ctx,
+		candidates,
+		prober,
+		request.Action == ActionImport && request.AddDeadRelays,
+	)
 }
 
 func prepareCandidates(ctx context.Context, candidates []Candidate, prober Prober) (Plan, error) {
+	return prepareCandidatesWithPolicy(ctx, candidates, prober, false)
+}
+
+func prepareCandidatesWithPolicy(
+	ctx context.Context,
+	candidates []Candidate,
+	prober Prober,
+	retainDead bool,
+) (Plan, error) {
 	plan := Plan{CandidateCount: len(candidates)}
 	if len(candidates) == 0 || len(candidates) > MaximumImportCandidates {
 		return Plan{}, ErrPreparation
@@ -361,6 +393,35 @@ func prepareCandidates(ctx context.Context, candidates []Candidate, prober Probe
 	seen := make(map[string]struct{})
 	for _, prepared := range results {
 		if prepared.code != "" {
+			if retainDead && prepared.actorURL != "" &&
+				(prepared.code == string(storage.DiscoveryCandidateActorUnreachable) ||
+					prepared.code == string(storage.DiscoveryCandidateActorInvalid)) {
+				if _, duplicate := seen[prepared.actorURL]; duplicate {
+					plan.Duplicates = append(plan.Duplicates, DuplicateCandidate{
+						Line: prepared.line, RelayActor: prepared.actorURL,
+					})
+					continue
+				}
+				base, err := publicBaseURL(prepared.actorURL)
+				if err != nil {
+					plan.Failed = append(plan.Failed, FailedCandidate{
+						Line: prepared.line, Code: "invalid_candidate",
+					})
+					continue
+				}
+				state := storage.DiscoveryCandidateUnreachable
+				failure := storage.DiscoveryCandidateActorUnreachable
+				if prepared.code == string(storage.DiscoveryCandidateActorInvalid) {
+					state = storage.DiscoveryCandidateIncompatible
+					failure = storage.DiscoveryCandidateActorInvalid
+				}
+				seen[prepared.actorURL] = struct{}{}
+				plan.Retained = append(plan.Retained, RetainedCandidate{
+					Line: prepared.line, CandidateActorURL: prepared.actorURL,
+					PublicBaseURL: base, State: state, Failure: failure,
+				})
+				continue
+			}
 			plan.Failed = append(plan.Failed, FailedCandidate{Line: prepared.line, Code: prepared.code})
 			continue
 		}
@@ -432,7 +493,46 @@ func ClassifyKnown(
 			Source:     source,
 		})
 	}
+
+	retained := make([]RetainedCandidate, 0, len(plan.Retained))
+	for _, candidate := range plan.Retained {
+		identity := storage.IdentityIntent{RelayActor: candidate.CandidateActorURL}
+		discovery, found, err := repository.GetDiscovery(ctx, identity)
+		if err != nil {
+			return Plan{}, errors.Join(ErrPreparation, err)
+		}
+		discoveryActive := found && discovery.State == storage.DiscoveryActive
+
+		lifecycleActive := false
+		lifecycle, err := repository.ModerationState(ctx, candidate.CandidateActorURL)
+		switch {
+		case err == nil:
+			lifecycleActive = lifecycle.LifecycleState == storage.LifecycleRegistered
+		case errors.Is(err, storage.ErrRelayAbsent):
+		default:
+			return Plan{}, errors.Join(ErrPreparation, err)
+		}
+
+		if !discoveryActive && !lifecycleActive {
+			retained = append(retained, candidate)
+			continue
+		}
+
+		source := AlreadyKnownDiscovery
+		switch {
+		case lifecycleActive && discoveryActive:
+			source = AlreadyKnownLifecycleDiscovery
+		case lifecycleActive:
+			source = AlreadyKnownLifecycle
+		}
+		plan.AlreadyKnown = append(plan.AlreadyKnown, AlreadyKnownCandidate{
+			Line:       candidate.Line,
+			RelayActor: candidate.CandidateActorURL,
+			Source:     source,
+		})
+	}
 	plan.Ready = ready
+	plan.Retained = retained
 	return plan, nil
 }
 
@@ -446,14 +546,20 @@ func probeCandidate(ctx context.Context, item probeWork, prober Prober) probeRes
 		case errors.Is(err, actorresolver.ErrActorDocument), errors.Is(err, actorresolver.ErrPublicKey):
 			code = "actor_invalid"
 		}
-		return probeResult{index: item.index, line: item.line, code: code}
+		return probeResult{
+			index: item.index, line: item.line, actorURL: item.actorURL, code: code,
+		}
 	}
 	if actor.ActorID != item.actorURL {
-		return probeResult{index: item.index, line: item.line, code: "actor_invalid"}
+		return probeResult{
+			index: item.index, line: item.line, actorURL: item.actorURL, code: "actor_invalid",
+		}
 	}
 	base, err := publicBaseURL(actor.ActorID)
 	if err != nil {
-		return probeResult{index: item.index, line: item.line, code: "actor_invalid"}
+		return probeResult{
+			index: item.index, line: item.line, actorURL: item.actorURL, code: "actor_invalid",
+		}
 	}
 	prepared := PreparedRelay{
 		Line:            item.line,
@@ -531,8 +637,8 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 		return nil
 	}
 	if _, err := fmt.Fprintf(output,
-		"discovery prospective: candidates=%d ready=%d already_known=%d duplicate_input=%d failed=%d\n",
-		plan.CandidateCount, len(plan.Ready), len(plan.AlreadyKnown),
+		"discovery prospective: candidates=%d ready=%d retained=%d already_known=%d duplicate_input=%d failed=%d\n",
+		plan.CandidateCount, len(plan.Ready), len(plan.Retained), len(plan.AlreadyKnown),
 		len(plan.Duplicates), len(plan.Failed)); err != nil {
 		return err
 	}
@@ -540,6 +646,13 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 		if _, err := fmt.Fprintf(output,
 			"ready line=%d actor=%s inbox=%s inbox_probe=%s\n",
 			ready.Line, ready.RelayActor, printableOptional(ready.InboxURL), ready.InboxProbeState); err != nil {
+			return err
+		}
+	}
+	for _, retained := range plan.Retained {
+		if _, err := fmt.Fprintf(output,
+			"retained line=%d candidate=%s code=%s\n",
+			retained.Line, retained.CandidateActorURL, retained.Failure); err != nil {
 			return err
 		}
 	}
@@ -568,7 +681,7 @@ func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer)
 		return nil
 	}
 	if request.Action == ActionImport && len(plan.Ready) == 0 &&
-		len(plan.AlreadyKnown) > 0 {
+		len(plan.Retained) == 0 && len(plan.AlreadyKnown) > 0 {
 		return nil
 	}
 	if input == nil || errorOutput == nil {
@@ -586,11 +699,12 @@ func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer)
 		expected = request.RelayActor
 		prompt = "confirmation required: type " + expected + " to remove discovery: "
 	case ActionImport:
-		if len(plan.Ready) == 0 {
+		mutationCount := len(plan.Ready) + len(plan.Retained)
+		if mutationCount == 0 {
 			return ErrConfirmation
 		}
-		expected = "IMPORT " + strconv.Itoa(len(plan.Ready))
-		prompt = "confirmation required: type " + expected + " to apply ready discoveries: "
+		expected = "IMPORT " + strconv.Itoa(mutationCount)
+		prompt = "confirmation required: type " + expected + " to apply relay discoveries: "
 	default:
 		return ErrConfirmation
 	}
@@ -657,7 +771,8 @@ func executeAddPlan(
 	now func() time.Time,
 ) int {
 	if plan.CandidateCount <= 0 ||
-		len(plan.Ready)+len(plan.AlreadyKnown)+len(plan.Duplicates)+len(plan.Failed) == 0 {
+		len(plan.Ready)+len(plan.Retained)+len(plan.AlreadyKnown)+
+			len(plan.Duplicates)+len(plan.Failed) == 0 {
 		return writeFailure(errorOutput, ExitOperational, "discovery plan is empty")
 	}
 	sourceKind := storage.DiscoverySourceManual
@@ -665,10 +780,46 @@ func executeAddPlan(
 		sourceKind = storage.DiscoverySourceFile
 	}
 	results := make([]mutationResult, 0,
-		len(plan.Ready)+len(plan.AlreadyKnown)+len(plan.Duplicates)+len(plan.Failed))
+		len(plan.Ready)+len(plan.Retained)+len(plan.AlreadyKnown)+
+			len(plan.Duplicates)+len(plan.Failed))
 	hadFailure := len(plan.Failed) > 0
 	for _, failed := range plan.Failed {
 		results = append(results, mutationResult{Line: failed.Line, Status: "failed", Code: failed.Code})
+	}
+	if len(plan.Retained) > 0 {
+		candidateRepository, ok := repository.(CandidateRepository)
+		if !ok {
+			return writeFailure(errorOutput, ExitOperational, "discovery candidate retention unavailable")
+		}
+		for _, retained := range plan.Retained {
+			acceptedAt := now()
+			outcome, err := candidateRepository.RetainDiscoveryCandidate(
+				ctx,
+				storage.DiscoveryCandidateIntent{
+					CandidateActorURL: retained.CandidateActorURL,
+					PublicBaseURL:     retained.PublicBaseURL,
+					State:             retained.State,
+					Failure:           retained.Failure,
+					OperatorID:        request.OperatorID,
+					ReasonCode:        request.ReasonCode,
+					SourceKind:        sourceKind,
+					SourceLabel:       request.SourceLabel,
+				},
+				acceptedAt,
+			)
+			if err != nil {
+				hadFailure = true
+				results = append(results, mutationResult{
+					Line: retained.Line, CandidateActorURL: retained.CandidateActorURL,
+					Status: "failed", Code: "candidate_write_failed",
+				})
+				continue
+			}
+			results = append(results, mutationResult{
+				Line: retained.Line, CandidateActorURL: retained.CandidateActorURL,
+				Status: "retained", CandidateOutcome: outcome, Code: string(retained.Failure),
+			})
+		}
 	}
 	for _, known := range plan.AlreadyKnown {
 		results = append(results, mutationResult{
@@ -725,13 +876,15 @@ func executeAddPlan(
 }
 
 type mutationResult struct {
-	Line            int                      `json:"line,omitempty"`
-	RelayActor      string                   `json:"relay_actor,omitempty"`
-	Status          string                   `json:"status"`
-	Outcome         storage.DiscoveryOutcome `json:"outcome,omitempty"`
-	Code            string                   `json:"code,omitempty"`
-	InboxURL        string                   `json:"inbox_url,omitempty"`
-	InboxProbeState storage.InboxProbeState  `json:"inbox_probe,omitempty"`
+	Line              int                               `json:"line,omitempty"`
+	RelayActor        string                            `json:"relay_actor,omitempty"`
+	CandidateActorURL string                            `json:"candidate_actor_url,omitempty"`
+	Status            string                            `json:"status"`
+	Outcome           storage.DiscoveryOutcome          `json:"outcome,omitempty"`
+	CandidateOutcome  storage.DiscoveryCandidateOutcome `json:"candidate_outcome,omitempty"`
+	Code              string                            `json:"code,omitempty"`
+	InboxURL          string                            `json:"inbox_url,omitempty"`
+	InboxProbeState   storage.InboxProbeState           `json:"inbox_probe,omitempty"`
 }
 
 type resultDocument struct {
@@ -758,8 +911,24 @@ func renderResults(
 	} else {
 		for _, result := range results {
 			if result.Status == "failed" {
+				if result.CandidateActorURL != "" {
+					if _, err := fmt.Fprintf(standardOutput,
+						"line=%d status=failed code=%s candidate=%s\n",
+						result.Line, result.Code, result.CandidateActorURL); err != nil {
+						return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+					}
+					continue
+				}
 				if _, err := fmt.Fprintf(standardOutput, "line=%d status=failed code=%s actor=%s\n",
 					result.Line, result.Code, printableOptional(result.RelayActor)); err != nil {
+					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+				}
+				continue
+			}
+			if result.Status == "retained" {
+				if _, err := fmt.Fprintf(standardOutput,
+					"line=%d status=retained outcome=%s candidate=%s code=%s\n",
+					result.Line, result.CandidateOutcome, result.CandidateActorURL, result.Code); err != nil {
 					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 				}
 				continue
@@ -800,7 +969,9 @@ func classifyStorageError(output io.Writer, err error, operation string) int {
 		return writeFailure(output, ExitCanceled, operation+" canceled")
 	case errors.Is(err, storage.ErrTransitionInput), errors.Is(err, storage.ErrTransitionTime),
 		errors.Is(err, storage.ErrObservationInput), errors.Is(err, storage.ErrObservationTime),
-		errors.Is(err, storage.ErrObservationConflict):
+		errors.Is(err, storage.ErrObservationConflict),
+		errors.Is(err, storage.ErrDiscoveryCandidateInput),
+		errors.Is(err, storage.ErrDiscoveryCandidateTime):
 		return writeFailure(output, ExitUsage, operation+" is invalid")
 	default:
 		return writeFailure(output, ExitOperational, operation+" failed")

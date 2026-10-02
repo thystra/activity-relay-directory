@@ -32,8 +32,8 @@ func TestDiscoveryReachabilityMigrationUpgradesVersionSevenPreservingRetentionId
 		t.Fatalf("Migrate(version 7) error = %v", err)
 	}
 	version, err := SchemaVersion(context.Background(), database)
-	if err != nil || version != 8 {
-		t.Fatalf("SchemaVersion() = (%d, %v), want (8, nil)", version, err)
+	if err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("SchemaVersion() = (%d, %v), want (%d, nil)", version, err, CurrentSchemaVersion)
 	}
 	var identityAfter []byte
 	var policy int

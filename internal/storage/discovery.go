@@ -120,6 +120,88 @@ type DiscoveryRepository interface {
 	GetDiscovery(context.Context, IdentityIntent) (DiscoveryRecord, bool, error)
 }
 
+type DiscoveryCandidateState string
+
+const (
+	DiscoveryCandidateUnreachable  DiscoveryCandidateState = "unreachable"
+	DiscoveryCandidateIncompatible DiscoveryCandidateState = "incompatible"
+	DiscoveryCandidateResolved     DiscoveryCandidateState = "resolved"
+)
+
+func (state DiscoveryCandidateState) Valid() bool {
+	switch state {
+	case DiscoveryCandidateUnreachable,
+		DiscoveryCandidateIncompatible,
+		DiscoveryCandidateResolved:
+		return true
+	default:
+		return false
+	}
+}
+
+type DiscoveryCandidateFailure string
+
+const (
+	DiscoveryCandidateActorUnreachable DiscoveryCandidateFailure = "actor_unreachable"
+	DiscoveryCandidateActorInvalid     DiscoveryCandidateFailure = "actor_invalid"
+)
+
+func (failure DiscoveryCandidateFailure) Valid() bool {
+	return failure == DiscoveryCandidateActorUnreachable ||
+		failure == DiscoveryCandidateActorInvalid
+}
+
+type DiscoveryCandidateOutcome string
+
+const (
+	DiscoveryCandidateAdded   DiscoveryCandidateOutcome = "added"
+	DiscoveryCandidateUpdated DiscoveryCandidateOutcome = "updated"
+)
+
+func (outcome DiscoveryCandidateOutcome) Valid() bool {
+	return outcome == DiscoveryCandidateAdded || outcome == DiscoveryCandidateUpdated
+}
+
+var (
+	ErrDiscoveryCandidateInput = errors.New("discovery candidate input is invalid")
+	ErrDiscoveryCandidateTime  = errors.New("discovery candidate time is invalid")
+)
+
+type DiscoveryCandidateIntent struct {
+	CandidateActorURL string
+	PublicBaseURL     string
+	State             DiscoveryCandidateState
+	Failure           DiscoveryCandidateFailure
+	OperatorID        string
+	ReasonCode        string
+	SourceKind        DiscoverySourceKind
+	SourceLabel       string
+}
+
+type DiscoveryCandidateRecord struct {
+	CandidateActorURL string
+	PublicBaseURL     string
+	State             DiscoveryCandidateState
+	LastFailure       DiscoveryCandidateFailure
+	FirstSeenUnix     int64
+	LastCheckedUnix   int64
+	LastSuccessUnix   *int64
+	FailureCount      int64
+	UpdatedUnix       int64
+}
+
+type DiscoveryCandidateRepository interface {
+	RetainDiscoveryCandidate(
+		context.Context,
+		DiscoveryCandidateIntent,
+		time.Time,
+	) (DiscoveryCandidateOutcome, error)
+	GetDiscoveryCandidate(
+		context.Context,
+		string,
+	) (DiscoveryCandidateRecord, bool, error)
+}
+
 type ReachabilityState string
 
 func (state ReachabilityState) Valid() bool {

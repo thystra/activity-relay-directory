@@ -253,7 +253,7 @@ func TestAdminDiscoveryImportReportsRegisteredLifecycleRelayAsAlreadyKnown(t *te
 		func() (discoverycommand.Prober, error) { return prober, nil },
 	)
 	if code != discoverycommand.ExitSuccess ||
-		!strings.Contains(stderr.String(), "ready=0 already_known=1 duplicate_input=0 failed=0") ||
+		!strings.Contains(stderr.String(), "ready=0 retained=0 already_known=1 duplicate_input=0 failed=0") ||
 		!strings.Contains(stderr.String(),
 			"already_known line=1 actor=https://relay.example/actor source=lifecycle") ||
 		!strings.Contains(stdout.String(),
