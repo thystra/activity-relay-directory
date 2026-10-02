@@ -58,6 +58,12 @@ func TestResolverResolvesBoundActorRSAKeys(t *testing.T) {
 			publicKey:   pkixPEM,
 		},
 		{
+			name:        "Group relay actor",
+			actorType:   "Group",
+			contentType: "application/activity+json",
+			publicKey:   pkixPEM,
+		},
+		{
 			name:        "JSON-LD ActivityStreams profile",
 			actorType:   "Application",
 			contentType: `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`,

@@ -26,6 +26,8 @@ const (
 	defaultMailTimeoutSeconds  = 30
 	maximumMailTimeoutSeconds  = 300
 	maximumAdministratorEmails = 8
+	packagedEnvironmentPath    = "/etc/default/activity-relay-directory"
+	maximumEnvironmentFileSize = 64 * 1024
 )
 
 // DatabaseGrowthConfig is the process-independent Tranche 17 storage budget
@@ -173,11 +175,119 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// LoadDatabasePath reads and validates the only process setting required by
-// local administrative commands. It deliberately does not require a public
-// URL or listener configuration.
+// LoadPackagedAdminEnvironment fills missing DIRECTORY_* process settings from
+// the Debian package environment file. Values already present in the invoking
+// shell always win. A source/development tree without the package file is
+// unchanged.
+//
+// The file is parsed as configuration data, never executed by a shell.
+func LoadPackagedAdminEnvironment() error {
+	return loadAdminEnvironmentFile(packagedEnvironmentPath)
+}
+
+func loadAdminEnvironmentFile(path string) error {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read administrator environment metadata: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() < 0 ||
+		info.Size() > maximumEnvironmentFileSize {
+		return errors.New("administrator environment file is invalid")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil || len(body) > maximumEnvironmentFileSize {
+		return errors.New("administrator environment file is unreadable")
+	}
+
+	for lineNumber, line := range strings.Split(string(body), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		key, rawValue, found := strings.Cut(trimmed, "=")
+		if !found {
+			return fmt.Errorf(
+				"administrator environment line %d is invalid",
+				lineNumber+1,
+			)
+		}
+		key = strings.TrimSpace(key)
+		if !strings.HasPrefix(key, "DIRECTORY_") {
+			continue
+		}
+		if !validAdminEnvironmentKey(key) {
+			return fmt.Errorf(
+				"administrator environment line %d has an invalid key",
+				lineNumber+1,
+			)
+		}
+		if _, present := os.LookupEnv(key); present {
+			continue
+		}
+		value, err := parseAdminEnvironmentValue(strings.TrimSpace(rawValue))
+		if err != nil {
+			return fmt.Errorf(
+				"administrator environment line %d has an invalid value",
+				lineNumber+1,
+			)
+		}
+		if err := os.Setenv(key, value); err != nil {
+			return errors.New("administrator environment could not be loaded")
+		}
+	}
+	return nil
+}
+
+func validAdminEnvironmentKey(key string) bool {
+	for _, character := range key {
+		if character == '_' ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') {
+			continue
+		}
+		return false
+	}
+	return key != ""
+}
+
+func parseAdminEnvironmentValue(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	if raw[0] == '"' {
+		value, err := strconv.Unquote(raw)
+		if err != nil {
+			return "", err
+		}
+		return value, nil
+	}
+	if raw[0] == '\'' {
+		if len(raw) < 2 || raw[len(raw)-1] != '\'' ||
+			strings.Contains(raw[1:len(raw)-1], "'") {
+			return "", errors.New("invalid single-quoted value")
+		}
+		return raw[1 : len(raw)-1], nil
+	}
+	return raw, nil
+}
+
+// LoadDatabasePath reads and validates the database path required by local
+// administrative commands. An explicitly supplied process value is
+// authoritative. When the variable is absent, packaged installations fall
+// back to /etc/default/activity-relay-directory so operators do not have to
+// source the systemd environment file before running an admin command.
 func LoadDatabasePath() (string, error) {
-	path := strings.TrimSpace(os.Getenv("DIRECTORY_DATABASE_PATH"))
+	raw, present := os.LookupEnv("DIRECTORY_DATABASE_PATH")
+	if !present {
+		if err := LoadPackagedAdminEnvironment(); err != nil {
+			return "", err
+		}
+		raw = os.Getenv("DIRECTORY_DATABASE_PATH")
+	}
+	path := strings.TrimSpace(raw)
 	if err := ValidateDatabasePath(path); err != nil {
 		return "", err
 	}
