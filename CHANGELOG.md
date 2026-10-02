@@ -12,6 +12,9 @@
 - Distinguish duplicate input from relay identities that are already active in
   lifecycle or discovery state during file imports, and skip redundant
   discovery writes for those already-known identities.
+- Add `--add-dead-relays` to discovery imports so unreachable or incompatible
+  relay candidates can be retained for later rechecks without treating them as
+  verified relay actors.
 
 ## 1.1.0 - 2026-09-16
 

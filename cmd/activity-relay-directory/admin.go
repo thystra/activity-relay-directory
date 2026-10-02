@@ -241,9 +241,10 @@ func runDiscoveryAdminWithProberFactory(
 			fmt.Fprintln(stderr, "discovery prospective output failed")
 			return discoverycommand.ExitOperational
 		}
-		if len(plan.Ready) == 0 && len(plan.AlreadyKnown) == 0 {
+		if len(plan.Ready) == 0 && len(plan.Retained) == 0 &&
+			len(plan.AlreadyKnown) == 0 {
 			cancelPrepare()
-			fmt.Fprintln(stderr, "discovery preparation produced no ready relays")
+			fmt.Fprintln(stderr, "discovery preparation produced no usable relays")
 			return discoverycommand.ExitOperational
 		}
 	}
@@ -658,7 +659,7 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
-	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
@@ -668,7 +669,7 @@ func writeAdminUsage(output io.Writer) {
 func writeDiscoveryUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
-	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
 }
 
 func writePruningUsage(output io.Writer) {

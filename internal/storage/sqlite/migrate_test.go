@@ -84,6 +84,8 @@ func TestMigrateCreatesSchemaAndIsIdempotent(t *testing.T) {
 		"relay_discoveries",
 		"discovery_events",
 		"relay_observations",
+		"relay_discovery_candidates",
+		"discovery_candidate_events",
 		"retention_metadata",
 		"retention_runs",
 	} {
