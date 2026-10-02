@@ -9,6 +9,9 @@
   as HTTPS relay candidates while continuing to reject explicit HTTP URLs.
 - Accept ActivityStreams `Group` actors as relay actors, matching deployed
   relay software such as Fedibird.
+- Distinguish duplicate input from relay identities that are already active in
+  lifecycle or discovery state during file imports, and skip redundant
+  discovery writes for those already-known identities.
 
 ## 1.1.0 - 2026-09-16
 
