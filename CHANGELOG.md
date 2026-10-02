@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-_No changes yet._
+- Make packaged local administrator commands load missing `DIRECTORY_*`
+  settings from `/etc/default/activity-relay-directory`, so normal shell use
+  does not require manually sourcing the systemd environment file.
+- Accept bare relay host names in discovery add/import input by treating them
+  as HTTPS relay candidates while continuing to reject explicit HTTP URLs.
+- Accept ActivityStreams `Group` actors as relay actors, matching deployed
+  relay software such as Fedibird.
 
 ## 1.1.0 - 2026-09-16
 

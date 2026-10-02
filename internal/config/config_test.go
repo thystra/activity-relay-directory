@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -12,6 +13,84 @@ import (
 
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
+
+func TestLoadAdminEnvironmentFileUsesMissingPackagedValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "activity-relay-directory")
+	body := strings.Join([]string{
+		"# package settings",
+		`DIRECTORY_DATABASE_PATH="/var/lib/activity-relay-directory/directory.sqlite"`,
+		"DIRECTORY_DATABASE_MAX_BYTES=2147483648",
+		"UNRELATED_SETTING=ignored",
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write environment fixture: %v", err)
+	}
+
+	names := []string{
+		"DIRECTORY_DATABASE_PATH",
+		"DIRECTORY_DATABASE_MAX_BYTES",
+	}
+	for _, name := range names {
+		name := name
+		value, present := os.LookupEnv(name)
+		t.Cleanup(func() {
+			if present {
+				_ = os.Setenv(name, value)
+			} else {
+				_ = os.Unsetenv(name)
+			}
+		})
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatalf("unset %s: %v", name, err)
+		}
+	}
+
+	if err := loadAdminEnvironmentFile(path); err != nil {
+		t.Fatalf("loadAdminEnvironmentFile() error = %v", err)
+	}
+	if got := os.Getenv("DIRECTORY_DATABASE_PATH"); got !=
+		"/var/lib/activity-relay-directory/directory.sqlite" {
+		t.Fatalf("DIRECTORY_DATABASE_PATH = %q", got)
+	}
+	if got := os.Getenv("DIRECTORY_DATABASE_MAX_BYTES"); got != "2147483648" {
+		t.Fatalf("DIRECTORY_DATABASE_MAX_BYTES = %q", got)
+	}
+	if got := os.Getenv("UNRELATED_SETTING"); got != "" {
+		t.Fatalf("UNRELATED_SETTING = %q", got)
+	}
+
+	if err := os.Setenv("DIRECTORY_DATABASE_PATH", "/shell/directory.sqlite"); err != nil {
+		t.Fatalf("set shell override: %v", err)
+	}
+	if err := loadAdminEnvironmentFile(path); err != nil {
+		t.Fatalf("reload environment file: %v", err)
+	}
+	if got := os.Getenv("DIRECTORY_DATABASE_PATH"); got != "/shell/directory.sqlite" {
+		t.Fatalf("shell override was replaced: %q", got)
+	}
+}
+
+func TestLoadDatabasePathDoesNotConsultPackageFallbackWhenEnvironmentIsExplicit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "directory.sqlite")
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+
+	got, err := LoadDatabasePath()
+	if err != nil {
+		t.Fatalf("LoadDatabasePath() error = %v", err)
+	}
+	if got != path {
+		t.Fatalf("LoadDatabasePath() = %q; want %q", got, path)
+	}
+}
+
+func TestLoadDatabasePathTreatsExplicitEmptyEnvironmentAsAuthoritative(t *testing.T) {
+	t.Setenv("DIRECTORY_DATABASE_PATH", "")
+
+	if got, err := LoadDatabasePath(); err == nil || got != "" {
+		t.Fatalf("LoadDatabasePath() = %q, %v; want validation failure", got, err)
+	}
+}
 
 func TestLoadDefaultsLifecycleDisabled(t *testing.T) {
 	setRequiredEnvironment(t)

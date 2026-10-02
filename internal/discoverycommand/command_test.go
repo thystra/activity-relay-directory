@@ -64,6 +64,8 @@ func TestCandidateActorURLAcceptsOnlyReviewedForms(t *testing.T) {
 		raw  string
 		want string
 	}{
+		{raw: "relay.example", want: "https://relay.example/actor"},
+		{raw: "relay.example/inbox", want: "https://relay.example/actor"},
 		{raw: "https://relay.example", want: "https://relay.example/actor"},
 		{raw: "https://relay.example/", want: "https://relay.example/actor"},
 		{raw: "https://relay.example/inbox", want: "https://relay.example/actor"},

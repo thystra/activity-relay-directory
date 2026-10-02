@@ -392,7 +392,7 @@ func resolveActorDocument(
 func validRelayActorType(raw json.RawMessage) bool {
 	var single string
 	if json.Unmarshal(raw, &single) == nil {
-		return single == "Application" || single == "Service"
+		return single == "Application" || single == "Service" || single == "Group"
 	}
 	var multiple []string
 	if json.Unmarshal(raw, &multiple) != nil || len(multiple) == 0 ||
@@ -400,7 +400,7 @@ func validRelayActorType(raw json.RawMessage) bool {
 		return false
 	}
 	for _, actorType := range multiple {
-		if actorType == "Application" || actorType == "Service" {
+		if actorType == "Application" || actorType == "Service" || actorType == "Group" {
 			return true
 		}
 	}
