@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rewrite the project README around installation, relay discovery, tiered
+  directory use, administration, and operator documentation instead of an
+  implementation-status checklist.
 - Make packaged local administrator commands load missing `DIRECTORY_*`
   settings from `/etc/default/activity-relay-directory`, so normal shell use
   does not require manually sourcing the systemd environment file.
