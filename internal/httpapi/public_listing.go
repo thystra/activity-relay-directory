@@ -38,6 +38,7 @@ var ErrPublicListingConfiguration = errors.New("public listing configuration is 
 type PublicListingHandler struct {
 	repository           storage.PublicListingRepository
 	directoryRepository  storage.DirectoryProjectionRepository
+	summaryRepository    storage.DirectorySummaryRepository
 	now                  func() time.Time
 	semaphore            chan struct{}
 	cursorKey            []byte
@@ -65,6 +66,10 @@ func newPublicListingHandler(
 	if !ok || directoryRepository == nil {
 		return nil, ErrPublicListingConfiguration
 	}
+	summaryRepository, ok := repository.(storage.DirectorySummaryRepository)
+	if !ok || summaryRepository == nil {
+		return nil, ErrPublicListingConfiguration
+	}
 	cursorKey := make([]byte, publicListingCursorKeySize)
 	if _, err := rand.Read(cursorKey); err != nil {
 		return nil, ErrPublicListingConfiguration
@@ -76,6 +81,7 @@ func newPublicListingHandler(
 	return &PublicListingHandler{
 		repository:           repository,
 		directoryRepository:  directoryRepository,
+		summaryRepository:    summaryRepository,
 		now:                  now,
 		semaphore:            make(chan struct{}, maximumConcurrent),
 		cursorKey:            cursorKey,

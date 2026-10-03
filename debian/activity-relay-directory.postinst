@@ -35,4 +35,12 @@ install -d -m 0700 -o "$account" -g "$account" "$state"
 
 #DEBHELPER#
 
+# Package upgrades deliberately do not restart an operator-activated service,
+# but systemd must reread the installed unit before the operator's later
+# restart. Avoid touching the host manager for alternate-root package work.
+if [ "${1:-}" = "configure" ] && [ -z "${DPKG_ROOT:-}" ] && \
+   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl --system daemon-reload >/dev/null || true
+fi
+
 exit 0

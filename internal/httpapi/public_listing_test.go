@@ -29,6 +29,11 @@ type publicListingRepositoryStub struct {
 	directoryPage    storage.DirectoryProjectionPage
 	directoryErr     error
 	directoryBlock   <-chan struct{}
+
+	summaryObserved []time.Time
+	summary         storage.DirectorySummary
+	summaryErr      error
+	summaryBlock    <-chan struct{}
 }
 
 func (repository *publicListingRepositoryStub) ListPublicRelays(
@@ -71,6 +76,27 @@ func (repository *publicListingRepositoryStub) ListDirectoryRelays(
 		}
 	}
 	return page, err
+}
+
+func (repository *publicListingRepositoryStub) ReadDirectorySummary(
+	ctx context.Context,
+	observedAt time.Time,
+) (storage.DirectorySummary, error) {
+	if repository == nil {
+		return storage.DirectorySummary{}, storage.ErrRepositoryConfiguration
+	}
+	repository.mu.Lock()
+	repository.summaryObserved = append(repository.summaryObserved, observedAt)
+	summary, err, block := repository.summary, repository.summaryErr, repository.summaryBlock
+	repository.mu.Unlock()
+	if block != nil {
+		select {
+		case <-ctx.Done():
+			return storage.DirectorySummary{}, ctx.Err()
+		case <-block:
+		}
+	}
+	return summary, err
 }
 
 func TestPublicListingFixtureAndCacheValidator(t *testing.T) {

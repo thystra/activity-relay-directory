@@ -50,7 +50,7 @@ Known verified relays are checked on the ordinary six-hour freshness cadence
 while their last online evidence is less than seven days old. Once an actor is
 currently `unreachable` and the newest trustworthy online evidence is at least
 seven days old, the next actor check is due only after seven days. Weekly checks
-continue through the 180-day public graveyard boundary; there is no automatic
+continue through the 30-day public graveyard boundary; there is no automatic
 reachability-based deletion. A successful later check immediately records fresh
 reachable evidence and allows public tier classification to recover.
 

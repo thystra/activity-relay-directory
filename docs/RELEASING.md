@@ -121,9 +121,11 @@ explicit Ubuntu 26.04 runner and independently verifies that its installed
 debhelper also meets the 13.25 minimum; Forgejo remains authoritative for
 canonical release artifacts.
 Fresh package installation must leave the unit disabled and inactive, while a
-package upgrade must not stop or restart an operator-activated service. Loading
-the newly installed binary into an active deployment is a separate,
-operator-controlled restart gate after upgrade validation.
+package upgrade must not stop or restart an operator-activated service. Package
+configuration must reload systemd's unit definitions without starting or
+restarting the service. Loading the newly installed binary into an active
+deployment remains a separate, operator-controlled restart gate after upgrade
+validation.
 
 Fresh package defaults bind only to `127.0.0.1:8080`, use a loopback public
 base URL, and keep lifecycle, public listing, automatic soft pruning, positive

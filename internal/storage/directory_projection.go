@@ -30,7 +30,7 @@ const (
 	DirectoryTierUnavailable     DirectoryTier = 3
 	DirectoryTierGraveyard       DirectoryTier = 4
 
-	DirectoryGraveyardAfter = 180 * 24 * time.Hour
+	DirectoryGraveyardAfter = 30 * 24 * time.Hour
 )
 
 var (
@@ -148,7 +148,7 @@ type DirectoryProjectionRelay struct {
 // non-prestige operational tiers. Tier ordering is explicit; alphabetical actor
 // order is used inside each tier. A fresh reachable actor is online. A healthy
 // authenticated heartbeat plus fresh reachability is Tier 1. Relays not seen
-// online for 180 days enter the graveyard.
+// online for 30 days enter the graveyard.
 func ClassifyDirectoryTier(relay DirectoryProjectionRelay, observedUnix int64) (DirectoryTier, error) {
 	if observedUnix < 0 || relay.FirstKnownUnix < 0 || relay.FirstKnownUnix > observedUnix ||
 		!relay.HeartbeatState.Valid() || !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() {
@@ -304,6 +304,29 @@ type DirectoryProjectionPage struct {
 	Relays   []DirectoryProjectionRelay
 	Previous DirectoryProjectionCursor
 	Next     DirectoryProjectionCursor
+}
+
+// DirectorySummary contains aggregate public relay counts for the human
+// directory. PendingVerification is aggregate-only: unresolved candidate
+// identities remain private until canonical actor validation succeeds.
+type DirectorySummary struct {
+	KnownRelays         int
+	OnlineRelays        int
+	OfflineRelays       int
+	PendingVerification int
+}
+
+func (summary DirectorySummary) Valid() bool {
+	return summary.KnownRelays >= 0 && summary.OnlineRelays >= 0 &&
+		summary.OfflineRelays >= 0 && summary.PendingVerification >= 0 &&
+		summary.OnlineRelays+summary.OfflineRelays == summary.KnownRelays
+}
+
+// DirectorySummaryRepository reads aggregate public relay counts plus the
+// number of unresolved private discovery candidates. It never exposes candidate
+// identities or provenance.
+type DirectorySummaryRepository interface {
+	ReadDirectorySummary(context.Context, time.Time) (DirectorySummary, error)
 }
 
 // DirectoryProjectionRepository reads the richer public directory projection.

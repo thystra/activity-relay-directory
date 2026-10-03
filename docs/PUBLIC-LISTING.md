@@ -83,8 +83,8 @@ non-prestige tiers:
    and lifecycle relays whose heartbeat is absent or stale.
 3. **Tier 3 — Offline / Unreachable.** The relay is known to the Directory but
    does not have a current successful actor check and has been seen online
-   within the last 180 days.
-4. **Tier 4 — Graveyard.** The relay has not been seen online for at least 180
+   within the last 30 days.
+4. **Tier 4 — Graveyard.** The relay has not been seen online for at least 30
    days. It remains retained and is still checked periodically so recovery can
    move it back to Tier 1 or Tier 2.
 
@@ -93,7 +93,10 @@ authenticated lifecycle `last_seen_at`, successful actor reachability, or the
 first known time when no later successful evidence exists. Unverified retained
 `--add-dead-relays` candidates are private maintenance state and do **not** enter
 any public tier until a later actor check successfully validates and promotes
-them to an active discovery.
+them to an active discovery. The human `/` page may publish only their aggregate
+pending-verification count alongside aggregate known/online/offline relay
+counts. Candidate identities, failure details, source labels, and other
+provenance remain private.
 
 Discovery provenance is not part of the projection. Manual discovery, file
 import, self-registration, operator/source labels, and reason codes remain

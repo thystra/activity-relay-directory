@@ -19,7 +19,7 @@ The read-only `GET /v2/relays` representation is versioned independently from
 the signed lifecycle request protocol. On the 1.2 development line its
 `schema_version` is `3`. Each relay object includes the closed numeric `tier`
 vocabulary `1|2|3|4`, representing heartbeat+online, online without a current
-heartbeat, unavailable, and the 180-day graveyard respectively. Public ordering
+heartbeat, unavailable, and the 30-day graveyard respectively. Public ordering
 is `(tier, relay_actor)` and the authenticated v2 cursor format version is `2`,
 carrying both tier and actor position. See `docs/PUBLIC-LISTING.md` for the
 complete inclusion, timing, pagination, and privacy contract.
