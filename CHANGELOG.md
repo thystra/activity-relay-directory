@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.2.0 - 2026-10-03
+
+- Promote the accepted `1.2.0-rc2` behavior to stable `1.2.0` without runtime
+  behavior changes.
+- Add resilient relay discovery imports with retained unavailable candidates,
+  staged retry/promotion maintenance, and already-known classification.
+- Add four public operational tiers with a 30-day Graveyard, alphabetical
+  ordering inside each tier, and aggregate online/offline/pending counts on the
+  public-facing Directory page.
+- Add local tier-scoped exports and public plain-text relay downloads.
+- Preserve the V1 Protocol and `/v1/relays` compatibility while extending
+  `/v2/relays` to schema 3 and the database to schema 9.
+- Reload systemd unit definitions during Debian package configuration without
+  automatically restarting an operator-activated Directory.
+
 ## 1.2.0-rc2 - 2026-10-03
 
 - Move verified relays from Tier 3 into the Tier 4 Graveyard after 30 days

@@ -792,6 +792,29 @@ Acceptance must exercise at least:
 Canonical release bytes, package/container validation, deployment, activation,
 and production verification remain separate gates.
 
+## 1.3 roadmap
+
+### Public-facing running version
+
+Repository: Directory.
+
+Publish the running application version on the public-facing Directory page,
+near the software links in the footer. The displayed value must come from the
+same build/version identity used by `/v1/status`; do not introduce a separate
+configuration value or hard-coded template version. This is a presentation-only
+change and must not alter public relay records or require a public API schema
+change.
+
+### Canonical artifact wrapper metadata
+
+Repository: Directory.
+
+Review the Forgejo artifact wrapper used for canonical release bundles so
+extracted standalone binaries retain executable mode and archive timestamps are
+sane and deterministic. Preserve checksum identity of the canonical public
+assets and do not make the transport wrapper itself another source of release
+version truth.
+
 ## Completion definition
 
 The remaining-feature roadmap is complete only when:
