@@ -25,12 +25,26 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
 		Relays: []storage.DirectoryProjectionRelay{
 			{
-				RelayActor:           "https://relay.example/actor",
-				PublicBaseURL:        "https://relay.example",
-				LifecycleKnown:       true,
-				Registered:           true,
-				FirstKnownUnix:       lastSeen - 100,
-				Tier:                 storage.DirectoryTierHeartbeatOnline,
+				RelayActor:     "https://relay.example/actor",
+				PublicBaseURL:  "https://relay.example",
+				LifecycleKnown: true,
+				Registered:     true,
+				FirstKnownUnix: lastSeen - 100,
+				Tier:           storage.DirectoryTierHeartbeatOnline,
+				Profile: storage.RelayProfile{
+					ParticipationMode: "open",
+					Availability:      "public",
+					RelayType:         "general",
+					Languages:         []string{"en", "fr"},
+					Countries:         []string{"CA", "US"},
+					Regions:           []string{"North America"},
+					Topics:            []string{"general"},
+					ContactFediverse:  "@relay@example.social",
+					ContactEmail:      "relay@example.com",
+					ContactURL:        "https://relay.example/contact",
+					ParticipationURL:  "https://relay.example/join",
+					Notes:             "Public community relay",
+				},
 				HeartbeatState:       storage.HeartbeatHealthy,
 				LastSeenUnix:         &lastSeen,
 				LastHeartbeatUnix:    &lastSeen,
@@ -83,7 +97,7 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 		t.Fatal("missing ETag")
 	}
 	for _, forbidden := range []string{
-		"registered", "discovered", "operator", "reason_code", "source_kind", "source_label", "manual", "file",
+		"registered", "discovered", "operator", "reason_code", "source_kind", "source_label", "source_url", "manual", `"file"`,
 	} {
 		if strings.Contains(response.Body.String(), forbidden) {
 			t.Fatalf("projection leaked private/internal field %q: %q", forbidden, response.Body.String())
@@ -330,7 +344,7 @@ func TestDirectoryProjectionRejectsInvalidQueryWithFixedRedactedError(t *testing
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, response.Code)
 		}
-		want := "{\"schema_version\":3,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
+		want := "{\"schema_version\":4,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
 		if response.Body.String() != want {
 			t.Fatalf("%s body = %q", target, response.Body.String())
 		}

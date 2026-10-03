@@ -656,6 +656,11 @@ func (repository *RelayRepository) readDirectoryProjectionDetails(
 		return nil, storage.ErrDirectoryProjectionInput
 	}
 
+	profiles, err := repository.readEffectiveProfiles(ctx, actors)
+	if err != nil {
+		return nil, err
+	}
+
 	placeholders := make([]string, len(actors))
 	arguments := make([]any, len(actors))
 	for index, actor := range actors {
@@ -796,6 +801,7 @@ ORDER BY seed.relay_actor`
 		}
 		relay := &storage.DirectoryProjectionRelay{
 			RelayActor:           actor,
+			Profile:              profiles[actor],
 			LifecycleKnown:       lifecycleKnown,
 			Registered:           registered,
 			Discovered:           discovered,

@@ -128,6 +128,7 @@ func TestValidateDirectoryProjectionRelayRejectsInconsistentEvidence(t *testing.
 		}},
 		{name: "reachable timestamps differ", edit: func(r *DirectoryProjectionRelay) { earlier := observed - 2; r.ActorLastSuccessUnix = &earlier }},
 		{name: "noncanonical inbox", edit: func(r *DirectoryProjectionRelay) { r.InboxURL = "HTTPS://relay.example/inbox" }},
+		{name: "noncanonical profile", edit: func(r *DirectoryProjectionRelay) { r.Profile.Languages = []string{"fr", "en"} }},
 		{name: "checked inbox without time", edit: func(r *DirectoryProjectionRelay) { r.InboxProbeState = InboxResponsive; r.InboxLastCheckedUnix = nil }},
 		{name: "wrong tier", edit: func(r *DirectoryProjectionRelay) { r.Tier = DirectoryTierOnline }},
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/storage"
@@ -168,46 +169,94 @@ func (repository *RelayRepository) EffectiveProfile(
 		return storage.RelayProfile{}, storage.ErrProfileAbsent
 	}
 
+	profiles, err := repository.readEffectiveProfiles(ctx, []string{relayActor})
+	if err != nil {
+		return storage.RelayProfile{}, err
+	}
+	return profiles[relayActor], nil
+}
+
+// readEffectiveProfiles resolves the same field-by-field precedence as
+// EffectiveProfile for a bounded caller-supplied actor set. Callers retain
+// responsibility for their own batch-size bound.
+func (repository *RelayRepository) readEffectiveProfiles(
+	ctx context.Context,
+	relayActors []string,
+) (map[string]storage.RelayProfile, error) {
+	result := make(map[string]storage.RelayProfile, len(relayActors))
+	if len(relayActors) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(relayActors))
+	arguments := make([]any, len(relayActors))
+	requested := make(map[string]struct{}, len(relayActors))
+	for index, relayActor := range relayActors {
+		if !storage.ValidProfileRelayActor(relayActor) {
+			return nil, storage.ErrProfileInput
+		}
+		placeholders[index] = "?"
+		arguments[index] = relayActor
+		requested[relayActor] = struct{}{}
+	}
+
 	rows, err := repository.database.QueryContext(ctx,
-		`SELECT field_name, source_kind, value_json
+		`SELECT relay_actor, field_name, source_kind, value_json
 		 FROM relay_profile_values
-		 WHERE relay_actor = ?
-		 ORDER BY field_name,
+		 WHERE relay_actor IN (`+strings.Join(placeholders, ",")+`)
+		 ORDER BY relay_actor,
+		          field_name,
 		          CASE source_kind
 		              WHEN 'override' THEN 3
 		              WHEN 'relay' THEN 2
 		              WHEN 'csv' THEN 1
 		              ELSE 0
-		          END DESC`, relayActor)
+		          END DESC`, arguments...)
 	if err != nil {
-		return storage.RelayProfile{}, storageFailure("read effective profile", err)
+		return nil, storageFailure("read effective profile", err)
 	}
 	defer rows.Close()
 
-	profile := storage.RelayProfile{}
-	seen := make(map[storage.ProfileField]struct{})
+	seen := make(map[string]map[storage.ProfileField]struct{}, len(relayActors))
 	for rows.Next() {
-		var fieldRaw, sourceRaw, valueJSON string
-		if err := rows.Scan(&fieldRaw, &sourceRaw, &valueJSON); err != nil {
-			return storage.RelayProfile{}, storageFailure("decode effective profile", err)
+		var relayActor, fieldRaw, sourceRaw, valueJSON string
+		if err := rows.Scan(&relayActor, &fieldRaw, &sourceRaw, &valueJSON); err != nil {
+			return nil, storageFailure("decode effective profile", err)
+		}
+		if _, exists := requested[relayActor]; !exists {
+			return nil, storageFailure("validate effective profile", errors.New("unexpected stored profile actor"))
 		}
 		field := storage.ProfileField(fieldRaw)
 		source := storage.ProfileSourceKind(sourceRaw)
 		if !field.Valid() || !source.Valid() || storage.ProfileSourcePriority(source) == 0 {
-			return storage.RelayProfile{}, storageFailure("validate effective profile", errors.New("invalid stored profile vocabulary"))
+			return nil, storageFailure("validate effective profile", errors.New("invalid stored profile vocabulary"))
 		}
-		if _, exists := seen[field]; exists {
+		actorSeen := seen[relayActor]
+		if actorSeen == nil {
+			actorSeen = make(map[storage.ProfileField]struct{})
+			seen[relayActor] = actorSeen
+		}
+		if _, exists := actorSeen[field]; exists {
 			continue
 		}
+		profile := result[relayActor]
 		if err := decodeProfileField(&profile, field, valueJSON); err != nil {
-			return storage.RelayProfile{}, storageFailure("decode effective profile value", err)
+			return nil, storageFailure("decode effective profile value", err)
 		}
-		seen[field] = struct{}{}
+		result[relayActor] = profile
+		actorSeen[field] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
-		return storage.RelayProfile{}, storageFailure("iterate effective profile", err)
+		return nil, storageFailure("iterate effective profile", err)
 	}
-	return storage.NormalizeRelayProfile(profile)
+	for _, relayActor := range relayActors {
+		profile, err := storage.NormalizeRelayProfile(result[relayActor])
+		if err != nil {
+			return nil, storageFailure("normalize effective profile", err)
+		}
+		result[relayActor] = profile
+	}
+	return result, nil
 }
 
 func profileIdentityRetained(ctx context.Context, transaction *sql.Tx, relayActor string) (bool, error) {

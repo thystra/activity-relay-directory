@@ -48,10 +48,10 @@ after process restart. Later v1 pages reuse the authenticated captured
 observation time so stable data does not change health classification or the
 30-day cutoff during one page walk.
 
-## `/v2/relays` operational evidence projection
+## `/v2/relays` public projection
 
 `/v2/relays` is the richer public projection introduced in 1.1 and extended in
-1.2. The response schema is now version 3. Each relay object contains only
+1.2 and 1.3. The response schema is now version 4. Each relay object contains only
 reviewed public evidence:
 
 - canonical `relay_actor` and `public_base_url`;
@@ -64,6 +64,15 @@ reviewed public evidence:
   state, and last diagnostic time; and
 - RFC 9421 `verified|not verified` plus the positive-evidence timestamp when
   verified.
+
+Schema 4 also includes one `profile` object containing the effective reviewed
+descriptive relay profile: `participation_mode`, `availability`, `relay_type`,
+`languages`, `countries`, `regions`, `topics`, `contact_fediverse`,
+`contact_email`, `contact_url`, `participation_url`, and `notes`. Missing scalar
+values are empty strings and missing multi-value fields are empty arrays. The
+public object never includes source kind, source label, source URL, precedence,
+pending values, history, operator IDs, or reconciliation state. Profile values
+do not affect public eligibility or operational tier placement.
 
 Heartbeat and reachability are deliberately independent. For example, a relay
 may truthfully be `Heartbeat: stale` while `Reachability: reachable`. A failed
@@ -202,18 +211,21 @@ by `/v1/relays`.
 
 The public page uses compact responsive relay rows. Each row shows the relay,
 heartbeat, reachability, last heartbeat, and last reachability check. Expanding
-a row shows the actor, inbox, and last successful check. Inbox probe diagnostics
-and RFC 9421 verification details remain part of the v2 JSON projection but are
-intentionally omitted from the human directory.
+a row shows the actor, inbox, last successful check, and any non-empty effective
+profile fields. Descriptive profile URLs are rendered only as their already
+validated HTTPS values; profile text is rendered as escaped plain text. Inbox
+probe diagnostics and RFC 9421 verification details remain part of the v2 JSON
+projection but are intentionally omitted from the human directory.
 
 A page containing no public rows but at least one previous/next
 continuation cursor is presented as an empty **page**, not as an empty
 directory.
 
 Go templates provide automatic HTML escaping. Relay public base URLs are the
-only relay-controlled outbound links; relay HTML, images, scripts, styles,
-fonts, and other remote resources are never fetched. The page uses a bundled
-same-origin stylesheet and no JavaScript.
+primary relay-controlled outbound links; schema-4 profile `contact_url` and
+`participation_url` may also appear as validated HTTPS links. Relay HTML,
+images, scripts, styles, fonts, and other remote resources are never fetched.
+The page uses a bundled same-origin stylesheet and no JavaScript.
 
 HTML responses use the same one-minute cache policy and exact-byte SHA-256 ETag
 semantics as JSON. The HTML page overrides the common deny-by-default CSP only

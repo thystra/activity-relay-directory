@@ -126,7 +126,42 @@
                       <dt>Last successful check</dt>
                       <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
                     </div>
-                  </dl>
+                  </dl>{{if not .Profile.Empty}}
+                  <div class="relay-profile">
+                    <h4>Profile</h4>
+                    <dl>
+{{if .Profile.ParticipationMode}}                      <div><dt>Participation</dt><dd>{{.Profile.ParticipationMode}}</dd></div>{{end}}
+{{if .Profile.Availability}}                      <div><dt>Availability</dt><dd>{{.Profile.Availability}}</dd></div>{{end}}
+{{if .Profile.RelayType}}                      <div><dt>Relay type</dt><dd>{{.Profile.RelayType}}</dd></div>{{end}}
+{{if .Profile.Languages}}                      <div>
+                        <dt>Languages</dt>
+                        <dd>{{range $index, $value := .Profile.Languages}}{{if $index}}, {{end}}{{$value}}{{end}}</dd>
+                      </div>{{end}}
+{{if .Profile.Countries}}                      <div>
+                        <dt>Countries</dt>
+                        <dd>{{range $index, $value := .Profile.Countries}}{{if $index}}, {{end}}{{$value}}{{end}}</dd>
+                      </div>{{end}}
+{{if .Profile.Regions}}                      <div>
+                        <dt>Regions</dt>
+                        <dd>{{range $index, $value := .Profile.Regions}}{{if $index}}, {{end}}{{$value}}{{end}}</dd>
+                      </div>{{end}}
+{{if .Profile.Topics}}                      <div>
+                        <dt>Topics</dt>
+                        <dd>{{range $index, $value := .Profile.Topics}}{{if $index}}, {{end}}{{$value}}{{end}}</dd>
+                      </div>{{end}}
+{{if .Profile.ContactFediverse}}                      <div><dt>Fediverse contact</dt><dd>{{.Profile.ContactFediverse}}</dd></div>{{end}}
+{{if .Profile.ContactEmail}}                      <div><dt>Email</dt><dd>{{.Profile.ContactEmail}}</dd></div>{{end}}
+{{if .Profile.ContactURL}}                      <div>
+                        <dt>Contact</dt>
+                        <dd><a href="{{.Profile.ContactURL}}" rel="noreferrer">{{.Profile.ContactURL}}</a></dd>
+                      </div>{{end}}
+{{if .Profile.ParticipationURL}}                      <div>
+                        <dt>Participation page</dt>
+                        <dd><a href="{{.Profile.ParticipationURL}}" rel="noreferrer">{{.Profile.ParticipationURL}}</a></dd>
+                      </div>{{end}}
+{{if .Profile.Notes}}                      <div><dt>Notes</dt><dd>{{.Profile.Notes}}</dd></div>{{end}}
+                    </dl>
+                  </div>{{end}}
                 </div>
               </details>
             </li>

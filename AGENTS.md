@@ -158,6 +158,15 @@ Keep line-import JSON on `activity-relay-directory.discovery-admin.v1`; use the
 separate v2 command-result schema for CSV profile mutation summaries. Public
 `/downloads/*.txt` routes remain host-only.
 
+Public relay profiles must be projected only as the normalized effective
+descriptive values. `/v2/relays` schema 4 and the human `/` page must consume the
+same `DirectoryProjectionRelay.Profile`; do not add an HTTP-side provenance or
+profile lookup. Keep source kind/label/URL, precedence, pending assertions, and
+history private. Empty API profiles retain the fixed twelve-field schema shape;
+the human page may omit an empty profile section. Profile text is escaped plain
+text, profile links are limited to the normalized HTTPS URL fields, and profile
+values must never affect public eligibility or operational tier ordering.
+
 Relay lifecycle code must use the `storage.RelayRepository` contract after all
 authentication, safe-resolution, replay, and policy gates. Repository inputs
 must remain canonical and bounded. Use server acceptance time, reject per-actor

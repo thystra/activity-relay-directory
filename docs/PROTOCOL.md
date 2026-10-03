@@ -16,13 +16,15 @@ durable policy makes the status request fail closed without database detail.
 ## Public directory projection vocabulary
 
 The read-only `GET /v2/relays` representation is versioned independently from
-the signed lifecycle request protocol. On the 1.2 development line its
-`schema_version` is `3`. Each relay object includes the closed numeric `tier`
+the signed lifecycle request protocol. On the 1.3 development line its
+`schema_version` is `4`. Each relay object includes the closed numeric `tier`
 vocabulary `1|2|3|4`, representing heartbeat+online, online without a current
-heartbeat, unavailable, and the 30-day graveyard respectively. Public ordering
-is `(tier, relay_actor)` and the authenticated v2 cursor format version is `2`,
-carrying both tier and actor position. See `docs/PUBLIC-LISTING.md` for the
-complete inclusion, timing, pagination, and privacy contract.
+heartbeat, unavailable, and the 30-day graveyard respectively, plus one reviewed
+`profile` object containing only the effective descriptive relay fields. Public
+ordering is `(tier, relay_actor)` and the authenticated v2 cursor format version
+remains `2`, carrying both tier and actor position. Profile data does not affect
+tier ordering. See `docs/PUBLIC-LISTING.md` for the complete inclusion, timing,
+pagination, profile, and privacy contract.
 
 This public tier is presentation of retained evidence, not a lifecycle state and
 not an admission score. It never exposes discovery source, operator metadata,

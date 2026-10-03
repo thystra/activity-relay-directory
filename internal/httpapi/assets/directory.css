@@ -344,6 +344,17 @@ a:focus-visible {
   font-size: 0.88rem;
 }
 
+.relay-profile {
+  margin-top: 0.8rem;
+}
+
+.relay-profile h4 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+.relay-profile dd { overflow-wrap: anywhere; }
+
 .empty-state {
   padding: clamp(1.5rem, 4vw, 2.5rem);
   border: 1px dashed var(--border);
