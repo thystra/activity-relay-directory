@@ -1,3 +1,16 @@
+activity-relay-directory (1.2.0~rc1-1) unstable; urgency=medium
+
+  * Add resilient relay discovery imports, retained unavailable candidates,
+    and periodic retry/promotion maintenance.
+  * Add four public operational tiers with a 180-day Graveyard and
+    alphabetical ordering inside each tier.
+  * Add local tier-scoped exports and public plain-text relay downloads.
+  * Preserve the V1 Protocol and /v1/relays compatibility while extending
+    /v2/relays to schema 3 and the database to schema 9.
+  * Refresh public operator documentation and release acceptance for 1.2.
+
+ -- Alan Johnson <alan@argentwolf.org>  Sat, 03 Oct 2026 04:20:00 -0400
+
 activity-relay-directory (1.1.0-1) stable; urgency=medium
 
   * Promote the accepted 1.1.0-rc2 behavior to stable without runtime changes.

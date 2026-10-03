@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.2.0-rc1 - 2026-10-03
+
 - Rewrite the project README around installation, relay discovery, tiered
   directory use, administration, and operator documentation instead of an
   implementation-status checklist.

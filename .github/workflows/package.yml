@@ -7,7 +7,7 @@ on:
 jobs:
   debian:
     name: Debian package validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v5
 
@@ -20,7 +20,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             debhelper fakeroot lintian
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            debhelper fakeroot lintian
+          DEBHELPER_VERSION="$(dpkg-query -W -f='${Version}' debhelper)"
+          dpkg --compare-versions "$DEBHELPER_VERSION" ge 13.25
+          echo "debhelper_version=$DEBHELPER_VERSION"
 
       - name: Validate source and build package artifacts
         run: |
