@@ -134,6 +134,16 @@ the container must preserve its read-only root filesystem with only the local
 data volume writable. Runtime storage wiring does not authorize state-mutating
 handlers or deployment.
 
+Relay profile persistence must use `storage.ProfileRepository`. Keep descriptive
+claims source-scoped and resolve effective values per field in the fixed order
+local override, authenticated relay self-report, CSV import, then absent. Profile
+mutation is descriptive only: it must not refresh lifecycle recency, create
+reachability evidence, change moderation/enrollment/pruning/tiering, or make an
+identity publicly eligible. Current assertions require a retained lifecycle or
+discovery identity; source replacement/clear and its private history event commit
+in one transaction with nonregressing server acceptance time. Keep source label,
+source URL, source priority, and event history private.
+
 Relay lifecycle code must use the `storage.RelayRepository` contract after all
 authentication, safe-resolution, replay, and policy gates. Repository inputs
 must remain canonical and bounded. Use server acceptance time, reject per-actor
@@ -256,8 +266,13 @@ transaction. Remove a `relay_observations` row only after the same transaction
 has removed a primary owner and no lifecycle or discovery row remains for that
 actor.
 
-Never delete `moderation_events` or `discovery_events` in inactive retention.
-`relay_events` deletion may bypass its append-only trigger only
+Never delete `moderation_events`, `discovery_events`, or
+`relay_profile_events` in inactive retention. Profile writes do not refresh an
+inactive transition or invalidate an otherwise eligible retention candidate.
+When deletion removes the last retained lifecycle/discovery identity, schema
+triggers remove current `relay_profile_values`; append-only profile history
+remains private audit evidence. `relay_events` deletion may bypass its
+append-only trigger only
 transaction-locally, with the trigger recreated before commit and rollback
 restoring it on every failure. Keep the aggregate retention audit identity-free:
 create it before scanning, checkpoint lifecycle/discovery/observation and event

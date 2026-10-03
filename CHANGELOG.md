@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add schema 10 source-scoped relay profile persistence with per-field
+  `override > relay > csv` precedence, bounded canonical values, append-only
+  private history, and no effect on lifecycle, moderation, reachability, or
+  public eligibility.
 - Preserve executable mode and deterministic release timestamps across Forgejo
   artifact download by uploading the canonical release tree inside a
   metadata-normalized tar carrier; canonical public asset bytes and their

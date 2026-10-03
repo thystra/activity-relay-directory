@@ -241,11 +241,25 @@ plan, bounds, and acceptance cases are defined in
 `docs/DISCOVERY-REACHABILITY.md`, `docs/PUBLIC-LISTING.md`, and the post-1.0
 roadmap in `TODO.md`.
 
-Remaining post-1.0 components are added behind explicit contracts:
+The 1.3 profile foundation adds schema-10 descriptive state without changing
+that operational model. `relay_profile_values` keeps current assertions separate
+for local override, authenticated relay self-report, and CSV import sources;
+`relay_profile_events` is private append-only history. Effective reads choose the
+highest-priority present value independently for each field. Profile persistence
+requires an already retained lifecycle or verified-discovery identity and cannot
+refresh heartbeat/reachability evidence, alter moderation/enrollment/pruning, or
+authorize public listing. CSV command integration, public schema-4 presentation,
+and lifecycle Protocol v2 remain separately reviewed later tranches; see
+`docs/RELAY-PROFILES.md`.
 
-1. Activity-Relay Directory 1.1 discovery/reachability implementation and soak;
-2. cross-repository compatibility evidence for retained version 1 lifecycle
-   behavior.
+Remaining 1.3 work is added behind explicit contracts:
+
+1. CSV import/local export over the source-scoped profile repository;
+2. effective profile presentation through `/v2/relays` schema 4 and the
+   public-facing Directory;
+3. lifecycle Protocol v2 profile synchronization with Activity-Relay while
+   preserving Protocol v1 fallback; and
+4. cross-repository 1.3 acceptance and release evidence.
 
 `TODO.md` defines the dependency order, cross-repository ownership, review
 tranches, and acceptance gates for these components.

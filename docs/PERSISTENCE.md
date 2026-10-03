@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema through version 9
+## Schema through version 10
 
 The initial migration creates four owned tables:
 
@@ -90,7 +90,10 @@ independent reachability/RFC 9421 evidence, and hard-retention policy version 2
 without changing the released `relays` lifecycle columns or version 1
 `last_seen_at_unix` semantics. Version 9 adds private retained discovery
 candidates and append-only candidate events for `--add-dead-relays`; these rows
-are not verified discoveries and do not authorize public listing.
+are not verified discoveries and do not authorize public listing. Version 10
+adds source-scoped descriptive relay profile assertions and append-only private
+profile history. Profile state is independent of lifecycle, moderation,
+reachability, tiering, and public eligibility.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -335,9 +338,14 @@ candidate.
 The normal `relay_events_no_delete` trigger is dropped and recreated only inside
 the immediate purge transaction. Eligible lifecycle events and the relay row
 commit together; any error or cancellation rolls back the deletions and trigger
-DDL. `moderation_events`, enrollment events/policy, replay reservations, and the
-retention-run audit row are outside the lifecycle-event delete scope. Each
-committed purge batch updates that run row in the same transaction, so a crash
+DDL. `moderation_events`, `discovery_events`, `relay_profile_events`, enrollment
+events/policy, replay reservations, and the retention-run audit row are outside
+the lifecycle-event delete scope. Profile changes are descriptive and do not
+refresh inactive-transition authority or rescue an otherwise eligible retention
+candidate. When a purge removes the final lifecycle/discovery identity for an
+actor, schema-10 cleanup triggers remove its current `relay_profile_values` while
+retaining append-only profile history. Each committed purge batch updates that
+run row in the same transaction, so a crash
 cannot leave a committed deletion without durable aggregate checkpoint evidence.
 Finalization makes the run row immutable. See `docs/RETENTION.md` for
 bounds, backup verification, restore consequences, and manual compaction.
@@ -443,6 +451,38 @@ failure count at fixed 6-hour, 12-hour, 24-hour, 3-day, then weekly intervals. A
 successful canonical actor check transactionally creates/reactivates the normal
 discovery and reachable observation, records the discovery audit, and marks the
 candidate resolved.
+
+## Schema version 10: source-scoped relay profiles
+
+Schema version 10 adds `relay_profile_values` for current descriptive assertions
+and `relay_profile_events` for append-only private history. It does not backfill
+or infer profile data from lifecycle, discovery, heartbeat, reachability, or
+operator-contact state. A schema-9 upgrade therefore creates both profile tables
+empty while preserving all earlier rows and migration hashes.
+
+Current assertions are keyed by canonical relay actor, source kind, and profile
+field. The closed source kinds are `override`, `relay`, and `csv`; effective reads
+resolve every field independently in that precedence order. The twelve initial
+fields, normalization rules, and bounds are defined in `docs/RELAY-PROFILES.md`.
+Scalar/list values are stored as bounded canonical JSON. CSV assertions retain a
+bounded private source label and optional canonical HTTPS source URL; override
+assertions retain the bounded private operator token; authenticated relay
+assertions carry neither. None of that provenance is public.
+
+Each complete source replacement compares all twelve fields in one immediate
+write-admitted transaction. Added/replaced values receive `set` events, removed
+source assertions receive `clear` events, and unchanged fields produce no event.
+Per-source server acceptance time cannot regress. Revisions are monotonic per
+actor/source/field and continue from retained history even if current assertion
+state was later removed. Event rows reject update/delete and current assertion
+inserts require an existing retained lifecycle or verified-discovery identity.
+
+Profile persistence is descriptive only. It does not touch relay lifecycle
+timestamps, observations, moderation, enrollment, soft pruning, tiering, or
+public eligibility. Schema-10 cleanup triggers remove current profile assertions
+only when deletion removes the actor's last retained lifecycle/discovery identity.
+Private profile events remain append-only audit evidence under hard-retention
+policy 2, matching the retained-history treatment of discovery/moderation audit.
 
 ## Backup and recovery boundary
 

@@ -3,10 +3,10 @@
 Hard retention is a deliberately narrow **purge** policy for durable inactive
 Directory state. Purge is irreversible. It is not the 30-day **prune**
 transition: soft pruning remains reversible, keeps the relay lifecycle row and
-history, and is used by the health/public-visibility lifecycle. Current schema version 9
+history, and is used by the health/public-visibility lifecycle. Current schema version 10
 retains the hard-retention policy version 2 introduced by migration 8, so removed discovery
 state and unowned observation state are covered without erasing private
-discovery audit.
+discovery audit or schema-10 profile history.
 
 No public HTTP request and no background scheduler can start hard retention.
 The initial implementation is local-administrator-only. A positive policy says
@@ -102,9 +102,12 @@ is deleted, its observation is deleted only if no lifecycle **and** no discovery
 row remains for that canonical actor. This rule also makes two same-actor
 candidate kinds safe when they occur in one page or across a page boundary.
 
-After the final retained identity row is purged, a future authenticated register
-is first-time lifecycle enrollment again. Retained private moderation/discovery
-audit does not itself authorize public inclusion or preserve an observation row.
+After the final retained identity row is purged, schema-10 cleanup also removes
+that actor's current descriptive `relay_profile_values`. Append-only private
+`relay_profile_events` remain audit history and, like retained moderation/
+discovery audit, do not authorize public inclusion, preserve an observation row,
+or make a later register anything other than first-time lifecycle enrollment.
+Profile writes never refresh the authoritative inactive-transition timestamp.
 
 ## Data-class consequences
 
@@ -116,6 +119,8 @@ audit does not itself authorize public inclusion or preserve an observation row.
 | `discovery_events` | Never deleted by inactive retention | Private operator/source provenance remains append-only even after current discovery state is purged |
 | `relay_observations` | Deleted only when a purged primary row leaves no lifecycle or discovery owner | Server-observed reachability/inbox/RFC evidence is recovered only from backup or future observations |
 | `moderation_events` | Never deleted by inactive retention | Private historical moderation evidence remains after lifecycle state purge |
+| `relay_profile_values` | Current assertions are deleted automatically only after the final retained lifecycle/discovery identity is removed | Current descriptive state must be restored from backup or supplied again by a later profile source |
+| `relay_profile_events` | Never deleted by inactive retention | Private source-change history remains append-only but does not retain current identity/public eligibility |
 | `retention_runs` | Guarded aggregate run audit; historical policy 1 and current policy 2 rows remain | Running rows retain committed checkpoints; finalized rows are immutable local evidence |
 | `retention_metadata` | Persistent random database identity remains while current policy version advances | Used to prove that a supplied backup belongs to this database |
 | `replay_reservations` | Unchanged; independent protocol-bounded ten-minute expiry | Hard retention cannot extend or weaken replay behavior |
