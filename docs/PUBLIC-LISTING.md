@@ -1,6 +1,6 @@
 # Public directory views
 
-## Boundary
+## Exposed Endpoints
 
 Public directory presentation is independently controlled by
 `DIRECTORY_PUBLIC_LISTING_ENABLED` and defaults disabled. When it is disabled,
@@ -46,7 +46,7 @@ time, and the last keyset position. It is authenticated with a process-local
 random HMAC-SHA-256 key, expires after five minutes, and is intentionally invalid
 after process restart. Later v1 pages reuse the authenticated captured
 observation time so stable data does not change health classification or the
-30-day cutoff during one bounded page walk.
+30-day cutoff during one page walk.
 
 ## `/v2/relays` operational evidence projection
 
@@ -107,9 +107,9 @@ are ordered first by operational tier (`1`, `2`, `3`, `4`) and then
 alphabetically by canonical relay actor, which keeps normalized hostnames
 alphabetical inside each tier. Heartbeat frequency, check recency, popularity,
 traffic, or any other mutable activity metric never affects rank within a tier.
-If the 400-identity scan bound is reached before a public row is found, the page
-may contain zero rows with a continuation cursor; following that cursor resumes
-the bounded tier scan without exposing the skipped identity.
+If the 400-identity scan limit is reached before a public row is found, the page 
+may contain zero rows with a continuation cursor; following that cursor resumes 
+the tier scan from that position without exposing the skipped identity.
 
 The authenticated v2 cursor format is version 2 and contains its issue time,
 tier, and canonical actor position. It uses the same process-local
@@ -119,10 +119,11 @@ tier is now the primary public ordering key.
 
 Unlike v1's observation-pinned compatibility walk, each v2 page evaluates the
 latest retained evidence against that request's current server time. Tier and
-reachability can therefore legitimately change between pages. The keyset keeps
-forward progress bounded, but v2 remains a live view rather than a historical
-snapshot; clients that require a fresh complete ordering should begin a new walk
-from the first page.
+reachability can therefore legitimately change between pages. The keyset ensures 
+each page resumes after the previous tier-and-actor position, but v2 remains a
+live view rather than a historical snapshot. Tier and reachability may change 
+while a client is paging through the directory. Clients that require a fresh 
+complete ordering should begin again from the first page.
 
 HTTP presentation revalidates canonical identities, evidence relationships,
 strict `(tier, actor)` ordering, page bounds, and direction-appropriate
@@ -144,7 +145,7 @@ actor order inside each tier:
 - `unavailable.txt` contains Tier 3 and Tier 4; and
 - `all.txt` contains Tier 1 through Tier 4.
 
-The download renderer walks bounded v2 pages using one captured observation
+The download renderer walks v2 pages using one captured observation
 time, rejects non-progressing pagination, rejects duplicate actor rows, and
 fails closed rather than returning a partial list after 256 pages or more than
 10,000 exported relays. Query parameters are not accepted. Successful downloads
@@ -173,7 +174,7 @@ comparison for `GET`/`HEAD` revalidation. Error responses are `no-store`.
 The v1 JSON, v2 JSON, human page, and text downloads share one in-process
 public-read concurrency ceiling of 16 requests, independent of signed lifecycle
 source/actor admission.
-Saturation returns a fixed HTTP 429 response with a bounded retry hint.
+Saturation returns a fixed HTTP 429 response with a limited retry hint.
 Repository reads have a two-second request deadline. Security headers are
 inherited from the common HTTP wrapper and there is no CORS write surface.
 
@@ -296,6 +297,5 @@ file parses successfully, malformed Nice-to-have values and incomplete
 Fediverse pairs are non-blocking: unsafe or partial values are suppressed and
 the human page shows deterministic configuration diagnostics.
 
-The absence of the former on-page "Privacy boundary" panel does not widen the
-projection. The public data boundary remains enforced by the repository,
-eligibility, moderation, evidence-validation, and serialization contracts above.
+The public data exposed remains limited by the repository, eligibility, moderation, 
+evidence-validation, and serialization rules described above.
