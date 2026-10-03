@@ -174,7 +174,7 @@ That exposes these read-only routes:
 
 | Route | Purpose |
 | --- | --- |
-| `/` | Human-readable tiered relay directory |
+| `/` | Public facing relay directory |
 | `/v1/relays` | Version 1 compatibility API |
 | `/v2/relays` | Richer tiered relay API |
 | `/downloads/active.txt` | Tier 1 and Tier 2 hosts |
