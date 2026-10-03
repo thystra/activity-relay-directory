@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show the running application version in the public-facing Directory footer,
+  using the same runtime build identity exposed by `/v1/status`.
+
 ## 1.2.0 - 2026-10-03
 
 - Promote the accepted `1.2.0-rc2` behavior to stable `1.2.0` without runtime

@@ -45,6 +45,7 @@ type humanDirectoryPage struct {
 	AllDownloadURL         string
 	UnavailableDownloadURL string
 	Stylesheet             string
+	Version                string
 	HasOperator            bool
 	HasOperatorLinks       bool
 	OperatorWebsite        string
@@ -177,6 +178,14 @@ func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), erro
 }
 
 func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseWriter, request *http.Request) {
+	handler.serveHumanDirectoryWithVersion(response, request, "")
+}
+
+func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
+	response http.ResponseWriter,
+	request *http.Request,
+	version string,
+) {
 	if !allowReadMethod(response, request) {
 		return
 	}
@@ -226,6 +235,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		AllDownloadURL:         directoryAllDownloadPath,
 		UnavailableDownloadURL: directoryUnavailableDownloadPath,
 		Stylesheet:             directoryStylesheetPath,
+		Version:                version,
 		HasOperator:            !operator.Empty(),
 		HasOperatorLinks:       operator.HasLinks(),
 		OperatorWebsite:        operator.Website,

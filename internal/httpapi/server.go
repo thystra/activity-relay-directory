@@ -208,7 +208,7 @@ func NewHandlerWithRuntime(
 				writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")
 				return
 			}
-			publicListing.serveHumanDirectory(response, request)
+			publicListing.serveHumanDirectoryWithVersion(response, request, version)
 		})
 	}
 
