@@ -32,7 +32,7 @@ becomes required when a related feature is enabled.
 | `DIRECTORY_LISTEN_ADDRESS` | Optional | `127.0.0.1:8080` | startup failure | must resolve as a TCP listen address |
 | `DIRECTORY_CONFIG_PATH` | Optional | use optional `/etc/activity-relay-directory/config.yml`; missing default file is valid | startup failure for an invalid explicit path, unreadable/missing explicit file, oversized file, malformed YAML, unknown fields, or multiple YAML documents | locates the Nice-to-have operator presentation file; field-value problems inside a structurally valid file are non-blocking |
 | `DIRECTORY_LIFECYCLE_ENABLED` | Optional | `false` | startup failure | when `true`, `DIRECTORY_PUBLIC_BASE_URL` must be HTTPS |
-| `DIRECTORY_PUBLIC_LISTING_ENABLED` | Optional | `false` | startup failure | independently controls JSON and human public directory views |
+| `DIRECTORY_PUBLIC_LISTING_ENABLED` | Optional | `false` | startup failure | independently controls JSON, human, and plain-text download public directory views |
 | `DIRECTORY_REACHABILITY_ENABLED` | Optional | `false` | startup failure | enables fixed hourly background actor maintenance; cadence/freshness/budgets are not runtime configurable |
 | `DIRECTORY_SOFT_PRUNING_ENABLED` | Optional | `false` | startup failure | when `true`, the pruning interval must be nonzero and at least the supported minimum |
 | `DIRECTORY_SOFT_PRUNING_INTERVAL` | Optional | `24h` | startup failure | `0` is allowed only while soft pruning is disabled |

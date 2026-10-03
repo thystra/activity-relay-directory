@@ -592,12 +592,11 @@ func probeCandidate(ctx context.Context, item probeWork, prober Prober) probeRes
 }
 
 func candidateActorURL(raw string) (string, error) {
-	parsedHint, err := url.Parse(raw)
-	if err != nil {
-		return "", ErrInvalidCommand
-	}
-	if parsedHint.Scheme == "" {
+	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
+	}
+	if _, err := url.Parse(raw); err != nil {
+		return "", ErrInvalidCommand
 	}
 
 	canonical, err := v1.NormalizeRelayActorURL(raw)

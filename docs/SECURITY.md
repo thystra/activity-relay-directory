@@ -216,17 +216,19 @@ reachability pass exists and still rechecks fresh current reachable evidence in
 the prune transaction. See `docs/REACHABILITY.md`.
 
 The richer public evidence surface is also separately read-only and default-off
-behind `DIRECTORY_PUBLIC_LISTING_ENABLED`. `/v2/relays` and the human `/` page
-share one backend-neutral projection that merges only retained verified
-lifecycle/discovery identities and current observation records by canonical
-actor. The public operational tier is derived from that evidence; unresolved
-candidate rows are not part of the public projection. It never joins or
-serializes private `discovery_events` or `moderation_events`. Public output
-contains no discovery source kind/label, operator/reason token, probe error,
-resolver detail, signing-key identifier, client address, or internal
-registered/discovered participation flag. Malformed retained evidence fails the
-request closed with fixed redacted errors. The compatibility `/v1/relays`
-representation remains unchanged. See `docs/PUBLIC-LISTING.md`.
+behind `DIRECTORY_PUBLIC_LISTING_ENABLED`. `/v2/relays`, the human `/` page, and
+the `/downloads/*.txt` host lists share one backend-neutral projection that
+merges only retained verified lifecycle/discovery identities and current
+observation records by canonical actor. The public operational tier is derived
+from that evidence; unresolved candidate rows are not part of the public
+projection. Host downloads are derived only from the canonical public base URLs
+in that same projection. It never joins or serializes private `discovery_events`
+or `moderation_events`. Public output contains no discovery source kind/label,
+operator/reason token, probe error, resolver detail, signing-key identifier,
+client address, or internal registered/discovered participation flag. Malformed
+retained evidence fails the request closed with fixed redacted errors. The
+compatibility `/v1/relays` representation remains unchanged. See
+`docs/PUBLIC-LISTING.md`.
 
 ## Hard-retention threat boundary
 

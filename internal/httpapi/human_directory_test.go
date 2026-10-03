@@ -84,6 +84,9 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`>relay.example</a>`,
 		`https://relay.example/a&amp;b`,
 		`https://relay.example/inbox/a&amp;b`,
+		`href="/downloads/active.txt"`,
+		`href="/downloads/all.txt"`,
+		`href="/downloads/unavailable.txt"`,
 		`href="https://github.com/thystra/activity-relay-directory"`,
 		`href="https://github.com/thystra/Activity-Relay"`,
 	} {

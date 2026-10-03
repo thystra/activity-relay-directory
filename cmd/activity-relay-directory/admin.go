@@ -14,6 +14,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/adminnotify"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/discoverycommand"
+	"github.com/thystra/activity-relay-directory/internal/exportcommand"
 	"github.com/thystra/activity-relay-directory/internal/prunecommand"
 	"github.com/thystra/activity-relay-directory/internal/retentioncommand"
 	"github.com/thystra/activity-relay-directory/internal/storage"
@@ -55,6 +56,9 @@ func runAdminWithInput(
 	}
 	if arguments[2] == "storage" {
 		return runStorageAdmin(arguments, stdout, stderr, now)
+	}
+	if arguments[2] == "export" {
+		return runExportAdmin(arguments, stdout, stderr, now)
 	}
 
 	request, err := admincommand.Parse(arguments[2:])
@@ -611,6 +615,41 @@ func runStorageAdmin(
 	return storagecommand.ExitForSample(request.Action, sample)
 }
 
+func runExportAdmin(
+	arguments []string,
+	stdout, stderr io.Writer,
+	now func() time.Time,
+) int {
+	request, err := exportcommand.Parse(arguments[3:])
+	if err != nil {
+		writeExportUsage(stderr)
+		return exportcommand.ExitUsage
+	}
+	if now == nil {
+		fmt.Fprintln(stderr, "administrative clock is unavailable")
+		return exportcommand.ExitOperational
+	}
+	databasePath, err := config.LoadDatabasePath()
+	if err != nil {
+		fmt.Fprintln(stderr, "invalid configuration")
+		return exportcommand.ExitUsage
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), adminCommandTimeout)
+	defer cancel()
+	database, err := initializeReadOnlyDatabase(ctx, databasePath)
+	if err != nil {
+		fmt.Fprintln(stderr, "database initialization failed")
+		return exportcommand.ExitOperational
+	}
+	defer database.Close()
+	repository, err := storageSQLite.NewRelayRepository(database, storage.DenyWrites)
+	if err != nil {
+		fmt.Fprintln(stderr, "directory export repository initialization failed")
+		return exportcommand.ExitOperational
+	}
+	return exportcommand.Execute(ctx, request, repository, stdout, stderr, now().UTC())
+}
+
 func loadAdminGrowthDependencies() (
 	config.DatabaseGrowthConfig,
 	int,
@@ -651,6 +690,10 @@ func writeStorageUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin storage test-alert [--format human|json]")
 }
 
+func writeExportUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors]")
+}
+
 func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: activity-relay-directory admin enrollment status|open|close [--operator ID]")
 	fmt.Fprintln(output, "       activity-relay-directory admin suspend --actor URL --moderator ID --reason CODE [--yes] [--format human|json]")
@@ -664,6 +707,7 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin storage status|check|test-alert [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors]")
 }
 
 func writeDiscoveryUsage(output io.Writer) {

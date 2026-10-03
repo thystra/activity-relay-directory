@@ -24,6 +24,11 @@
   heartbeat plus online, online without a current heartbeat, unavailable, and a
   180-day graveyard. Relays remain alphabetical within each tier, and the v2
   public response schema/cursor now include the tier key.
+- Add read-only relay exports for operators and public host-list downloads,
+  with active, unavailable, and all-known scopes that preserve tier ordering
+  and can be fed back into discovery import.
+- Accept bare discovery hosts with explicit non-default HTTPS ports, allowing
+  exported `host:port` entries to round-trip through discovery import.
 
 ## 1.1.0 - 2026-09-16
 

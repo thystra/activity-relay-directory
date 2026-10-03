@@ -8,12 +8,16 @@ none of the directory presentation routes are registered. Enabling it registers:
 
 - `GET`/`HEAD` `/v1/relays` — the frozen version 1 compatibility listing;
 - `GET`/`HEAD` `/v2/relays` — the richer 1.1 evidence projection;
-- `GET`/`HEAD` `/` — the human view of the same v2 projection; and
+- `GET`/`HEAD` `/` — the human view of the same v2 projection;
+- `GET`/`HEAD` `/downloads/active.txt` — Tier 1 and Tier 2 host names;
+- `GET`/`HEAD` `/downloads/all.txt` — all four public tiers;
+- `GET`/`HEAD` `/downloads/unavailable.txt` — Tier 3 and Tier 4 host names; and
 - `GET`/`HEAD` `/assets/directory.css` — the bundled stylesheet.
 
 This gate does not enable lifecycle registration, open enrollment, enable
-background reachability, or create any public mutation route. All three public
-views remain read-only and use a repository constructed with writes denied.
+background reachability, or create any public mutation route. All public
+listing, human-directory, and download views remain read-only and use a
+repository constructed with writes denied.
 
 The public boundary never exposes moderation identities/reasons/events,
 discovery source kind or source label, operator IDs or reason codes, private
@@ -128,15 +132,47 @@ control. Malformed, noncanonical, oversized, expired, future-time,
 foreign-process, duplicate, tampered, cross-version, or otherwise invalid
 pagination fails with a fixed redacted error.
 
+## Plain-text downloads and local export
+
+The three `/downloads/*.txt` routes use the same reviewed v2 public projection
+and are enabled only with the public listing. They contain one normalized host
+per line with no comments or private provenance. A non-default HTTPS port is
+retained as `host:port`. The files preserve public tier order and alphabetical
+actor order inside each tier:
+
+- `active.txt` contains Tier 1 and Tier 2;
+- `unavailable.txt` contains Tier 3 and Tier 4; and
+- `all.txt` contains Tier 1 through Tier 4.
+
+The download renderer walks bounded v2 pages using one captured observation
+time, rejects non-progressing pagination, rejects duplicate actor rows, and
+fails closed rather than returning a partial list after 256 pages or more than
+10,000 exported relays. Query parameters are not accepted. Successful downloads
+use the same one-minute public cache and strong ETag policy as the other public
+representations.
+
+Local operators can use the same projection without enabling public listing:
+
+```sh
+activity-relay-directory admin export --scope active --format hosts
+activity-relay-directory admin export --scope all --format actors
+activity-relay-directory admin export --scope unavailable --format hosts
+```
+
+The local command opens the current database read-only. `hosts` is suitable as
+input to a later discovery import, including canonical non-default HTTPS ports;
+`actors` emits the canonical `/actor` URLs instead.
+
 ## HTTP caching and admission
 
-Successful JSON and HTML representations are deterministic bytes with
+Successful JSON, HTML, and text-download representations are deterministic bytes with
 `Cache-Control: public, max-age=60, must-revalidate` and a strong SHA-256 ETag
 over the exact body. `If-None-Match` supports normal and weak entity-tag
 comparison for `GET`/`HEAD` revalidation. Error responses are `no-store`.
 
-The v1 JSON, v2 JSON, and human page share one in-process public-read concurrency
-ceiling of 16 requests, independent of signed lifecycle source/actor admission.
+The v1 JSON, v2 JSON, human page, and text downloads share one in-process
+public-read concurrency ceiling of 16 requests, independent of signed lifecycle
+source/actor admission.
 Saturation returns a fixed HTTP 429 response with a bounded retry hint.
 Repository reads have a two-second request deadline. Security headers are
 inherited from the common HTTP wrapper and there is no CORS write surface.

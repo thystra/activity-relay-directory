@@ -258,7 +258,7 @@ func TestPublicHTTPDoesNotExposeLocalMaintenance(t *testing.T) {
 }
 
 func TestPublicListingRoutesAreDefaultOff(t *testing.T) {
-	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+	for _, path := range []string{"/v1/relays", directoryProjectionPath, directoryActiveDownloadPath, directoryAllDownloadPath, directoryUnavailableDownloadPath} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		testHandler().ServeHTTP(response, request)
@@ -283,7 +283,7 @@ func TestPublicListingIsIndependentOfLifecycleAvailability(t *testing.T) {
 		listing,
 	)
 
-	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+	for _, path := range []string{"/v1/relays", directoryProjectionPath, directoryActiveDownloadPath, directoryAllDownloadPath, directoryUnavailableDownloadPath} {
 		listingRequest := httptest.NewRequest(http.MethodGet, path, nil)
 		listingResponse := httptest.NewRecorder()
 		handler.ServeHTTP(listingResponse, listingRequest)
@@ -319,7 +319,7 @@ func TestEnabledListingWithMissingGraphFailsClosed(t *testing.T) {
 		nil,
 		nil,
 	)
-	for _, path := range []string{"/v1/relays", directoryProjectionPath} {
+	for _, path := range []string{"/v1/relays", directoryProjectionPath, directoryActiveDownloadPath, directoryAllDownloadPath, directoryUnavailableDownloadPath} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
@@ -362,7 +362,7 @@ func TestHumanDirectorySharesPublicListingGateAndProjection(t *testing.T) {
 		listing,
 	)
 
-	for _, path := range []string{"/", "/v1/relays", directoryProjectionPath, directoryStylesheetPath} {
+	for _, path := range []string{"/", "/v1/relays", directoryProjectionPath, directoryStylesheetPath, directoryActiveDownloadPath, directoryAllDownloadPath, directoryUnavailableDownloadPath} {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
@@ -427,6 +427,9 @@ func TestGrowthHardLimitFailsReadinessButKeepsLivenessAndPublicReadsAvailable(t 
 		{"/readyz", http.StatusServiceUnavailable},
 		{"/v1/relays", http.StatusOK},
 		{directoryProjectionPath, http.StatusOK},
+		{directoryActiveDownloadPath, http.StatusOK},
+		{directoryAllDownloadPath, http.StatusOK},
+		{directoryUnavailableDownloadPath, http.StatusOK},
 		{"/", http.StatusOK},
 		{directoryStylesheetPath, http.StatusOK},
 	} {

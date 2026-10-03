@@ -77,7 +77,7 @@ source derivation, two-stage admission, safe actor/key resolution and caching,
 RFC 9530 and RFC 9421 verification, durable nonce reservation, suspension
 checks, and audited SQLite transitions. See `docs/HANDLERS.md`,
 `docs/PERSISTENCE.md`, `docs/MODERATION.md`, `docs/RESOLUTION.md`, and
-`docs/ADMISSION.md`. The independently gated public JSON and human-readable directory views are documented
+`docs/ADMISSION.md`. The independently gated public JSON, human-readable directory, and text-download views are documented
 in `docs/PUBLIC-LISTING.md`. Inactive-record retention is documented in
 `docs/RETENTION.md`; database-growth accounting, write admission, notification,
 and operator commands are documented in `docs/STORAGE-GROWTH.md`. Network
@@ -99,7 +99,7 @@ and logging overrides.
 | `DIRECTORY_CONFIG_PATH` | empty; uses optional `/etc/activity-relay-directory/config.yml` | Alternate public operator-metadata YAML path |
 | `DIRECTORY_DATABASE_PATH` | required absolute secure local path | SQLite database |
 | `DIRECTORY_LIFECYCLE_ENABLED` | `false` | Enable signed register/heartbeat/unregister routes together |
-| `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON and human directory views |
+| `DIRECTORY_PUBLIC_LISTING_ENABLED` | `false` | Enable public JSON, human directory, and text-download views |
 | `DIRECTORY_REACHABILITY_ENABLED` | `false` | Enable fixed bounded background actor/inbox reachability maintenance |
 | `DIRECTORY_SOFT_PRUNING_ENABLED` | `false` | Enable automatic reversible pruning |
 | `DIRECTORY_SOFT_PRUNING_INTERVAL` | `24h`; `0` only while pruning is disabled; otherwise minimum `1h` | Automatic pruning interval |
@@ -321,17 +321,33 @@ budget. Physical shrinking remains explicit offline maintenance. See
 
 `DIRECTORY_PUBLIC_LISTING_ENABLED=true` independently enables the V1 public API
 at `GET`/`HEAD` `/v1/relays`, the V2 public API at `GET`/`HEAD` `/v2/relays`,
-and the human-facing directory at `GET`/`HEAD` `/`. It does not enable lifecycle
-registration or open enrollment.
+the human-facing directory at `GET`/`HEAD` `/`, and plain-text host-list
+downloads under `/downloads/`. It does not enable lifecycle registration or
+open enrollment.
 
 The V1 public API remains compatible with Activity-Relay Directory 1.0. The V2
 public API adds discovery and reachability information. API pages default to 50
 entries and allow up to 100; continuation tokens are returned when more results
-are available. The human-facing directory adds Previous and Next navigation.
+are available. The human-facing directory adds Previous and Next navigation and
+links to active, all-known, and unavailable host lists.
+
+Operators can produce the same tier-scoped data locally without enabling the
+public listing:
+
+```sh
+activity-relay-directory admin export --scope active --format hosts
+activity-relay-directory admin export --scope all --format actors
+activity-relay-directory admin export --scope unavailable --format hosts
+```
+
+`active` contains Tier 1 and Tier 2, `unavailable` contains Tier 3 and Tier 4,
+and `all` contains all four tiers. `hosts` emits one normalized host (including a
+non-default HTTPS port) per line; `actors` emits canonical actor URLs. Output is
+tier-ordered and alphabetical by actor inside each tier.
 
 Responses use a one-minute public cache policy and strong ETags. Invalid
 pagination and backend failures return fixed redacted errors. See
-`docs/PUBLIC-LISTING.md` for the detailed API, eligibility, privacy, and
+`docs/PUBLIC-LISTING.md` for the detailed API, eligibility, privacy, export, and
 pagination behavior.
 
 ## Privacy boundary
