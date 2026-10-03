@@ -39,7 +39,8 @@ const (
 	OutputHuman = OutputFormat("human")
 	OutputJSON  = OutputFormat("json")
 
-	outputSchema = "activity-relay-directory.discovery-admin.v1"
+	outputSchemaV1 = "activity-relay-directory.discovery-admin.v1"
+	outputSchemaV2 = "activity-relay-directory.discovery-admin.v2"
 )
 
 var (
@@ -76,6 +77,7 @@ type Request struct {
 	ReasonCode    string
 	SourceLabel   string
 	AddDeadRelays bool
+	InputFormat   InputFormat
 	AssumeYes     bool
 	Format        OutputFormat
 }
@@ -107,6 +109,7 @@ type KnownStateRepository interface {
 type Candidate struct {
 	Line int
 	URL  string
+	CSV  *CSVProfileRow
 }
 
 type PreparedRelay struct {
@@ -156,6 +159,7 @@ type Plan struct {
 	AlreadyKnown   []AlreadyKnownCandidate
 	Duplicates     []DuplicateCandidate
 	Failed         []FailedCandidate
+	CSVRows        map[int]CSVProfileRow
 }
 
 type probeWork struct {
@@ -191,6 +195,7 @@ func Parse(arguments []string) (Request, error) {
 	reason := uniqueString{}
 	sourceLabel := uniqueString{}
 	format := uniqueString{value: string(OutputHuman)}
+	inputFormat := uniqueString{value: string(InputLines)}
 	assumeYes := uniqueTrue{}
 	addDeadRelays := uniqueTrue{}
 
@@ -202,6 +207,7 @@ func Parse(arguments []string) (Request, error) {
 	case ActionImport:
 		flags.Var(&filePath, "file", "bounded local candidate file")
 		flags.Var(&addDeadRelays, "add-dead-relays", "retain unreachable or incompatible relay candidates")
+		flags.Var(&inputFormat, "input-format", "lines or csv")
 	}
 	flags.Var(&operator, "operator", "private operator identifier")
 	flags.Var(&reason, "reason", "private reason code")
@@ -246,6 +252,10 @@ func Parse(arguments []string) (Request, error) {
 			return Request{}, ErrInvalidCommand
 		}
 		request.FilePath = filePath.value
+		request.InputFormat = InputFormat(inputFormat.value)
+		if !request.InputFormat.valid() {
+			return Request{}, ErrInvalidCommand
+		}
 	}
 	return request, nil
 }
@@ -311,7 +321,16 @@ func Prepare(ctx context.Context, request Request, prober Prober) (Plan, error) 
 	if request.Action == ActionAdd {
 		candidates = []Candidate{{Line: 1, URL: request.Candidate}}
 	} else {
-		loaded, err := LoadCandidates(request.FilePath)
+		var loaded []Candidate
+		var err error
+		switch normalizeInputFormat(request.InputFormat) {
+		case InputLines:
+			loaded, err = LoadCandidates(request.FilePath)
+		case InputCSV:
+			loaded, err = LoadCSVCandidates(request.FilePath, request.SourceLabel)
+		default:
+			err = ErrImportFile
+		}
 		if err != nil {
 			return Plan{}, err
 		}
@@ -336,6 +355,15 @@ func prepareCandidatesWithPolicy(
 	retainDead bool,
 ) (Plan, error) {
 	plan := Plan{CandidateCount: len(candidates)}
+	for _, candidate := range candidates {
+		if candidate.CSV == nil {
+			continue
+		}
+		if plan.CSVRows == nil {
+			plan.CSVRows = make(map[int]CSVProfileRow)
+		}
+		plan.CSVRows[candidate.Line] = *candidate.CSV
+	}
 	if len(candidates) == 0 || len(candidates) > MaximumImportCandidates {
 		return Plan{}, ErrPreparation
 	}
@@ -680,7 +708,8 @@ func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer)
 		return nil
 	}
 	if request.Action == ActionImport && len(plan.Ready) == 0 &&
-		len(plan.Retained) == 0 && len(plan.AlreadyKnown) > 0 {
+		len(plan.Retained) == 0 && len(plan.AlreadyKnown) > 0 &&
+		normalizeInputFormat(request.InputFormat) != InputCSV {
 		return nil
 	}
 	if input == nil || errorOutput == nil {
@@ -699,6 +728,9 @@ func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer)
 		prompt = "confirmation required: type " + expected + " to remove discovery: "
 	case ActionImport:
 		mutationCount := len(plan.Ready) + len(plan.Retained)
+		if normalizeInputFormat(request.InputFormat) == InputCSV {
+			mutationCount += len(plan.AlreadyKnown)
+		}
 		if mutationCount == 0 {
 			return ErrConfirmation
 		}
@@ -774,6 +806,10 @@ func executeAddPlan(
 			len(plan.Duplicates)+len(plan.Failed) == 0 {
 		return writeFailure(errorOutput, ExitOperational, "discovery plan is empty")
 	}
+	profileRepository, err := csvProfileRepository(request, plan, repository)
+	if err != nil {
+		return writeFailure(errorOutput, ExitOperational, "CSV profile persistence unavailable")
+	}
 	sourceKind := storage.DiscoverySourceManual
 	if request.Action == ActionImport {
 		sourceKind = storage.DiscoverySourceFile
@@ -821,9 +857,24 @@ func executeAddPlan(
 		}
 	}
 	for _, known := range plan.AlreadyKnown {
-		results = append(results, mutationResult{
+		result := mutationResult{
 			Line: known.Line, RelayActor: known.RelayActor, Status: "already_known",
-		})
+		}
+		if profileRepository != nil {
+			profile, err := applyCSVProfile(
+				ctx, request, plan, known.Line, known.RelayActor,
+				profileRepository, now(),
+			)
+			if err != nil {
+				hadFailure = true
+				result.Status = "failed"
+				result.Code = "profile_write_failed"
+				results = append(results, result)
+				continue
+			}
+			result.Profile = profile
+		}
+		results = append(results, result)
 	}
 	for _, duplicate := range plan.Duplicates {
 		results = append(results, mutationResult{
@@ -866,12 +917,31 @@ func executeAddPlan(
 				continue
 			}
 		}
+		profile, err := applyCSVProfile(
+			ctx, request, plan, ready.Line, ready.RelayActor,
+			profileRepository, acceptedAt,
+		)
+		if err != nil {
+			hadFailure = true
+			results = append(results, mutationResult{
+				Line: ready.Line, RelayActor: ready.RelayActor, Status: "failed",
+				Outcome: outcome, Code: "profile_write_failed",
+			})
+			continue
+		}
 		results = append(results, mutationResult{
 			Line: ready.Line, RelayActor: ready.RelayActor, Status: "ok", Outcome: outcome,
-			InboxURL: ready.InboxURL, InboxProbeState: ready.InboxProbeState,
+			InboxURL: ready.InboxURL, InboxProbeState: ready.InboxProbeState, Profile: profile,
 		})
 	}
 	return renderResults(request, results, standardOutput, errorOutput, hadFailure)
+}
+
+type profileMutationResult struct {
+	Created   int `json:"created"`
+	Updated   int `json:"updated"`
+	Cleared   int `json:"cleared"`
+	Unchanged int `json:"unchanged"`
 }
 
 type mutationResult struct {
@@ -884,6 +954,7 @@ type mutationResult struct {
 	Code              string                            `json:"code,omitempty"`
 	InboxURL          string                            `json:"inbox_url,omitempty"`
 	InboxProbeState   storage.InboxProbeState           `json:"inbox_probe,omitempty"`
+	Profile           *profileMutationResult            `json:"profile,omitempty"`
 }
 
 type resultDocument struct {
@@ -900,10 +971,14 @@ func renderResults(
 	hadFailure bool,
 ) int {
 	if request.Format == OutputJSON {
+		schema := outputSchemaV1
+		if request.Action == ActionImport && normalizeInputFormat(request.InputFormat) == InputCSV {
+			schema = outputSchemaV2
+		}
 		encoder := json.NewEncoder(standardOutput)
 		encoder.SetEscapeHTML(false)
 		if err := encoder.Encode(resultDocument{
-			Schema: outputSchema, Kind: "discovery_result", Action: request.Action, Results: results,
+			Schema: schema, Kind: "discovery_result", Action: request.Action, Results: results,
 		}); err != nil {
 			return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 		}
@@ -933,6 +1008,15 @@ func renderResults(
 				continue
 			}
 			if result.Status == "already_known" {
+				if result.Profile != nil {
+					if _, err := fmt.Fprintf(standardOutput,
+						"line=%d status=already_known actor=%s profile_created=%d profile_updated=%d profile_cleared=%d profile_unchanged=%d\n",
+						result.Line, printableOptional(result.RelayActor), result.Profile.Created,
+						result.Profile.Updated, result.Profile.Cleared, result.Profile.Unchanged); err != nil {
+						return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+					}
+					continue
+				}
 				if _, err := fmt.Fprintf(standardOutput,
 					"line=%d status=already_known actor=%s\n",
 					result.Line, printableOptional(result.RelayActor)); err != nil {
@@ -944,6 +1028,16 @@ func renderResults(
 				if _, err := fmt.Fprintf(standardOutput,
 					"line=%d status=duplicate_input actor=%s\n",
 					result.Line, printableOptional(result.RelayActor)); err != nil {
+					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
+				}
+				continue
+			}
+			if result.Profile != nil {
+				if _, err := fmt.Fprintf(standardOutput,
+					"line=%d status=%s outcome=%s actor=%s inbox=%s inbox_probe=%s profile_created=%d profile_updated=%d profile_cleared=%d profile_unchanged=%d\n",
+					result.Line, result.Status, result.Outcome, printableOptional(result.RelayActor),
+					printableOptional(result.InboxURL), printableInboxState(result.InboxProbeState),
+					result.Profile.Created, result.Profile.Updated, result.Profile.Cleared, result.Profile.Unchanged); err != nil {
 					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 				}
 				continue

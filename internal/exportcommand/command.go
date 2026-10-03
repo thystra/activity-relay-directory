@@ -29,7 +29,7 @@ func Parse(arguments []string) (Request, error) {
 	flags := flag.NewFlagSet("admin export", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	scope := flags.String("scope", string(directoryexport.ScopeActive), "active, all, or unavailable")
-	format := flags.String("format", string(directoryexport.FormatHosts), "hosts or actors")
+	format := flags.String("format", string(directoryexport.FormatHosts), "hosts, actors, or csv")
 	if err := flags.Parse(arguments); err != nil || flags.NArg() != 0 {
 		return Request{}, ErrInvalidCommand
 	}

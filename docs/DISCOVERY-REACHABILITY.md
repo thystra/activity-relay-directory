@@ -74,12 +74,14 @@ upgrade path before the backfill is released.
 ARD 1.1 supports explicit local operator discovery. It does not automatically
 scrape web pages, Git repositories, or third-party relay directories.
 
-The initial bulk format is intentionally simple: a regular local UTF-8 text file
+The default bulk format is intentionally simple: a regular local UTF-8 text file
 of at most 256 KiB with one relay candidate per line. Lines are limited to
 2,048 bytes, at most 100 non-comment candidates are accepted, and at most eight
 remote candidate checks execute concurrently. Empty lines and lines whose first
 non-space character is `#` are ignored. Bare hosts are treated as HTTPS hints;
-explicit HTTP remains rejected. Candidate forms may be:
+explicit HTTP remains rejected. Activity-Relay Directory 1.3 additionally
+accepts the reviewed profile CSV form only when `--input-format csv` is explicit;
+plain line input remains the compatibility default. Candidate forms may be:
 
 ```text
 relay.example
@@ -95,12 +97,17 @@ candidate forms that validate to the same actor are one relay.
 
 Import processing is prospective first: parse and bound the whole input, probe
 within the fixed concurrency limit, report ready/duplicate/failed candidates,
-and require explicit confirmation or `--yes` before durable discovery
-mutation. Interactive imports confirm the exact phrase `IMPORT <ready-count>`.
+and require explicit confirmation or `--yes` before durable mutation. The
+interactive `IMPORT <count>` value is the reviewed mutation count: normal line
+imports count new/retained discovery writes, while CSV imports also count
+already-known verified relays whose CSV profile source will be replaced.
 Successfully validated entries may still be applied when other candidates
 failed; the command returns a nonzero operational exit in that case so callers
-can distinguish partial from complete success. A file disappearing or dropping
-an entry later never removes a relay automatically.
+can distinguish partial from complete success. Existing line imports retain the
+`activity-relay-directory.discovery-admin.v1` JSON result schema; CSV imports
+use `activity-relay-directory.discovery-admin.v2` to carry an optional bounded
+profile-mutation summary. A file disappearing or dropping an entry later never
+removes a relay automatically.
 
 Private provenance records a bounded explicit source label such as a curated
 list name. File imports require that label. The local file path is never
@@ -112,7 +119,7 @@ The implemented local commands are:
 ```text
 activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
 activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
-activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]
+activity-relay-directory admin discovery import --file PATH [--input-format lines|csv] --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]
 ```
 
 Single-add confirmation requires typing the independently validated canonical
@@ -140,6 +147,12 @@ private and is carried into the promoted discovery audit.
 A never-verified candidate remains private indefinitely. The public Tier 4
 graveyard contains only identities that have previously crossed a reviewed
 verified lifecycle or discovery path.
+
+For CSV imports, descriptive profile assertions are written only after a relay
+has a retained verified lifecycle or discovery identity. `--add-dead-relays` may
+retain the unavailable candidate itself, but schema 10 does not attach current
+profile assertions to that unresolved identity; profile data must be reapplied
+after later verification.
 
 ## Actor discovery and verification
 

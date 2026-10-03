@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add bounded relay-profile CSV import/export with explicit `--input-format csv`,
+  deterministic escaped-semicolon list fields, spreadsheet formula-injection
+  neutralization, and source-scoped writes through the schema-10 profile
+  repository without changing the existing line import or hosts/actors exports.
 - Add schema 10 source-scoped relay profile persistence with per-field
   `override > relay > csv` precedence, bounded canonical values, append-only
   private history, and no effect on lifecycle, moderation, reachability, or

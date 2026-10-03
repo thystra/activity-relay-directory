@@ -3,6 +3,7 @@ package directoryexport
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,9 +13,11 @@ import (
 const exportTestObservedUnix int64 = 20_000_000
 
 type fakeRepository struct {
-	pages []storage.DirectoryProjectionPage
-	calls []storage.DirectoryProjectionQuery
-	err   error
+	pages      []storage.DirectoryProjectionPage
+	calls      []storage.DirectoryProjectionQuery
+	err        error
+	profiles   map[string]storage.RelayProfile
+	profileErr error
 }
 
 func (repository *fakeRepository) ListDirectoryRelays(
@@ -30,6 +33,20 @@ func (repository *fakeRepository) ListDirectoryRelays(
 		return storage.DirectoryProjectionPage{}, nil
 	}
 	return repository.pages[index], nil
+}
+
+func (repository *fakeRepository) EffectiveProfile(
+	_ context.Context,
+	relayActor string,
+) (storage.RelayProfile, error) {
+	if repository.profileErr != nil {
+		return storage.RelayProfile{}, repository.profileErr
+	}
+	profile, ok := repository.profiles[relayActor]
+	if !ok {
+		return storage.RelayProfile{}, storage.ErrProfileAbsent
+	}
+	return profile, nil
 }
 
 func projectionRelay(actor string, tier storage.DirectoryTier) storage.DirectoryProjectionRelay {
@@ -169,5 +186,56 @@ func TestRenderRejectsInvalidConfigurationAndRepositoryError(t *testing.T) {
 		Scope: ScopeActive, Format: FormatHosts, ObservedAt: observed,
 	}); err == nil || errors.Is(err, ErrExportConfiguration) {
 		t.Fatalf("repository error = %v", err)
+	}
+}
+
+func TestRenderCSVUsesEffectiveProfilesAndProtectsSpreadsheetCells(t *testing.T) {
+	observed := time.Unix(exportTestObservedUnix, 0).UTC()
+	one := projectionRelay("https://one.example/actor", storage.DirectoryTierOnline)
+	two := projectionRelay("https://two.example/actor", storage.DirectoryTierOnline)
+	repository := &fakeRepository{
+		pages: []storage.DirectoryProjectionPage{{Relays: []storage.DirectoryProjectionRelay{two, one}}},
+		profiles: map[string]storage.RelayProfile{
+			one.RelayActor: {Languages: []string{"en"}, Notes: "=formula"},
+			two.RelayActor: {Topics: []string{"federation", "technology"}},
+		},
+	}
+	body, err := Render(context.Background(), repository, Request{
+		Scope: ScopeAll, Format: FormatCSV, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("Render(CSV) error = %v", err)
+	}
+	text := string(body)
+	if !strings.HasPrefix(text, "relay,participation_mode,availability,relay_type,languages,countries,regions,topics,contact_fediverse,contact_email,contact_url,participation_url,notes\n") ||
+		!strings.Contains(text, "https://one.example/actor,,,,en,,,,,,,,'=formula\n") ||
+		!strings.Contains(text, "https://two.example/actor,,,,,,,federation;technology,,,,,\n") ||
+		strings.Index(text, "one.example") > strings.Index(text, "two.example") {
+		t.Fatalf("Render(CSV) = %q", text)
+	}
+}
+
+type projectionOnlyRepository struct {
+	page storage.DirectoryProjectionPage
+}
+
+func (repository *projectionOnlyRepository) ListDirectoryRelays(
+	_ context.Context,
+	_ storage.DirectoryProjectionQuery,
+) (storage.DirectoryProjectionPage, error) {
+	return repository.page, nil
+}
+
+func TestRenderCSVRequiresProfileRepository(t *testing.T) {
+	observed := time.Unix(exportTestObservedUnix, 0).UTC()
+	repository := &projectionOnlyRepository{page: storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{
+			projectionRelay("https://one.example/actor", storage.DirectoryTierOnline),
+		},
+	}}
+	if _, err := Render(context.Background(), repository, Request{
+		Scope: ScopeAll, Format: FormatCSV, ObservedAt: observed,
+	}); !errors.Is(err, ErrExportConfiguration) {
+		t.Fatalf("Render(CSV projection-only) error = %v", err)
 	}
 }

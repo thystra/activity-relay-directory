@@ -129,6 +129,23 @@ activity-relay-directory admin discovery import \
 Bare hostnames are accepted and treated as HTTPS candidates. Explicit HTTP URLs
 remain rejected. A file may contain blank lines and `#` comments.
 
+For spreadsheet-friendly descriptive relay profiles, use CSV input explicitly:
+
+```sh
+activity-relay-directory admin discovery import \
+  --file ./relay-candidates.csv \
+  --input-format csv \
+  --operator operator-id \
+  --reason public_list \
+  --source-label curated_list
+```
+
+CSV import keeps the same actor-validation and confirmation boundary as normal
+discovery. The line-oriented format remains the default. See
+[`docs/RELAY-PROFILES.md`](docs/RELAY-PROFILES.md) for the reviewed columns,
+profile precedence, private `source_url` provenance, and spreadsheet-safety
+rules.
+
 If you also want to remember relays that are currently unreachable or return an
 incompatible actor document, add `--add-dead-relays`:
 
@@ -207,6 +224,7 @@ listing:
 activity-relay-directory admin export --scope active --format hosts
 activity-relay-directory admin export --scope unavailable --format hosts
 activity-relay-directory admin export --scope all --format actors
+activity-relay-directory admin export --scope all --format csv > relays.csv
 ```
 
 Scopes are:
@@ -216,8 +234,11 @@ Scopes are:
 - `all`: all four public tiers.
 
 `hosts` writes one normalized host per line, including non-default HTTPS ports.
-`actors` writes normalized relay actor URLs. Host exports can be fed back into a later
-`discovery import`.
+`actors` writes normalized relay actor URLs. `csv` writes canonical relay actor
+identity plus the effective descriptive profile fields, with private provenance
+omitted and spreadsheet-formula cells reversibly neutralized. Host and CSV
+exports can be fed back into a later `discovery import`; CSV re-import requires
+`--input-format csv`.
 
 ## Optional relay lifecycle heartbeats
 

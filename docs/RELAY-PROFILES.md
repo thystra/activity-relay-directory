@@ -185,30 +185,46 @@ activity-relay-directory admin discovery import \
 
 `--input-format lines` remains the default compatibility mode.
 
-CSV parsing will use a real CSV parser rather than splitting on commas. Header
-order may vary, but unknown/duplicate headers and duplicate `relay` rows fail
-closed. `relay` is required. The initial reviewed header set is:
+CSV parsing uses Go's CSV parser rather than splitting on commas. Header order
+may vary, but unknown/duplicate headers and duplicate `relay` rows fail closed.
+`relay` is required. Candidate hints that canonicalize to the same actor are
+treated as duplicate rows before remote probing. The implemented header set is:
 
 ```text
 relay,participation_mode,availability,relay_type,languages,countries,regions,topics,contact_fediverse,contact_email,contact_url,participation_url,notes,source_url
 ```
 
-Multi-value fields use semicolon-separated values inside the CSV cell. Values
-are trimmed, bounded, deduplicated deterministically, and exported in a stable
-order. Empty cells remove that CSV source's previous assertion for that field;
-they do not delete the relay or suppress a higher-priority source.
+Multi-value fields use semicolon-separated values inside the CSV cell. A literal
+semicolon inside one list item is escaped as `\;`, and a literal backslash is
+escaped as `\\`; other backslash escapes are rejected. Values are trimmed,
+bounded, deduplicated deterministically, and exported in a stable order. Empty
+cells remove that CSV source's previous assertion for that field; they do not
+delete the relay or suppress a higher-priority source.
 
 A later file omitting a relay never removes the relay automatically, matching
 the existing discovery-file rule. CSV import is prospective: the complete file
 is parsed and bounded before mutation, actor validation is performed through
 the existing safe network path, and the operator receives the normal
-confirmation boundary before durable changes.
+confirmation boundary before durable changes. Existing line imports retain the
+`activity-relay-directory.discovery-admin.v1` JSON result shape. CSV imports use
+`activity-relay-directory.discovery-admin.v2` so their optional profile-mutation
+summary does not silently extend the existing v1 command schema.
 
-CSV is intended to be safe to open in common spreadsheet programs. Because
-relay-controlled/public text may begin with spreadsheet formula trigger
-characters, export implementation must include a reversible formula-injection
-neutralization and regression tests; ordinary CSV quoting alone is not treated
-as sufficient protection.
+For an already-known verified relay, a CSV row may update or clear that CSV
+source's current profile assertions without creating another discovery row. A
+newly verified discovery receives its CSV profile only after actor validation and
+identity persistence succeed. With `--add-dead-relays`, an unreachable or
+incompatible candidate may still be retained privately, but schema 10 does not
+attach current profile assertions to an unresolved candidate identity; the CSV
+profile must be reapplied after that candidate becomes verified.
+
+CSV is intended to be safe to open in common spreadsheet programs. Export
+neutralizes cells whose normalized value begins with `=`, `+`, `-`, `@`, or a
+literal apostrophe by prefixing one apostrophe before normal CSV quoting. Import
+reverses exactly that escape, including doubled leading apostrophes, so
+spreadsheet safety is round-trip stable. Control characters are rejected by the
+profile grammar; ordinary CSV quoting alone is not treated as sufficient
+formula-injection protection.
 
 ## CSV export contract
 
@@ -223,6 +239,11 @@ The CSV form is a local operator export of the effective verified relay catalog
 for the selected public tier scope. It contains canonical identity plus the
 effective descriptive profile fields, but not private source/provenance,
 moderation, pending-candidate, or raw observation details.
+
+Export preserves the existing tier-then-actor ordering used by hosts/actors
+exports. The emitted header omits `source_url` because provenance is private; an
+exported file can therefore be re-imported directly and will create a new CSV
+assertion under the operator-supplied `--source-label`.
 
 The first implementation does not change public `/downloads/*.txt` routes and
 does not turn private pending candidates into public/exported verified relays.
