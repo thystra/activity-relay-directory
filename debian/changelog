@@ -1,3 +1,17 @@
+activity-relay-directory (1.2.0-1) stable; urgency=medium
+
+  * Promote the accepted 1.2.0-rc2 behavior to stable without runtime changes.
+  * Add resilient relay discovery imports, retained unavailable candidates,
+    and periodic retry/promotion maintenance.
+  * Add four public operational tiers with a 30-day Graveyard, aggregate
+    Directory counts, tier-scoped exports, and public relay downloads.
+  * Preserve the V1 Protocol and /v1/relays compatibility while extending
+    /v2/relays to schema 3 and the database to schema 9.
+  * Reload systemd unit definitions on package configure without automatically
+    restarting an operator-activated Directory.
+
+ -- Alan Johnson <alan@argentwolf.org>  Sat, 03 Oct 2026 11:45:00 -0400
+
 activity-relay-directory (1.2.0~rc2-1) unstable; urgency=medium
 
   * Shorten the public Tier 3 to Graveyard transition from 180 days to 30 days
