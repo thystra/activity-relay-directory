@@ -20,6 +20,9 @@ Every tranche must preserve these project invariants:
 - only server acceptance time determines authenticated directory recency;
 - independent reachability observations never refresh authenticated directory
   recency or fabricate heartbeat participation;
+- imported, relay-declared, or operator-supplied descriptive profile data never
+  determines reachability, heartbeat health, tier, moderation, enrollment, or
+  public eligibility;
 - registration/discovery provenance is private and never appears in public
   Directory representations;
 - moderation overrides automated health and public visibility;
@@ -791,6 +794,71 @@ Acceptance must exercise at least:
 
 Canonical release bytes, package/container validation, deployment, activation,
 and production verification remain separate gates.
+
+## 1.3 roadmap: relay profiles, CSV exchange, and Protocol v2
+
+The 1.3 line adds descriptive relay profiles while preserving the separation
+between source claims and Directory-observed operational evidence. The reviewed
+contract is `docs/RELAY-PROFILES.md`. Profile data must never determine
+heartbeat, reachability, tier, moderation, enrollment, or public eligibility.
+
+### Tranche 24: profile and compatibility contract
+
+Repository: Directory.
+
+Freeze the profile fields, per-field source precedence, private provenance
+boundary, CSV compatibility rules, public-projection direction, and lifecycle
+Protocol v2 synchronization model before persistence or protocol code lands.
+Lifecycle Protocol v1 and `/v1/relays` remain frozen.
+
+### Tranche 25: schema-10 profile persistence
+
+Repository: Directory.
+
+Add bounded source-scoped current profile state plus append-only private history.
+Preserve migrations 0001 through 0009 byte-for-byte. Effective profile reads use
+per-field precedence: local override, authenticated relay self-report, CSV,
+then absent. No profile mutation may change operational observations or
+moderation/lifecycle state.
+
+### Tranche 26: CSV import and local export
+
+Repository: Directory.
+
+Extend discovery import with explicit `--input-format csv` while retaining the
+existing line-oriented default and `--format human|json` output option. Extend
+local `admin export` with `--format csv` without changing hosts/actors output or
+public text downloads. CSV handling must be bounded, deterministic,
+spreadsheet-safe, and round-trip tested.
+
+### Tranche 27: public effective profile
+
+Repository: Directory.
+
+Add only effective reviewed descriptive fields to `/v2/relays` schema 4 and the
+public-facing page. Keep provenance, source priority, pending candidates, and
+profile history private. Public tier ordering remains operational evidence only.
+
+### Tranche 28: lifecycle Protocol v2 profile sync
+
+Repositories: Directory and Activity-Relay.
+
+Add a separately versioned authenticated lifecycle profile contract. V2 register
+carries the complete normalized profile; heartbeat remains liveness-only.
+Activity-Relay reconciles on first registration, explicit not-registered state,
+profile change, or operator sync, and falls back to Protocol v1 when v2 is not
+available. Freeze capability negotiation and shared fixtures in both
+repositories before activation.
+
+### Tranche 29: 1.3 acceptance and release gate
+
+Repositories: Directory and Activity-Relay where Protocol v2 is exercised.
+
+Acceptance covers schema-9 to schema-10 migration, unchanged historical
+migrations, source precedence/clear behavior, CSV formula-injection protection
+and round-trip, public privacy, `/v1/relays` and Protocol v1 compatibility,
+profile/tier independence, and real cross-repository Protocol v2 registration,
+heartbeat, fallback, and reconciliation.
 
 ## Completion definition
 
