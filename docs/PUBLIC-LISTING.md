@@ -177,27 +177,27 @@ Saturation returns a fixed HTTP 429 response with a bounded retry hint.
 Repository reads have a two-second request deadline. Security headers are
 inherited from the common HTTP wrapper and there is no CORS write surface.
 
-## Human-readable view
+## Public-facing directory
 
-`GET`/`HEAD` `/` renders the **v2** bounded projection through Go
+`GET`/`HEAD` `/` renders the **v2** projection through Go
 `html/template`; it does not have a second repository query or eligibility rule.
 Its pagination uses the same signed v2 tier-plus-actor keyset token format,
 current-per-page evidence evaluation, page-size bounds, and five-minute walk
-lifetime. Forward links use the existing `cursor` query parameter. The human
-page additionally accepts a `before` query parameter for bounded reverse
-traversal; `/v2/relays` remains forward-only and rejects `before`. Both
+lifetime. Forward links use the existing `cursor` query parameter. The public
+page additionally accepts a `before` query parameter for reverse
+pagination; `/v2/relays` remains forward-only and rejects `before`. Both
 directions preserve the cursor's original issue time, so moving backward does
 not restart the five-minute walk lifetime. A signed cursor token issued by
 `/v2/relays` is accepted by `/` and vice versa; neither token format is accepted
 by `/v1/relays`.
 
-The human page uses compact responsive relay rows. Each row shows the relay,
+The public page uses compact responsive relay rows. Each row shows the relay,
 heartbeat, reachability, last heartbeat, and last reachability check. Expanding
 a row shows the actor, inbox, and last successful check. Inbox probe diagnostics
 and RFC 9421 verification details remain part of the v2 JSON projection but are
 intentionally omitted from the human directory.
 
-A bounded page containing no public rows but at least one previous/next
+A page containing no public rows but at least one previous/next
 continuation cursor is presented as an empty **page**, not as an empty
 directory.
 
@@ -220,7 +220,7 @@ human-readable evidence context, and intentional empty states. The versioned
 JSON APIs remain available but the human page does not advertise or link to
 them.
 
-The view remains dependency-free and privacy-bounded:
+The view remains dependency-free and privacy-focused:
 
 - no JavaScript is required;
 - no remote fonts, analytics, images, third-party scripts, or relay-controlled
@@ -261,7 +261,7 @@ Relevant references:
 
 ## Optional public operator contact
 
-The human `GET /` page may display operator-owned contact links from the optional
+The public `GET /` page may display operator-owned contact information from the optional
 YAML file `/etc/activity-relay-directory/config.yml`. The Debian package owns the
 empty parent directory and installs an example at
 `/usr/share/doc/activity-relay-directory/examples/config.yml.example`; it does
@@ -282,7 +282,7 @@ FEDIVERSE-OPERATOR-ID: "@operator@social.example"
 FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
 ```
 
-`OPERATOR-WEBSITE` and `OPERATOR-EMAIL` are independently optional. The two
+`OPERATOR-WEBSITE` and `OPERATOR-EMAIL` are independently optional values. The two
 Fediverse values are a pair: either both are present or both are absent. The
 displayed `@user@host` identifier links to the explicit HTTPS profile URL; the
 Directory never derives a profile URL because Friendica, Mastodon, and other
