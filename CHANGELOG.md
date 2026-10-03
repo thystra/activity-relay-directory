@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Preserve executable mode and deterministic release timestamps across Forgejo
+  artifact download by uploading the canonical release tree inside a
+  metadata-normalized tar carrier; canonical public asset bytes and their
+  `SHA256SUMS` remain unchanged.
+
 - Show the running application version in the public-facing Directory footer,
   using the same runtime build identity exposed by `/v1/status`.
 - Carry forward release-validation verifier-authority, clean-room, and rollback
