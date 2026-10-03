@@ -1,18 +1,21 @@
 # Releasing
 
 
-### 1.1 acceptance prerequisite
+### Source acceptance prerequisite
 
-Before producing canonical 1.1 release bytes or validating release packages,
+Before producing canonical 1.2 release bytes or validating release packages,
 run:
 
-    ./scripts/acceptance-1.1.sh
+    ./scripts/acceptance-1.2.sh
 
-The acceptance runner is intentionally separate from packaging and deployment.
-It pins the released `v1.0.0` tag and schema-7 migration history and exercises
-the reviewed Tranche 23 discovery/reachability acceptance matrix. A passing
-acceptance matrix is required before canonical release bytes, package/container
-validation, publication, deployment, activation, or production verification.
+The 1.2 acceptance runner is intentionally separate from packaging and
+deployment. It pins the released `v1.1.0` baseline, proves migrations 0001
+through 0008 remain unchanged, verifies schema 9 as the only new migration, and
+exercises the 1.2 discovery, retry, tiering, export, and public-listing contracts.
+A passing acceptance matrix is required before canonical release bytes,
+package/container validation, publication, deployment, activation, or production
+verification. The historical `scripts/acceptance-1.1.sh` remains available for
+the 1.0-to-1.1 release history.
 
 
 ## Public release-documentation style
@@ -109,7 +112,14 @@ dedicated system account, owner-only
 the binary, documentation, and a hardened systemd unit. Debhelper is invoked
 with `dh_installsystemd --no-enable --no-start --no-stop-on-upgrade`.
 
-Debian package construction requires debhelper 13.25 or newer. Forgejo packaging jobs run on the shared Node 24 / Debian Trixie execution profile and obtain the required debhelper from `trixie-backports`; the release builder rejects older helper versions so package lifecycle behavior does not depend on the base image's ambient toolchain.
+Debian package construction requires debhelper 13.25 or newer. Forgejo
+packaging jobs run on the shared Node 24 / Debian Trixie execution profile and
+obtain the required debhelper from `trixie-backports`; the release builder
+rejects older helper versions so package lifecycle behavior does not depend on
+the base image's ambient toolchain. GitHub package validation runs on the
+explicit Ubuntu 26.04 runner and independently verifies that its installed
+debhelper also meets the 13.25 minimum; Forgejo remains authoritative for
+canonical release artifacts.
 Fresh package installation must leave the unit disabled and inactive, while a
 package upgrade must not stop or restart an operator-activated service. Loading
 the newly installed binary into an active deployment is a separate,
