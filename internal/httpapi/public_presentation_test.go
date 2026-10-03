@@ -67,6 +67,10 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		"No relays are listed yet",
 		"How the relay tiers work",
 		"Click on a relay's line for details.",
+		"Download host lists:",
+		`href="/downloads/active.txt"`,
+		`href="/downloads/all.txt"`,
+		`href="/downloads/unavailable.txt"`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("human directory body missing %q", required)
@@ -91,6 +95,7 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		".hero h1",
 		".panel",
 		".tier-guide",
+		".download-links",
 		".tier-block",
 		".relay-table",
 		".relay-summary",

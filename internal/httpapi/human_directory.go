@@ -35,19 +35,22 @@ type humanDirectoryTierBlock struct {
 }
 
 type humanDirectoryPage struct {
-	Listing             directoryProjectionResponse
-	TierBlocks          []humanDirectoryTierBlock
-	PreviousURL         string
-	NextURL             string
-	Stylesheet          string
-	HasOperator         bool
-	HasOperatorLinks    bool
-	OperatorWebsite     string
-	OperatorEmail       string
-	OperatorEmailURL    string
-	FediverseID         string
-	FediverseURL        string
-	OperatorDiagnostics []string
+	Listing                directoryProjectionResponse
+	TierBlocks             []humanDirectoryTierBlock
+	PreviousURL            string
+	NextURL                string
+	ActiveDownloadURL      string
+	AllDownloadURL         string
+	UnavailableDownloadURL string
+	Stylesheet             string
+	HasOperator            bool
+	HasOperatorLinks       bool
+	OperatorWebsite        string
+	OperatorEmail          string
+	OperatorEmailURL       string
+	FediverseID            string
+	FediverseURL           string
+	OperatorDiagnostics    []string
 }
 
 func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
@@ -203,19 +206,22 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 	}
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
-		Listing:             listing,
-		TierBlocks:          buildHumanDirectoryTierBlocks(listing.Relays),
-		PreviousURL:         previousURL,
-		NextURL:             nextURL,
-		Stylesheet:          directoryStylesheetPath,
-		HasOperator:         !operator.Empty(),
-		HasOperatorLinks:    operator.HasLinks(),
-		OperatorWebsite:     operator.Website,
-		OperatorEmail:       operator.Email,
-		OperatorEmailURL:    operatorEmailURL,
-		FediverseID:         operator.FediverseID,
-		FediverseURL:        operator.FediverseURL,
-		OperatorDiagnostics: operator.Diagnostics,
+		Listing:                listing,
+		TierBlocks:             buildHumanDirectoryTierBlocks(listing.Relays),
+		PreviousURL:            previousURL,
+		NextURL:                nextURL,
+		ActiveDownloadURL:      directoryActiveDownloadPath,
+		AllDownloadURL:         directoryAllDownloadPath,
+		UnavailableDownloadURL: directoryUnavailableDownloadPath,
+		Stylesheet:             directoryStylesheetPath,
+		HasOperator:            !operator.Empty(),
+		HasOperatorLinks:       operator.HasLinks(),
+		OperatorWebsite:        operator.Website,
+		OperatorEmail:          operator.Email,
+		OperatorEmailURL:       operatorEmailURL,
+		FediverseID:            operator.FediverseID,
+		FediverseURL:           operator.FediverseURL,
+		OperatorDiagnostics:    operator.Diagnostics,
 	})
 	if err != nil {
 		writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")

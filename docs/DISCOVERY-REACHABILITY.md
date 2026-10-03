@@ -75,12 +75,15 @@ ARD 1.1 supports explicit local operator discovery. It does not automatically
 scrape web pages, Git repositories, or third-party relay directories.
 
 The initial bulk format is intentionally simple: a regular local UTF-8 text file
-of at most 256 KiB with one HTTPS candidate per line. Lines are limited to
+of at most 256 KiB with one relay candidate per line. Lines are limited to
 2,048 bytes, at most 100 non-comment candidates are accepted, and at most eight
 remote candidate checks execute concurrently. Empty lines and lines whose first
-non-space character is `#` are ignored. Candidate forms may be:
+non-space character is `#` are ignored. Bare hosts are treated as HTTPS hints;
+explicit HTTP remains rejected. Candidate forms may be:
 
 ```text
+relay.example
+relay.example:8443
 https://relay.example/
 https://relay.example/actor
 https://relay.example/inbox

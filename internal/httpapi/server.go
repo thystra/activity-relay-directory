@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/config"
+	"github.com/thystra/activity-relay-directory/internal/directoryexport"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 )
 
@@ -159,6 +160,42 @@ func NewHandlerWithRuntime(
 			publicListing.serveDirectoryProjection(response, request)
 		})
 		mux.HandleFunc(directoryStylesheetPath, serveDirectoryStylesheet)
+		mux.HandleFunc(directoryActiveDownloadPath, func(response http.ResponseWriter, request *http.Request) {
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writeDirectoryExportError(response, request, http.StatusServiceUnavailable, "directory download temporarily unavailable")
+				return
+			}
+			publicListing.serveDirectoryExport(
+				response, request, directoryexport.ScopeActive, "activity-relay-directory-active.txt",
+			)
+		})
+		mux.HandleFunc(directoryAllDownloadPath, func(response http.ResponseWriter, request *http.Request) {
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writeDirectoryExportError(response, request, http.StatusServiceUnavailable, "directory download temporarily unavailable")
+				return
+			}
+			publicListing.serveDirectoryExport(
+				response, request, directoryexport.ScopeAll, "activity-relay-directory-all.txt",
+			)
+		})
+		mux.HandleFunc(directoryUnavailableDownloadPath, func(response http.ResponseWriter, request *http.Request) {
+			if !publicListingAvailable {
+				if !allowReadMethod(response, request) {
+					return
+				}
+				writeDirectoryExportError(response, request, http.StatusServiceUnavailable, "directory download temporarily unavailable")
+				return
+			}
+			publicListing.serveDirectoryExport(
+				response, request, directoryexport.ScopeUnavailable, "activity-relay-directory-unavailable.txt",
+			)
+		})
 		mux.HandleFunc("/", func(response http.ResponseWriter, request *http.Request) {
 			if request.URL.Path != "/" {
 				http.NotFound(response, request)

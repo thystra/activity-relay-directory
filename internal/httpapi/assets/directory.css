@@ -162,6 +162,13 @@ a:focus-visible {
   text-decoration: none;
 }
 
+.download-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: -0.25rem 0 1.25rem;
+}
 
 .tier-guide {
   display: grid;

@@ -7,7 +7,7 @@ The initial process contains:
 
 - environment-backed configuration with strict validation;
 - an HTTP server with health, readiness, public status, and independently gated
-  JSON and human-readable views of one public directory projection;
+  JSON, human-readable, and plain-text download views of one public directory projection;
 - immutable build-version metadata;
 - single-node SQLite startup migration and readiness checks;
 - fail-closed signed lifecycle handlers that remain disabled by default.

@@ -60,6 +60,13 @@
         </div>
       </div>
 
+      <nav class="download-links" aria-label="Relay list downloads">
+        <span class="muted">Download host lists:</span>
+        <a class="button-link" href="{{.ActiveDownloadURL}}" download>Active relays</a>
+        <a class="button-link" href="{{.AllDownloadURL}}" download>All known relays</a>
+        <a class="button-link" href="{{.UnavailableDownloadURL}}" download>Unavailable relays</a>
+      </nav>
+
 {{if .Listing.Relays}}
 {{range .TierBlocks}}
       <section class="tier-block tier-block-{{.Tier}}" aria-labelledby="tier-heading-{{.Tier}}">
