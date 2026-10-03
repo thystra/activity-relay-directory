@@ -792,18 +792,6 @@ Acceptance must exercise at least:
 Canonical release bytes, package/container validation, deployment, activation,
 and production verification remain separate gates.
 
-## 1.3 roadmap
-
-### Canonical artifact wrapper metadata
-
-Repository: Directory.
-
-Review the Forgejo artifact wrapper used for canonical release bundles so
-extracted standalone binaries retain executable mode and archive timestamps are
-sane and deterministic. Preserve checksum identity of the canonical public
-assets and do not make the transport wrapper itself another source of release
-version truth.
-
 ## Completion definition
 
 The remaining-feature roadmap is complete only when:

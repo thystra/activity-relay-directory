@@ -55,14 +55,16 @@ normal Debian revision form.
 Forgejo is authoritative. `.forgejo/workflows/package.yml` and the GitHub
 package workflow are validation only. `.forgejo/workflows/release.yml` is a
 manual, exact-commit artifact gate: it builds the canonical candidate bytes
-once and stores them as one Forgejo Actions artifact. That set includes both
-supported installation paths: the Debian package and a Docker-loadable
-`linux/amd64` image archive tagged
-`activity-relay-directory:<application-version>`. After the exact artifact set
-is independently install-tested through both paths, a later publication gate
-tags the same commit and promotes those exact bytes to Forgejo and GitHub
-release surfaces. GitHub runners do not manufacture a second official release
-set or rebuild the container image.
+once and stores them as one Forgejo Actions artifact. Before upload, the
+workflow places the complete `public/` and `evidence/` trees inside a
+deterministic `activity-relay-directory-canonical.tar` carrier so Unix file
+modes survive the artifact service. That set includes both supported
+installation paths: the Debian package and a Docker-loadable `linux/amd64`
+image archive tagged `activity-relay-directory:<application-version>`. After
+the exact artifact set is independently install-tested through both paths, a
+later publication gate tags the same commit and promotes those exact bytes to
+Forgejo and GitHub release surfaces. GitHub runners do not manufacture a second
+official release set or rebuild the container image.
 
 ## Release source identity
 
@@ -151,9 +153,24 @@ produce image tag `activity-relay-directory:<application-version>`. `.changes`,
 `.buildinfo`, package control scripts, Lintian output, and package inventory
 are retained as build evidence rather than promoted as end-user release assets.
 
-Release acceptance requires independent installation tests of the exact
-canonical `.deb` and exact canonical Docker archive before tagging or
-publication.
+The Forgejo artifact service's outer download wrapper is transport only. It is
+not a release identity or checksum authority and may rewrite its own ZIP entry
+metadata. The canonical workflow therefore uploads only the deterministic
+`activity-relay-directory-canonical.tar` carrier. Tar members are sorted, have
+UID/GID normalized to zero, and use the `source_date_epoch` already recorded in
+`public/BUILD-METADATA.txt`; existing file modes are preserved so the standalone
+binary remains executable after extraction. The workflow builds the carrier
+twice and requires byte identity before upload. `package-canonical-bundle.sh`
+re-extracts it and revalidates `public/SHA256SUMS` plus the executable/version
+identity before returning success. The tar carrier itself is deliberately not
+added to `SHA256SUMS`: the five canonical public assets remain the release
+bytes being authenticated and published.
+
+After downloading a Forgejo Actions artifact, extract its outer wrapper and then
+extract `activity-relay-directory-canonical.tar`; perform release acceptance on
+the resulting `public/` assets. Release acceptance requires independent
+installation tests of the exact canonical `.deb` and exact canonical Docker
+archive before tagging or publication.
 Give the two tests separate SQLite state and separate bind ports if they run
 concurrently; they must not share one writable database.
 

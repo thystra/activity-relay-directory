@@ -149,10 +149,24 @@ jobs:
           test "$(wc -l < SHA256SUMS)" -eq 5
           sha256sum -c SHA256SUMS
 
+      - name: Wrap canonical release artifact set with preserved metadata
+        run: |
+          set -Eeuo pipefail
+          BUNDLE="$RUNNER_TEMP/activity-relay-directory-canonical.tar"
+          REPRO="$RUNNER_TEMP/activity-relay-directory-canonical.repro.tar"
+
+          scripts/release/package-canonical-bundle.sh \
+            "$RUNNER_TEMP/canonical-release" "$BUNDLE"
+          scripts/release/package-canonical-bundle.sh \
+            "$RUNNER_TEMP/canonical-release" "$REPRO"
+          cmp "$BUNDLE" "$REPRO"
+          rm -f "$REPRO"
+          sha256sum "$BUNDLE"
+
       - name: Upload canonical release artifact set
         uses: https://code.forgejo.org/actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5
         with:
           name: activity-relay-directory-${{ inputs.version }}-canonical-${{ inputs.expected_commit }}
-          path: ${{ runner.temp }}/canonical-release/
+          path: ${{ runner.temp }}/activity-relay-directory-canonical.tar
           if-no-files-found: error
           retention-days: 30

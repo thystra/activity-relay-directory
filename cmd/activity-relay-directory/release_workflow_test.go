@@ -120,3 +120,29 @@ func TestCanonicalReleaseWorkflowInstallsDebianToolsBeforeUse(t *testing.T) {
 		}
 	}
 }
+
+func TestCanonicalReleaseWorkflowWrapsArtifactBeforeUpload(t *testing.T) {
+	workflow := canonicalReleaseWorkflow(t)
+
+	finalize := strings.Index(workflow, "- name: Finalize one checksummed canonical artifact set")
+	wrap := strings.Index(workflow, "- name: Wrap canonical release artifact set with preserved metadata")
+	upload := strings.Index(workflow, "- name: Upload canonical release artifact set")
+	if finalize < 0 || wrap < 0 || upload < 0 || !(finalize < wrap && wrap < upload) {
+		t.Fatalf("canonical release wrapper ordering = finalize:%d wrap:%d upload:%d", finalize, wrap, upload)
+	}
+
+	for _, marker := range []string{
+		`scripts/release/package-canonical-bundle.sh`,
+		`BUNDLE="$RUNNER_TEMP/activity-relay-directory-canonical.tar"`,
+		`REPRO="$RUNNER_TEMP/activity-relay-directory-canonical.repro.tar"`,
+		`cmp "$BUNDLE" "$REPRO"`,
+		`path: ${{ runner.temp }}/activity-relay-directory-canonical.tar`,
+	} {
+		if !strings.Contains(workflow, marker) {
+			t.Fatalf("canonical release workflow missing bundle marker %q", marker)
+		}
+	}
+	if strings.Contains(workflow, `path: ${{ runner.temp }}/canonical-release/`) {
+		t.Fatal("canonical release workflow uploads raw release tree and would lose Unix mode metadata")
+	}
+}

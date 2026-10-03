@@ -401,6 +401,14 @@ and deployments, and remain accountable for the software.
   archive, `.deb`, standalone binary, SBOM, build metadata, and checksum file
   are one canonical set; do not rebuild the container separately for GitHub or
   publication.
+- Generic Actions artifact transport may normalize Unix permissions and assign
+  synthetic wrapper timestamps. When canonical release files require Unix mode
+  preservation, upload a deterministic tar carrier rather than the raw tree:
+  preserve member modes, sort members, normalize owner/group, derive member
+  time from the already-recorded release source epoch, and revalidate the
+  canonical checksums after extraction. The artifact service's outer wrapper
+  and the tar carrier name are transport metadata, not additional release
+  version or checksum authorities.
 - Before an RC tag or release is published, independently install-test the
   exact canonical `.deb` and container archive. Use separate writable state
   for the two tests; never point both installations at the same SQLite file.
