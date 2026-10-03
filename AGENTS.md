@@ -875,3 +875,110 @@ failure.
 - **Hash the exact bytes an applicator will materialize, including terminal newline framing.** R3B embedded an already-reviewed patch inside a quoted heredoc but inserted one additional blank line before the heredoc terminator. The source hunks were unchanged, yet the materialized patch SHA no longer matched the reviewed patch SHA and the gate correctly failed closed. When an applicator embeds an authenticated payload, generate the handoff from the exact payload bytes, re-extract the payload from the finished applicator, and prove its checksum before distribution. Add a focused regression for zero, one, and two terminal newlines so presentation framing cannot silently alter an authority hash.
 
 - **Early fail-closed exits still owe a fresh source-of-truth snapshot.** R3B failed before its prospective worktree existed and therefore skipped the repository's standard failure snapshot even though the source remained untouched. Applicators must choose a snapshot authority before mutation begins: use the validated prospective/current worktree once it exists, otherwise emit from the authenticated base checkout/snapshot. A failure before worktree creation is not an exception to the source-bundle requirement.
+
+### Forgejo verifier authority and historical evidence
+
+- **Bind gates to authoritative objects, not verifier lineage.** The release
+  boundary is the immutable technical state being evaluated: exact commit and
+  tree identities, merge parents when relevant, reviewed workflow bytes and
+  dispatch inputs, repository-scoped Actions run identity, required job/task/step
+  state, and artifact checksums/metadata. Re-authenticate those objects directly
+  from Git, Forgejo, and the artifact bytes at each gate instead of requiring a
+  chain of earlier verifier reports to parse successfully.
+
+- **Historical verifier reports are audit provenance by default, not execution
+  prerequisites.** Record earlier report names or checksums when useful, but a
+  later gate must not fail merely because an older report was renamed, absent,
+  reformatted, or contained a verifier-only false failure when current authority
+  can be reconstructed independently. Fix a failed verifier and rerun it against
+  the same authoritative object rather than making the failed report load-bearing.
+
+- **Make prior evidence load-bearing only when it carries non-reconstructable
+  authority.** Examples include a human-reviewed decision, an explicitly granted
+  exception, or evidence from a destructive operation whose pre-state cannot be
+  recovered. Name that dependency explicitly and bind only the minimum necessary
+  fields instead of the previous report's presentation format.
+
+- **Do not recursively parse nested historical state as current state.** Source
+  snapshots may include older state for audit context, but current authority
+  fields must be clearly scoped/versioned and parsed as one record. Regression
+  tests must cover duplicate or nested field names so multi-match text parsing
+  cannot turn valid history into a false mismatch.
+
+- **Forgejo Actions URLs use repository-scoped run numbers.** A UI run number is
+  not necessarily the database primary key. Diagnostics that query Forgejo's
+  database must first resolve the repository plus run index, validate the
+  commit/workflow/event/ref, and only then use the resulting internal run ID.
+  Never compare a UI run number directly to an internal primary key.
+
+- **Preserve matrix rows by row identity and name, not only logical job key.**
+  Matrix expansions may share one logical job identifier while representing
+  distinct required rows. Verifiers must retain and prove every required matrix
+  row and its latest task separately.
+
+- **Respect Forgejo log-storage metadata.** A recorded log filename does not prove
+  the log is currently resident in filesystem storage. Require an exact log path
+  only when Forgejo metadata says the log is resident; an unavailable historical
+  successful log must not block inspection of current authoritative task state.
+
+- **Regression-test verifier independence.** When the authoritative
+  commit/tree/run/artifact bytes are unchanged, renaming or removing a
+  non-load-bearing historical report must not change the gate result. Changing
+  authoritative commit/tree identity, run identity, dispatch inputs, required
+  job/task state, or artifact bytes/checksums must fail closed.
+
+### Clean-room, rollback, and continuation safety
+
+- **Treat the current validation host as live authority.** Release validation
+  infrastructure is part of the release-safety boundary. The current machine,
+  boot chain, storage topology, and test residue are authoritative; a historical
+  verifier report is audit evidence unless it records an irreconstructible human
+  decision or pre-mutation state.
+
+- **Never roll back an active root filesystem or active nested ZFS datasets.** A
+  rollback command can return success while the running kernel still holds
+  incoherent page-cache or writeback state. Restore boot/root environments only
+  from an offline, recovery, initramfs, alternate-boot, or otherwise
+  demonstrably unmounted context.
+
+- **Treat root, boot, and EFI state as one recoverable boot chain.** When root
+  and `/boot` live in separate ZFS pools, define a reusable baseline as a paired
+  root/boot set and record the exact logical pairing. The EFI System Partition is
+  outside ZFS and needs separate evidence or backup when the baseline is intended
+  to reconstruct the full boot chain. Cross-pool snapshots are not atomic, so
+  record each pool's snapshot identity and creation time.
+
+- **Prove a reusable baseline after maintenance, not during it.** Complete package
+  transactions, verify package-manager state, verify each intended bootable
+  kernel has matching initrd/modules, perform a normal reboot, and re-prove
+  bootloader, service, pool, and validation-host health before declaring a new
+  reusable baseline.
+
+- **Keep shared validation baselines project-neutral.** Do not preserve candidate
+  packages, containers, volumes, temporary test files, credentials, or
+  project-specific configuration in a reusable shared-host baseline.
+
+- **A successful mutation followed by verifier failure is a partial mutation.**
+  Inspect current state directly, classify what completed, preserve evidence, and
+  continue from that observed authority. Do not blindly replay snapshot creation,
+  upgrade, rollback, package installation, publication, or another non-idempotent
+  step.
+
+- **Verifier privilege is part of the verifier contract.** A permission failure
+  while reading a root-owned configuration or boot file is not evidence that the
+  object is invalid. Use the least privilege that can actually read the
+  authoritative object, and distinguish access failure from content failure.
+
+- **Match validation scope to gate ownership.** A change-scoped gate validates the
+  files or objects it changes. Report unrelated pre-existing defects separately
+  unless whole-repository or whole-host cleanliness is an explicit invariant.
+
+- **Stateful assertions must name the invariant and observed state.** A bare
+  assertion failure after persistent mutation is insufficient operational
+  evidence; diagnostics must identify the dataset, path, or object and expected
+  versus observed condition.
+
+- **Separate stateful phases explicitly.** Recovery and acceptance tooling should
+  distinguish current-state proof, authorization/confirmation, mutation,
+  post-mutation proof, reboot when required, and final authority proof. A later
+  failure must not obscure whether an earlier mutation completed.
