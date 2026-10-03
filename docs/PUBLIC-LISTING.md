@@ -224,6 +224,11 @@ human-readable evidence context, and intentional empty states. The versioned
 JSON APIs remain available but the human page does not advertise or link to
 them.
 
+The footer displays the running application version beside the Directory name.
+It uses the same runtime build identity exposed by `/v1/status`; there is no
+separate public-page version setting or hard-coded template version. This
+presentation detail does not change either relay-listing JSON schema.
+
 The view remains dependency-free and privacy-focused:
 
 - no JavaScript is required;

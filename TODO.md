@@ -794,17 +794,6 @@ and production verification remain separate gates.
 
 ## 1.3 roadmap
 
-### Public-facing running version
-
-Repository: Directory.
-
-Publish the running application version on the public-facing Directory page,
-near the software links in the footer. The displayed value must come from the
-same build/version identity used by `/v1/status`; do not introduce a separate
-configuration value or hard-coded template version. This is a presentation-only
-change and must not alter public relay records or require a public API schema
-change.
-
 ### Canonical artifact wrapper metadata
 
 Repository: Directory.
