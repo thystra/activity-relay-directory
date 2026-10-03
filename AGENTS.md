@@ -221,7 +221,9 @@ path. Retry them after 6h, 12h, 24h, 3d, then every 7d indefinitely; keep each
 run bounded to pages <=24, <=96 candidates total, and <=8 concurrent probes.
 Only successful canonical actor validation may promote a candidate into normal
 verified discovery state. Candidate retries must not make unresolved rows
-public. See `docs/REACHABILITY.md` and `docs/DISCOVERY-REACHABILITY.md`.
+public. The human directory may show only an aggregate pending-verification
+count; candidate identities, failure details, and provenance remain private.
+See `docs/REACHABILITY.md` and `docs/DISCOVERY-REACHABILITY.md`.
 
 Soft-pruning code must use `storage.PruningRepository` and remain reversible.
 Candidate reads use the `(lifecycle_state, last_seen_at_unix, relay_actor)` index,
@@ -298,9 +300,14 @@ credentials, relay host, or notification enablement. See
 `docs/STORAGE-GROWTH.md`.
 
 Public directory presentation must use the same `httpapi.PublicListingHandler`
-projection for v2 JSON and human-readable output. Do not add a second
-HTML-specific repository query, heartbeat/reachability classifier, moderation
-filter, or eligibility rule. Keep `/v1/relays` byte/semantic compatible with the
+projection for v2 JSON and human-readable relay rows. Do not add a second
+HTML-specific relay-row query, moderation filter, or eligibility rule. The sole
+reviewed exception is an aggregate-only human-directory summary query for known,
+online/offline, and pending-verification counts. It must use the same verified
+participation and fresh-reachability predicates as the v2 projection, return no
+relay/candidate identities or provenance, remain under the shared public-read
+semaphore and timeout, and have parity tests against tier classification. Keep
+`/v1/relays` byte/semantic compatible with the
 1.0 health listing. `GET`/`HEAD` `/`, `/v2/relays`, and bundled static assets
 remain under the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` gate. The
 v2 projection may serialize only canonical identity plus the reviewed public
@@ -310,7 +317,7 @@ errors, client addresses, signing-key identifiers, or internal
 registered/discovered flags. Bound v2 pages to 100 public rows and at most 400
 retained actor identities per request, advancing a signed `(tier, actor)` keyset
 even through sparse rows. Tier order is heartbeat+online, online without a
-current heartbeat, unavailable, then the 180-day graveyard; ordering inside each
+current heartbeat, unavailable, then the 30-day graveyard; ordering inside each
 tier is canonical actor/hostname order and must not use heartbeat frequency,
 check recency, popularity, or another activity score. HTML must use Go
 `html/template`, automatic escaping, local assets only, a

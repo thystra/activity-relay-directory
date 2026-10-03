@@ -103,6 +103,7 @@ func (handler *PublicListingHandler) loadDirectoryProjectionWithParser(
 
 	result := directoryProjectionResponse{
 		SchemaVersion: directoryProjectionSchemaVersion,
+		observedAt:    parsed.observedAt,
 		Relays:        make([]directoryProjectionRelay, 0, len(page.Relays)),
 		Pagination: directoryProjectionPagination{
 			Limit:         parsed.limit,
@@ -206,6 +207,7 @@ type directoryProjectionResponse struct {
 	SchemaVersion int                           `json:"schema_version"`
 	Relays        []directoryProjectionRelay    `json:"relays"`
 	Pagination    directoryProjectionPagination `json:"pagination"`
+	observedAt    time.Time
 }
 
 type directoryProjectionRelay struct {

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.2.0-rc2 - 2026-10-03
+
+- Move verified relays from Tier 3 into the Tier 4 Graveyard after 30 days
+  without trustworthy online evidence instead of 180 days; weekly recovery
+  checks continue and no relay is deleted by this presentation change.
+- Expand the human Directory summary with aggregate verified relay, online,
+  offline, and pending-verification candidate counts while keeping unresolved
+  candidate identities and provenance private.
+- Reload systemd unit definitions during Debian package configuration without
+  starting or restarting the Directory; loading an upgraded binary remains an
+  explicit operator-controlled restart.
+
 ## 1.2.0-rc1 - 2026-10-03
 
 - Rewrite the project README around installation, relay discovery, tiered

@@ -34,6 +34,9 @@ func TestClassifyPublicHeartbeat(t *testing.T) {
 }
 
 func TestClassifyDirectoryTierUsesHeartbeatReachabilityAndGraveyardAge(t *testing.T) {
+	if DirectoryGraveyardAfter != 30*24*time.Hour {
+		t.Fatalf("DirectoryGraveyardAfter = %s, want 30 days", DirectoryGraveyardAfter)
+	}
 	observed := int64(40_000_000)
 
 	tierOne := validDirectoryProjectionRelayForTest(observed)

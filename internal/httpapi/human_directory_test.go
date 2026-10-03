@@ -19,27 +19,35 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	checked := int64(100_050)
 	declared := int64(100_040)
 	verified := int64(100_000)
-	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{{
-			RelayActor:           "https://relay.example/a&b",
-			PublicBaseURL:        "https://relay.example",
-			LifecycleKnown:       true,
-			Registered:           true,
-			FirstKnownUnix:       lastSeen - 100,
-			Tier:                 storage.DirectoryTierHeartbeatOnline,
-			HeartbeatState:       storage.HeartbeatHealthy,
-			LastSeenUnix:         &lastSeen,
-			LastHeartbeatUnix:    &lastSeen,
-			ActorState:           storage.ReachabilityReachable,
-			ActorLastCheckedUnix: &checked,
-			ActorLastSuccessUnix: &checked,
-			InboxURL:             "https://relay.example/inbox/a&b",
-			InboxDeclaredUnix:    &declared,
-			InboxProbeState:      storage.InboxMethodRejected,
-			InboxLastCheckedUnix: &checked,
-			RFC9421VerifiedUnix:  &verified,
-		}},
-	}}
+	repository := &publicListingRepositoryStub{
+		summary: storage.DirectorySummary{
+			KnownRelays:         1,
+			OnlineRelays:        1,
+			OfflineRelays:       0,
+			PendingVerification: 2,
+		},
+		directoryPage: storage.DirectoryProjectionPage{
+			Relays: []storage.DirectoryProjectionRelay{{
+				RelayActor:           "https://relay.example/a&b",
+				PublicBaseURL:        "https://relay.example",
+				LifecycleKnown:       true,
+				Registered:           true,
+				FirstKnownUnix:       lastSeen - 100,
+				Tier:                 storage.DirectoryTierHeartbeatOnline,
+				HeartbeatState:       storage.HeartbeatHealthy,
+				LastSeenUnix:         &lastSeen,
+				LastHeartbeatUnix:    &lastSeen,
+				ActorState:           storage.ReachabilityReachable,
+				ActorLastCheckedUnix: &checked,
+				ActorLastSuccessUnix: &checked,
+				InboxURL:             "https://relay.example/inbox/a&b",
+				InboxDeclaredUnix:    &declared,
+				InboxProbeState:      storage.InboxMethodRejected,
+				InboxLastCheckedUnix: &checked,
+				RFC9421VerifiedUnix:  &verified,
+			}},
+		},
+	}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
@@ -87,6 +95,9 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`href="/downloads/active.txt"`,
 		`href="/downloads/all.txt"`,
 		`href="/downloads/unavailable.txt"`,
+		`This Directory knows about 1 relay. 1 is currently online and 0 are offline.`,
+		`An additional 2 relay candidates are pending verification.`,
+		`Candidates are not listed publicly until their relay actor can be verified.`,
 		`href="https://github.com/thystra/activity-relay-directory"`,
 		`href="https://github.com/thystra/Activity-Relay"`,
 	} {
@@ -373,6 +384,17 @@ func TestHumanDirectoryRejectsTamperedCursorAndBackendFailureWithoutDisclosure(t
 	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
 	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "sqlite") || strings.Contains(response.Body.String(), "/srv") {
 		t.Fatalf("backend response = status %d body %q", response.Code, response.Body.String())
+	}
+
+	repository.mu.Lock()
+	repository.directoryErr = nil
+	repository.summaryErr = errorsForHumanTest{}
+	repository.mu.Unlock()
+
+	response = httptest.NewRecorder()
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), "sqlite") || strings.Contains(response.Body.String(), "/srv") {
+		t.Fatalf("summary backend response = status %d body %q", response.Code, response.Body.String())
 	}
 }
 

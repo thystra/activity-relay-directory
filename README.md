@@ -34,8 +34,8 @@ Heartbeat frequency and check recency do not improve a relay's position.
 | --- | --- |
 | **Tier 1 — Heartbeat + Online** | The relay is sending a current directory heartbeat and was reachable at the latest check. |
 | **Tier 2 — Online, no current heartbeat** | The relay is known to the directory and was reachable at the latest check, but is not currently sending directory heartbeats. |
-| **Tier 3 — Offline / Unreachable** | The relay could not be reached at the latest check but has been seen online within the last six months. |
-| **Tier 4 — Graveyard** | The relay has not been seen online for at least six months. It remains listed for historical reference and is still checked periodically in case it returns. |
+| **Tier 3 — Offline / Unreachable** | The relay could not be reached at the latest check but has been seen online within the last 30 days. |
+| **Tier 4 — Graveyard** | The relay has not been seen online for at least 30 days. It remains listed for historical reference and is still checked periodically in case it returns. |
 
 A recovered relay moves back to Tier 1 or Tier 2 automatically according to
 whether it has a current heartbeat.
@@ -94,6 +94,10 @@ Then enable the service when ready:
 ```sh
 sudo systemctl enable --now activity-relay-directory
 ```
+
+Package upgrades reload systemd's unit definitions but do not restart an
+already-running Directory. Review the upgrade and restart the service manually
+when you are ready to load the new binary and unit settings.
 
 Package removal preserves the database and service account. Package purge is
 destructive. See [`debian/README.Debian`](debian/README.Debian) before upgrade,
@@ -157,7 +161,7 @@ move into the heartbeat tier merely because it responds to a network check, and
 a failed network check does not rewrite its heartbeat history.
 
 Known relays that stay offline are eventually checked weekly. Relays that have
-not been seen online for 180 days remain in the database and move into the
+not been seen online for 30 days remain in the database and move into the
 Graveyard tier rather than being silently deleted.
 
 See [`docs/REACHABILITY.md`](docs/REACHABILITY.md).
@@ -185,7 +189,9 @@ That exposes these read-only routes:
 | `/v1/status` | Directory lifecycle/enrollment status |
 
 Enabling the public directory does **not** enable lifecycle registration or open
-enrollment.
+enrollment. The human page summarizes known relays as online/offline and may
+show the aggregate number of unresolved candidates still pending verification;
+it does not disclose those candidate identities.
 
 The public APIs and downloads intentionally omit local discovery provenance,
 operator reasons, moderation records, audit events, request signatures, and

@@ -64,9 +64,12 @@ pass CASE_03_RETRY_AND_PROMOTION
 
 echo
 echo '===== CASE 4: PUBLIC TIERS, GRAVEYARD, AND ORDERING ====='
+go test -count=1 ./internal/storage \
+    -run '^TestClassifyDirectoryTierUsesHeartbeatReachabilityAndGraveyardAge$'
 go test -count=1 ./internal/storage/sqlite \
-    -run '^(TestDirectoryProjectionOrdersOperationalTiersAndKeepsParticipationPathsIndependent|TestDirectoryProjectionTierOneOrderingIgnoresHeartbeatRecency|TestReachabilityCandidatesSlowLongOfflineRelaysToWeeklyAndRetainPrunedRecovery)$'
-go test -count=1 ./internal/httpapi -run '^TestBuildHumanDirectoryTierBlocksPreservesTierAndAlphabeticalOrder$'
+    -run '^(TestDirectoryProjectionOrdersOperationalTiersAndKeepsParticipationPathsIndependent|TestDirectoryProjectionTierOneOrderingIgnoresHeartbeatRecency|TestDirectorySummaryCountsPublicAndPendingRelays|TestReachabilityCandidatesSlowLongOfflineRelaysToWeeklyAndRetainPrunedRecovery)$'
+go test -count=1 ./internal/httpapi \
+    -run '^(TestBuildHumanDirectoryTierBlocksPreservesTierAndAlphabeticalOrder|TestHumanDirectoryFixtureEscapingCachingAndAccessibility)$'
 pass CASE_04_TIERING_AND_GRAVEYARD
 
 echo

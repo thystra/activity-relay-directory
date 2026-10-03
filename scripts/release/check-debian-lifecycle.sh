@@ -37,6 +37,38 @@ for script in postinst prerm postrm; do
     sh -n "$control/$script"
 done
 
+python3 - "$control/postinst" <<'PY'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text()
+
+required = [
+    'if [ "${1:-}" = "configure" ] && [ -z "${DPKG_ROOT:-}" ]',
+    '[ -d /run/systemd/system ]',
+    'command -v systemctl >/dev/null 2>&1',
+    'systemctl --system daemon-reload >/dev/null || true',
+]
+for token in required:
+    if text.count(token) != 1:
+        raise SystemExit(f"expected exactly one postinst daemon-reload token: {token}")
+
+for token in (
+    'systemctl restart',
+    'systemctl try-restart',
+    'systemctl start',
+    'deb-systemd-invoke start',
+    'deb-systemd-invoke restart',
+):
+    if token in text:
+        raise SystemExit(f"postinst must not start or restart the service: {token}")
+
+if '#DEBHELPER#' in text:
+    raise SystemExit("unexpanded #DEBHELPER# remained in built postinst")
+
+print("generated_postinst_daemon_reload_boundary=PASS")
+PY
+
 python3 - "$control/postrm" <<'PY'
 from pathlib import Path
 import sys

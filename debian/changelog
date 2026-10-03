@@ -1,3 +1,14 @@
+activity-relay-directory (1.2.0~rc2-1) unstable; urgency=medium
+
+  * Shorten the public Tier 3 to Graveyard transition from 180 days to 30 days
+    while retaining weekly recovery checks.
+  * Add aggregate known, online, offline, and pending-verification counts to
+    the human Directory without exposing private candidate identities.
+  * Reload systemd unit definitions on package configure without starting or
+    restarting an operator-activated Directory.
+
+ -- Alan Johnson <alan@argentwolf.org>  Sat, 03 Oct 2026 09:30:00 -0400
+
 activity-relay-directory (1.2.0~rc1-1) unstable; urgency=medium
 
   * Add resilient relay discovery imports, retained unavailable candidates,

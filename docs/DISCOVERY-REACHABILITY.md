@@ -137,9 +137,9 @@ the normal discovery, records the successful actor/inbox observation, and marks
 the retained candidate resolved. Original operator/source provenance remains
 private and is carried into the promoted discovery audit.
 
-A never-verified candidate remains private even after six months. The public
-Tier 4 graveyard contains only identities that have previously crossed a
-reviewed verified lifecycle or discovery path.
+A never-verified candidate remains private indefinitely. The public Tier 4
+graveyard contains only identities that have previously crossed a reviewed
+verified lifecycle or discovery path.
 
 ## Actor discovery and verification
 
@@ -301,7 +301,7 @@ private probe errors, client IP address, signing key IDs, or audit events.
 
 Public ordering is now the four-tier operational model shared with
 `docs/PUBLIC-LISTING.md`: heartbeat+online, online without a current heartbeat,
-unavailable, and the 180-day graveyard. Verified known identities remain
+unavailable, and the 30-day graveyard. Verified known identities remain
 visible through outages unless explicitly removed or administratively
 suspended. Within every tier ordering is alphabetical by canonical actor rather
 than heartbeat/check frequency. Unverified retained candidates remain private
@@ -332,7 +332,7 @@ and captures one server observation time per bounded run. Failure of one relay
 does not abort unrelated candidates. Cancellation stops new work promptly and
 does not convert canceled probes into negative reachability evidence. A known
 relay that has remained offline for at least seven days is reduced to weekly
-actor rechecks; checks continue even after the relay crosses the 180-day
+actor rechecks; checks continue even after the relay crosses the 30-day
 public-graveyard boundary so a recovered relay can return automatically.
 
 ## Required implementation order

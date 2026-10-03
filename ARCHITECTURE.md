@@ -219,13 +219,18 @@ walks return a continuation rather than scanning the whole database. It exposes
 heartbeat health, independent actor reachability,
 actor-declared inbox diagnostics, positive RFC 9421 evidence, and the public
 operational tier while keeping registration/discovery participation flags and
-private discovery/operator provenance hidden.
+private discovery/operator provenance hidden. The human page may additionally
+publish aggregate counts for known relays, online/offline status, and unresolved
+candidates through a read-only aggregate query that mirrors the same verified
+participation and fresh-reachability predicates. It returns no relay/candidate
+identities; unresolved candidate identities and failure/provenance details stay
+private.
 
 Moderation suspension and explicit removal continue to override public
 eligibility. Otherwise verified known identities are classified as Tier 1
 (current heartbeat plus current reachability), Tier 2 (currently reachable with
 no current heartbeat), Tier 3 (not currently reachable but seen online within
-180 days), or Tier 4 (graveyard, unseen online for at least 180 days). Ordering
+30 days), or Tier 4 (graveyard, unseen online for at least 30 days). Ordering
 within a tier is alphabetical by canonical actor/hostname, not activity
 freshness. Long-term unreachable known relays continue weekly recovery checks.
 Unverified retained import candidates remain private until a later successful

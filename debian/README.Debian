@@ -15,6 +15,15 @@ public listing, automatic soft pruning, positive inactive retention, and
 administrator email disabled. Review /etc/default/activity-relay-directory
 before manually enabling or starting the unit.
 
+Upgrade behavior
+----------------
+
+Package upgrades preserve the current enablement state and do not stop or
+restart an operator-activated service. Package configuration reloads systemd's
+unit definitions automatically. After reviewing the upgraded package and
+configuration, restart activity-relay-directory manually when you are ready to
+load the new binary and unit settings.
+
 Removal/purge safety
 --------------------
 

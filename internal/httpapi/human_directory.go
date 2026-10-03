@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"html/template"
 	"net/http"
@@ -36,6 +37,7 @@ type humanDirectoryTierBlock struct {
 
 type humanDirectoryPage struct {
 	Listing                directoryProjectionResponse
+	Summary                storage.DirectorySummary
 	TierBlocks             []humanDirectoryTierBlock
 	PreviousURL            string
 	NextURL                string
@@ -75,9 +77,9 @@ func humanDirectoryTierDescription(tier storage.DirectoryTier) string {
 	case storage.DirectoryTierOnline:
 		return "These relays are known to the directory and were reachable at the latest check, but do not currently send a directory heartbeat."
 	case storage.DirectoryTierUnavailable:
-		return "These relays could not be reached at the latest check but have been seen online within the last six months."
+		return "These relays could not be reached at the latest check but have been seen online within the last 30 days."
 	case storage.DirectoryTierGraveyard:
-		return "These relays have not been seen online for at least six months. They remain listed for historical reference and are checked periodically in case they return."
+		return "These relays have not been seen online for at least 30 days. They remain listed for historical reference and are checked periodically in case they return."
 	default:
 		return ""
 	}
@@ -196,6 +198,15 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 		return
 	}
 
+	summary, failure := handler.loadHumanDirectorySummary(request.Context(), listing.observedAt)
+	if failure != nil {
+		if failure.retryAfter != "" {
+			response.Header().Set("Retry-After", failure.retryAfter)
+		}
+		writeHumanDirectoryError(response, request, failure.status, humanDirectoryFailureMessage(failure))
+		return
+	}
+
 	previousURL := humanDirectoryPaginationURL("before", listing.Pagination.PreviousCursor, listing.Pagination.Limit)
 	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit)
 
@@ -207,6 +218,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
 		Listing:                listing,
+		Summary:                summary,
 		TierBlocks:             buildHumanDirectoryTierBlocks(listing.Relays),
 		PreviousURL:            previousURL,
 		NextURL:                nextURL,
@@ -230,6 +242,35 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	response.Header().Set("Content-Security-Policy", humanDirectoryCSP)
 	writeCacheablePublicRepresentation(response, request, humanDirectoryContentType, body)
+}
+
+func (handler *PublicListingHandler) loadHumanDirectorySummary(
+	ctx context.Context,
+	observedAt time.Time,
+) (storage.DirectorySummary, *publicListingFailure) {
+	if handler == nil || handler.summaryRepository == nil || handler.semaphore == nil || observedAt.IsZero() {
+		return storage.DirectorySummary{}, directoryProjectionUnavailable()
+	}
+
+	select {
+	case handler.semaphore <- struct{}{}:
+		defer func() { <-handler.semaphore }()
+	default:
+		return storage.DirectorySummary{}, &publicListingFailure{
+			status:     http.StatusTooManyRequests,
+			code:       "rate_limited",
+			message:    "directory summary request limit exceeded",
+			retryAfter: "1",
+		}
+	}
+
+	readCtx, cancel := context.WithTimeout(ctx, publicListingReadTimeout)
+	defer cancel()
+	summary, err := handler.summaryRepository.ReadDirectorySummary(readCtx, observedAt)
+	if err != nil || !summary.Valid() {
+		return storage.DirectorySummary{}, directoryProjectionUnavailable()
+	}
+	return summary, nil
 }
 
 func humanDirectoryPaginationURL(parameter, cursor string, limit int) string {
