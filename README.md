@@ -216,9 +216,10 @@ activity-relay-directory admin pruning dry-run \
 Automatic pruning is disabled by default. Operators may explicitly enable
 it with `DIRECTORY_SOFT_PRUNING_ENABLED=true`; the interval defaults to `24h`.
 Independent background reachability is separately default-off behind
-`DIRECTORY_REACHABILITY_ENABLED=true`. When both are enabled, pruning waits
-for recent complete reachability coverage and fresh current actor success
-protects a stale-heartbeat relay from reversible pruning.
+`DIRECTORY_REACHABILITY_ENABLED=true`. When both are enabled, pruning waits for a recent complete non-truncated
+reachability pass over all actors due under the current cadence, and fresh
+current actor success protects a stale-heartbeat relay from reversible
+pruning.
 An explicit interval of `0` is valid only while pruning is disabled; when
 pruning is enabled, the interval must be at least `1h`. Each run captures one
 server time, processes at most 1,000 candidates in indexed pages of at most 100, rechecks eligibility in
@@ -230,21 +231,29 @@ The V2 public API is `GET /v2/relays`. It uses the same default-off
 public directory does not enable lifecycle registration or open enrollment.
 
 The V2 response adds heartbeat state, actor reachability, validated inbox
-information, and positive RFC 9421 evidence while keeping those observations
-separate. Discovery provenance, operator notes and reasons, audit events, and
-internal participation flags remain private.
+information, positive RFC 9421 evidence, and a four-tier operational directory
+classification while keeping those observations separate. Discovery provenance,
+operator notes and reasons, audit events, and internal participation flags
+remain private.
+
+The tiers are: (1) current heartbeat plus current reachability, (2) currently
+reachable without a current heartbeat, (3) known but currently unavailable,
+and (4) a graveyard for relays not seen online for at least 180 days. Within
+each tier relays are alphabetical by canonical hostname/actor; heartbeat
+frequency and check recency do not affect position. Graveyard entries remain
+eligible for periodic recovery checks rather than being automatically deleted.
 
 The V2 public API returns relays in pages, with 50 entries by default and up
-to 100 per page. When more results are available, the response includes a
-continuation token.
+to 100 per page. Its signed continuation position contains the tier plus
+canonical actor. `/v2/relays` moves forward through API results; the
+human-facing `/` page adds Previous and Next navigation for visitors.
 
-`/v2/relays` moves forward through API results. The human-facing `/` page adds
-Previous and Next navigation for visitors.
-
-Discovered-only relays require a successful actor check within the last six
-hours. If background reachability checks are disabled or a relay can no longer
-be reached, a discovered-only relay stops appearing publicly once its last
-successful check becomes too old.
+When `DIRECTORY_REACHABILITY_ENABLED=true`, verified known relays that stay
+offline are eventually checked weekly. Private candidates retained by
+`discovery import --add-dead-relays` use fixed backoff of 6 hours, 12 hours,
+24 hours, 3 days, then weekly until they validate and are promoted to a normal
+discovery. Unverified candidates never enter the public tiers merely because
+they were retained.
 
 ## Inactive-record retention
 

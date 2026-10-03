@@ -50,7 +50,7 @@ resolver client instead of the default HTTP client or shell `curl`. Base and
 `/inbox` hints are converted only to the same-origin conventional `/actor`
 candidate; an explicit `/actor` hint is used directly after canonical syntax
 validation. The fetched actor must still exactly identify that canonical URL
-and have `Application` or `Service` type. A declared inbox is canonicalized and
+and have `Application`, `Service`, or `Group` type. A declared inbox is canonicalized and
 may receive one non-mutating `OPTIONS` diagnostic through the same network
 boundary. Discovery never sends a synthetic ActivityPub POST. Invalid candidate
 errors report only a bounded line number/reason code rather than echoing the
@@ -203,19 +203,24 @@ remote checks. The private audit record stores a bounded source label, never the
 local path. All remote checks complete prospectively before confirmation and
 durable mutation. `--yes` is an explicit acknowledgement, not a bypass of URL,
 network, actor, or file bounds. There is no discovery HTTP mutation route and no
-web scraper in 1.1. See `docs/DISCOVERY-REACHABILITY.md`.
+automatic web scraper. `--add-dead-relays` retains only bounded private
+candidate state; unresolved candidates do not become public identities. See `docs/DISCOVERY-REACHABILITY.md`.
 
 Background reachability is separately default-off. It reuses the same safe
 resolver and is bounded to fixed pages, run attempts, concurrency, and hourly
-cadence. Scheduler logs are aggregate-only. When both reachability and soft
+scheduler cadence. Long-term unreachable verified relays are reduced to weekly
+remote checks, while retained private candidates use 6h/12h/24h/3d/weekly
+backoff. Scheduler logs are aggregate-only. When both reachability and soft
 pruning are enabled, pruning fails closed until a recent complete non-truncated
 reachability pass exists and still rechecks fresh current reachable evidence in
 the prune transaction. See `docs/REACHABILITY.md`.
 
-The public 1.1 evidence surface is also separately read-only and default-off
+The richer public evidence surface is also separately read-only and default-off
 behind `DIRECTORY_PUBLIC_LISTING_ENABLED`. `/v2/relays` and the human `/` page
-share one backend-neutral projection that merges only current lifecycle,
-discovery-state, and observation records by canonical actor. It never joins or
+share one backend-neutral projection that merges only retained verified
+lifecycle/discovery identities and current observation records by canonical
+actor. The public operational tier is derived from that evidence; unresolved
+candidate rows are not part of the public projection. It never joins or
 serializes private `discovery_events` or `moderation_events`. Public output
 contains no discovery source kind/label, operator/reason token, probe error,
 resolver detail, signing-key identifier, client address, or internal

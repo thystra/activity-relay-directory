@@ -14,15 +14,23 @@ const (
 	DefaultDirectoryProjectionPage = 50
 	// MaximumDirectoryProjectionPage is the hard public page-size ceiling.
 	MaximumDirectoryProjectionPage = 100
-	// MaximumDirectoryProjectionScan bounds retained identities examined by one
-	// public request when inactive rows are interleaved with eligible actors.
-	MaximumDirectoryProjectionScan = 400
+	// MaximumDirectoryProjectionScan bounds the retained identities examined by
+	// one public directory request, including identities that belong to another
+	// tier than the one currently being scanned. Sparse tier scans therefore
+	// return a continuation cursor instead of walking the whole database.
+	MaximumDirectoryProjectionScan                      = 400
+	HeartbeatNotObserved           PublicHeartbeatState = "not_observed"
+	HeartbeatHealthy               PublicHeartbeatState = "healthy"
+	HeartbeatStale                 PublicHeartbeatState = "stale"
+	HeartbeatDead                  PublicHeartbeatState = "dead"
+	HeartbeatPrune                 PublicHeartbeatState = "prune"
 
-	HeartbeatNotObserved PublicHeartbeatState = "not_observed"
-	HeartbeatHealthy     PublicHeartbeatState = "healthy"
-	HeartbeatStale       PublicHeartbeatState = "stale"
-	HeartbeatDead        PublicHeartbeatState = "dead"
-	HeartbeatPrune       PublicHeartbeatState = "prune"
+	DirectoryTierHeartbeatOnline DirectoryTier = 1
+	DirectoryTierOnline          DirectoryTier = 2
+	DirectoryTierUnavailable     DirectoryTier = 3
+	DirectoryTierGraveyard       DirectoryTier = 4
+
+	DirectoryGraveyardAfter = 180 * 24 * time.Hour
 )
 
 var (
@@ -31,6 +39,12 @@ var (
 )
 
 type PublicHeartbeatState string
+
+type DirectoryTier uint8
+
+func (tier DirectoryTier) Valid() bool {
+	return tier >= DirectoryTierHeartbeatOnline && tier <= DirectoryTierGraveyard
+}
 
 func (state PublicHeartbeatState) Valid() bool {
 	switch state {
@@ -69,9 +83,14 @@ func ClassifyPublicHeartbeat(lastSeenUnix *int64, observedUnix int64) (PublicHea
 	}
 }
 
-// DirectoryProjectionCursor is a stable public keyset ordered by canonical
-// relay actor. The zero value starts at the first actor.
+// DirectoryProjectionCursor is a stable public scan position ordered first by
+// operational tier and then by canonical relay actor. Canonical relay actors
+// are HTTPS URLs, so actor order is hostname order with the actor path as a
+// deterministic tie-breaker. A continuation cursor may name a retained actor
+// that was scanned but not returned because it belongs to another tier. The
+// zero value starts at Tier 1.
 type DirectoryProjectionCursor struct {
+	Tier       DirectoryTier
 	RelayActor string
 }
 
@@ -79,7 +98,7 @@ func (cursor DirectoryProjectionCursor) Valid() bool {
 	if cursor == (DirectoryProjectionCursor{}) {
 		return true
 	}
-	if cursor.RelayActor == "" {
+	if !cursor.Tier.Valid() || cursor.RelayActor == "" {
 		return false
 	}
 	canonical, err := v1.NormalizeRelayActorURL(cursor.RelayActor)
@@ -87,8 +106,8 @@ func (cursor DirectoryProjectionCursor) Valid() bool {
 }
 
 // DirectoryProjectionQuery captures one observation time for one bounded read.
-// HTTP pagination is actor-keyset based, while each request evaluates the latest
-// retained evidence against its own current server time.
+// HTTP pagination uses the tier+actor keyset, while each request evaluates the
+// latest retained evidence against its own current server time.
 type DirectoryProjectionQuery struct {
 	After      DirectoryProjectionCursor
 	Before     DirectoryProjectionCursor
@@ -96,18 +115,22 @@ type DirectoryProjectionQuery struct {
 	ObservedAt time.Time
 }
 
-// DirectoryProjectionRelay contains the complete public 1.1 evidence model.
+// DirectoryProjectionRelay contains the richer public directory evidence model.
 // Registered and Discovered are internal eligibility facts only; HTTP
 // serializers must never expose either value or any discovery provenance.
 type DirectoryProjectionRelay struct {
 	RelayActor    string
 	PublicBaseURL string
 
-	Registered bool
-	Discovered bool
+	LifecycleKnown bool
+	Registered     bool
+	Discovered     bool
+	FirstKnownUnix int64
+	Tier           DirectoryTier
 
-	HeartbeatState PublicHeartbeatState
-	LastSeenUnix   *int64
+	HeartbeatState    PublicHeartbeatState
+	LastSeenUnix      *int64
+	LastHeartbeatUnix *int64
 
 	ActorState           ReachabilityState
 	ActorLastCheckedUnix *int64
@@ -121,24 +144,59 @@ type DirectoryProjectionRelay struct {
 	RFC9421VerifiedUnix *int64
 }
 
-// PublicEligible independently verifies that at least one reviewed
-// participation path authorizes this already administratively-filtered row.
-// Registration may rely on the original <30-day heartbeat window or on current
-// fresh reachability. Discovery requires current fresh successful reachability.
-func (relay DirectoryProjectionRelay) PublicEligible(observedUnix int64) bool {
-	if observedUnix < 0 || !relay.HeartbeatState.Valid() || !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() {
-		return false
+// ClassifyDirectoryTier maps current public evidence into the directory's four
+// non-prestige operational tiers. Tier ordering is explicit; alphabetical actor
+// order is used inside each tier. A fresh reachable actor is online. A healthy
+// authenticated heartbeat plus fresh reachability is Tier 1. Relays not seen
+// online for 180 days enter the graveyard.
+func ClassifyDirectoryTier(relay DirectoryProjectionRelay, observedUnix int64) (DirectoryTier, error) {
+	if observedUnix < 0 || relay.FirstKnownUnix < 0 || relay.FirstKnownUnix > observedUnix ||
+		!relay.HeartbeatState.Valid() || !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() {
+		return 0, ErrDirectoryProjectionData
 	}
+
 	freshReachability := false
 	if relay.ActorState == ReachabilityReachable && relay.ActorLastCheckedUnix != nil && relay.ActorLastSuccessUnix != nil &&
 		*relay.ActorLastCheckedUnix == *relay.ActorLastSuccessUnix && *relay.ActorLastSuccessUnix <= observedUnix {
 		cutoff := observedUnix - int64(ReachabilityFreshness/time.Second)
 		freshReachability = *relay.ActorLastSuccessUnix >= cutoff
 	}
-	registrationEligible := relay.Registered && relay.HeartbeatState != HeartbeatNotObserved &&
-		(relay.HeartbeatState != HeartbeatPrune || freshReachability)
-	discoveryEligible := relay.Discovered && freshReachability
-	return registrationEligible || discoveryEligible
+	currentHeartbeat := false
+	if relay.Registered && relay.LastHeartbeatUnix != nil && *relay.LastHeartbeatUnix <= observedUnix {
+		heartbeatCutoff := observedUnix - int64(HealthyThrough/time.Second)
+		currentHeartbeat = *relay.LastHeartbeatUnix >= heartbeatCutoff
+	}
+	if freshReachability && currentHeartbeat {
+		return DirectoryTierHeartbeatOnline, nil
+	}
+	if freshReachability {
+		return DirectoryTierOnline, nil
+	}
+
+	lastOnline := relay.FirstKnownUnix
+	if relay.LastSeenUnix != nil && *relay.LastSeenUnix > lastOnline {
+		lastOnline = *relay.LastSeenUnix
+	}
+	if relay.ActorLastSuccessUnix != nil && *relay.ActorLastSuccessUnix > lastOnline {
+		lastOnline = *relay.ActorLastSuccessUnix
+	}
+	graveyardCutoff := observedUnix - int64(DirectoryGraveyardAfter/time.Second)
+	if lastOnline <= graveyardCutoff {
+		return DirectoryTierGraveyard, nil
+	}
+	return DirectoryTierUnavailable, nil
+}
+
+// PublicEligible verifies that the retained identity belongs to a public
+// participation path and that its assigned tier agrees with current evidence.
+// An explicit unregister or discovery removal is not public; a soft-pruned
+// lifecycle row remains known and can appear in the unavailable/graveyard tiers.
+func (relay DirectoryProjectionRelay) PublicEligible(observedUnix int64) bool {
+	if observedUnix < 0 || (!relay.LifecycleKnown && !relay.Discovered) || !relay.Tier.Valid() {
+		return false
+	}
+	tier, err := ClassifyDirectoryTier(relay, observedUnix)
+	return err == nil && tier == relay.Tier
 }
 
 // ValidateDirectoryProjectionEvidence checks canonical public identity, the
@@ -146,7 +204,9 @@ func (relay DirectoryProjectionRelay) PublicEligible(observedUnix int64) bool {
 // server time. It deliberately knows only the boolean participation paths,
 // never private discovery provenance.
 func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observedUnix int64) error {
-	if observedUnix < 0 || (!relay.Registered && !relay.Discovered) {
+	if observedUnix < 0 || (!relay.LifecycleKnown && !relay.Discovered) ||
+		relay.Registered && !relay.LifecycleKnown || !relay.Tier.Valid() ||
+		relay.FirstKnownUnix < 0 || relay.FirstKnownUnix > observedUnix {
 		return ErrDirectoryProjectionData
 	}
 	identity, err := v1.NormalizeRelayIdentity(relay.RelayActor, relay.PublicBaseURL)
@@ -158,7 +218,11 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 	if err != nil || heartbeat != relay.HeartbeatState {
 		return ErrDirectoryProjectionData
 	}
-	if relay.Registered && relay.LastSeenUnix == nil {
+	if relay.LifecycleKnown && relay.LastSeenUnix == nil {
+		return ErrDirectoryProjectionData
+	}
+	if !validObservedTime(relay.LastHeartbeatUnix, observedUnix) ||
+		relay.LastHeartbeatUnix != nil && (relay.LastSeenUnix == nil || *relay.LastHeartbeatUnix > *relay.LastSeenUnix) {
 		return ErrDirectoryProjectionData
 	}
 
@@ -211,6 +275,10 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 		*relay.InboxLastCheckedUnix < *relay.InboxDeclaredUnix {
 		return ErrDirectoryProjectionData
 	}
+	tier, err := ClassifyDirectoryTier(relay, observedUnix)
+	if err != nil || tier != relay.Tier {
+		return ErrDirectoryProjectionData
+	}
 
 	return nil
 }
@@ -238,7 +306,7 @@ type DirectoryProjectionPage struct {
 	Next     DirectoryProjectionCursor
 }
 
-// DirectoryProjectionRepository reads the richer public 1.1 projection.
+// DirectoryProjectionRepository reads the richer public directory projection.
 // Implementations must apply administrative suspension and both authorization
 // paths before any row reaches HTTP presentation code.
 type DirectoryProjectionRepository interface {

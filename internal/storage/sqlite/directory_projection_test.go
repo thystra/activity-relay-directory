@@ -5,52 +5,54 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
-func TestDirectoryProjectionEligibilityKeepsParticipationPathsIndependent(t *testing.T) {
+func TestDirectoryProjectionOrdersOperationalTiersAndKeepsParticipationPathsIndependent(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)
 	observed := time.Unix(10_000_000, 0).UTC()
-	fresh := observed.Add(-storage.ReachabilityFreshness).Unix()
-	staleReachability := fresh - 1
+	fresh := observed.Add(-time.Second).Unix()
+	staleReachability := observed.Add(-storage.ReachabilityFreshness - time.Second).Unix()
 	pruneBoundary := observed.Add(-storage.DeadBefore).Unix()
 
-	insertPublicListingRelay(t, database, "https://a-fresh.example/actor", lifecycleRegistered, administrativeActive, observed.Unix()-10)
+	// No reachability yet: known, but unavailable.
+	insertPublicListingRelay(t, database, "https://a-registered-unchecked.example/actor", lifecycleRegistered, administrativeActive, observed.Unix()-10)
 
+	// Reachable registered row inserted by helper has no actual heartbeat event,
+	// so it belongs in Tier 2 rather than Tier 1.
 	insertPublicListingRelay(t, database, "https://b-old-reachable.example/actor", lifecycleRegistered, administrativeActive, pruneBoundary)
 	insertDirectoryObservation(t, database, "https://b-old-reachable.example/actor", storage.ReachabilityReachable, fresh, &fresh, true)
 
 	insertPublicListingRelay(t, database, "https://c-old-unreachable.example/actor", lifecycleRegistered, administrativeActive, pruneBoundary)
-	lastSuccess := fresh
+	lastSuccess := observed.Add(-24 * time.Hour).Unix()
 	insertDirectoryObservation(t, database, "https://c-old-unreachable.example/actor", storage.ReachabilityUnreachable, observed.Unix()-1, &lastSuccess, false)
 
-	insertReachabilityDiscovery(t, database, "https://d-discovered.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://d-discovered.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://d-discovered.example/actor", storage.ReachabilityReachable, fresh, &fresh, true)
 
-	insertReachabilityDiscovery(t, database, "https://e-stale-discovery.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://e-stale-discovery.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://e-stale-discovery.example/actor", storage.ReachabilityReachable, staleReachability, &staleReachability, false)
 
-	insertReachabilityDiscovery(t, database, "https://f-unreachable-discovery.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://f-unreachable-discovery.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://f-unreachable-discovery.example/actor", storage.ReachabilityUnreachable, observed.Unix()-1, &lastSuccess, false)
 
 	insertPublicListingRelay(t, database, "https://g-unregistered-discovered.example/actor", lifecycleUnregistered, administrativeActive, observed.Unix()-100)
-	insertReachabilityDiscovery(t, database, "https://g-unregistered-discovered.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://g-unregistered-discovered.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://g-unregistered-discovered.example/actor", storage.ReachabilityReachable, observed.Unix()-2, int64PointerSQLite(observed.Unix()-2), true)
 
 	insertPublicListingRelay(t, database, "https://h-suspended.example/actor", lifecycleUnregistered, administrativeSuspended, observed.Unix()-100)
-	insertReachabilityDiscovery(t, database, "https://h-suspended.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://h-suspended.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://h-suspended.example/actor", storage.ReachabilityReachable, observed.Unix()-2, int64PointerSQLite(observed.Unix()-2), false)
 
-	insertReachabilityDiscovery(t, database, "https://i-removed.example/actor", discoveryRemoved, 100)
+	insertReachabilityDiscovery(t, database, "https://i-removed.example/actor", discoveryRemoved, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://i-removed.example/actor", storage.ReachabilityReachable, observed.Unix()-2, int64PointerSQLite(observed.Unix()-2), false)
 
 	insertPublicListingRelay(t, database, "https://j-both.example/actor", lifecycleRegistered, administrativeActive, observed.Unix()-100)
-	insertReachabilityDiscovery(t, database, "https://j-both.example/actor", discoveryActive, 100)
+	insertReachabilityDiscovery(t, database, "https://j-both.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://j-both.example/actor", storage.ReachabilityReachable, observed.Unix()-2, int64PointerSQLite(observed.Unix()-2), true)
 
 	before := totalChanges(t, database)
@@ -64,46 +66,26 @@ func TestDirectoryProjectionEligibilityKeepsParticipationPathsIndependent(t *tes
 		t.Fatalf("directory projection mutated database: before=%d after=%d", before, after)
 	}
 
-	got := make(map[string]storage.DirectoryProjectionRelay)
-	for _, relay := range page.Relays {
-		if _, exists := got[relay.RelayActor]; exists {
-			t.Fatalf("duplicate actor in projection: %s", relay.RelayActor)
+	want := []struct {
+		actor string
+		tier  storage.DirectoryTier
+	}{
+		{"https://b-old-reachable.example/actor", storage.DirectoryTierOnline},
+		{"https://d-discovered.example/actor", storage.DirectoryTierOnline},
+		{"https://g-unregistered-discovered.example/actor", storage.DirectoryTierOnline},
+		{"https://j-both.example/actor", storage.DirectoryTierOnline},
+		{"https://a-registered-unchecked.example/actor", storage.DirectoryTierUnavailable},
+		{"https://c-old-unreachable.example/actor", storage.DirectoryTierUnavailable},
+		{"https://e-stale-discovery.example/actor", storage.DirectoryTierUnavailable},
+		{"https://f-unreachable-discovery.example/actor", storage.DirectoryTierUnavailable},
+	}
+	if len(page.Relays) != len(want) {
+		t.Fatalf("projected relays = %#v", page.Relays)
+	}
+	for index, expected := range want {
+		if page.Relays[index].RelayActor != expected.actor || page.Relays[index].Tier != expected.tier {
+			t.Fatalf("relay[%d] = %#v, want actor=%s tier=%d", index, page.Relays[index], expected.actor, expected.tier)
 		}
-		got[relay.RelayActor] = relay
-	}
-	wantActors := []string{
-		"https://a-fresh.example/actor",
-		"https://b-old-reachable.example/actor",
-		"https://d-discovered.example/actor",
-		"https://g-unregistered-discovered.example/actor",
-		"https://j-both.example/actor",
-	}
-	if len(got) != len(wantActors) {
-		t.Fatalf("projected actors = %#v, want %#v", mapKeys(got), wantActors)
-	}
-	for _, actor := range wantActors {
-		if _, exists := got[actor]; !exists {
-			t.Fatalf("missing projected actor %s; got %#v", actor, mapKeys(got))
-		}
-	}
-
-	old := got["https://b-old-reachable.example/actor"]
-	if old.HeartbeatState != storage.HeartbeatPrune || old.ActorState != storage.ReachabilityReachable || !old.Registered || old.Discovered {
-		t.Fatalf("old reachable registered relay = %#v", old)
-	}
-	discovered := got["https://d-discovered.example/actor"]
-	if discovered.HeartbeatState != storage.HeartbeatNotObserved || discovered.LastSeenUnix != nil ||
-		discovered.Registered || !discovered.Discovered || discovered.RFC9421VerifiedUnix == nil {
-		t.Fatalf("discovered-only relay = %#v", discovered)
-	}
-	unregistered := got["https://g-unregistered-discovered.example/actor"]
-	if unregistered.Registered || !unregistered.Discovered || unregistered.LastSeenUnix == nil ||
-		unregistered.HeartbeatState != storage.HeartbeatHealthy {
-		t.Fatalf("unregistered active discovery = %#v", unregistered)
-	}
-	both := got["https://j-both.example/actor"]
-	if !both.Registered || !both.Discovered {
-		t.Fatalf("combined participation flags = %#v", both)
 	}
 }
 
@@ -283,7 +265,8 @@ func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
 	if !ok ||
 		healthy.HeartbeatState != storage.HeartbeatHealthy ||
 		healthy.ActorState != storage.ReachabilityReachable ||
-		healthy.LastSeenUnix == nil ||
+		healthy.LastSeenUnix == nil || healthy.LastHeartbeatUnix == nil ||
+		healthy.Tier != storage.DirectoryTierHeartbeatOnline ||
 		!healthy.Registered ||
 		healthy.Discovered {
 		t.Fatalf(
@@ -297,7 +280,8 @@ func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
 	if !ok ||
 		dead.HeartbeatState != storage.HeartbeatDead ||
 		dead.ActorState != storage.ReachabilityReachable ||
-		dead.LastSeenUnix == nil ||
+		dead.LastSeenUnix == nil || dead.LastHeartbeatUnix == nil ||
+		dead.Tier != storage.DirectoryTierOnline ||
 		!dead.Registered ||
 		dead.Discovered {
 		t.Fatalf(
@@ -311,7 +295,8 @@ func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
 	if !ok ||
 		discovered.HeartbeatState != storage.HeartbeatNotObserved ||
 		discovered.ActorState != storage.ReachabilityReachable ||
-		discovered.LastSeenUnix != nil ||
+		discovered.LastSeenUnix != nil || discovered.LastHeartbeatUnix != nil ||
+		discovered.Tier != storage.DirectoryTierOnline ||
 		discovered.Registered ||
 		!discovered.Discovered {
 		t.Fatalf(
@@ -326,6 +311,177 @@ func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
 	}
 	if _, ok := got[suspendedDiscovered]; ok {
 		t.Fatal("suspended discovered relay remained public")
+	}
+}
+
+func TestDirectoryProjectionTierOneOrderingIgnoresHeartbeatRecency(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(55_000_000, 0).UTC()
+
+	cases := []struct {
+		actor        string
+		base         string
+		heartbeatAge time.Duration
+	}{
+		{
+			actor:        "https://a.example/actor",
+			base:         "https://a.example",
+			heartbeatAge: 30 * time.Hour,
+		},
+		{
+			actor:        "https://z.example/actor",
+			base:         "https://z.example",
+			heartbeatAge: time.Minute,
+		},
+	}
+	for _, candidate := range cases {
+		if _, err := repository.Register(ctx, storage.RegisterIntent{
+			RelayActor: candidate.actor, PublicBaseURL: candidate.base,
+		}, observed.Add(-31*time.Hour)); err != nil {
+			t.Fatalf("Register(%s) error = %v", candidate.actor, err)
+		}
+		if _, err := repository.Heartbeat(
+			ctx,
+			storage.IdentityIntent{RelayActor: candidate.actor},
+			observed.Add(-candidate.heartbeatAge),
+		); err != nil {
+			t.Fatalf("Heartbeat(%s) error = %v", candidate.actor, err)
+		}
+		if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+			RelayActor: candidate.actor, State: storage.ReachabilityReachable,
+		}, observed.Add(-time.Second)); err != nil {
+			t.Fatalf("RecordActorObservation(%s) error = %v", candidate.actor, err)
+		}
+	}
+
+	page, err := repository.ListDirectoryRelays(ctx, storage.DirectoryProjectionQuery{
+		Limit: 10, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("ListDirectoryRelays() error = %v", err)
+	}
+	if got := relayActors(page.Relays); !equalStrings(got, []string{
+		"https://a.example/actor",
+		"https://z.example/actor",
+	}) {
+		t.Fatalf("Tier 1 ordering = %#v; heartbeat recency must not affect rank", got)
+	}
+	for _, relay := range page.Relays {
+		if relay.Tier != storage.DirectoryTierHeartbeatOnline {
+			t.Fatalf("relay = %#v, want Tier 1", relay)
+		}
+	}
+}
+
+func TestDirectoryProjectionPaginatesAcrossTierBoundaries(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(60_000_000, 0).UTC()
+
+	tierOneActor := "https://z-tier1.example/actor"
+	if _, err := repository.Register(ctx, storage.RegisterIntent{
+		RelayActor: tierOneActor, PublicBaseURL: "https://z-tier1.example",
+	}, observed.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Heartbeat(ctx, storage.IdentityIntent{RelayActor: tierOneActor}, observed.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.RecordActorObservation(ctx, storage.ActorObservationIntent{
+		RelayActor: tierOneActor, State: storage.ReachabilityReachable,
+	}, observed.Add(-time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	tierTwoActors := []string{"https://a-tier2.example/actor", "https://b-tier2.example/actor"}
+	for _, actor := range tierTwoActors {
+		insertReachabilityDiscovery(t, database, actor, discoveryActive, observed.Unix()-100)
+		checked := observed.Unix() - 1
+		insertDirectoryObservation(t, database, actor, storage.ReachabilityReachable, checked, &checked, false)
+	}
+
+	tierThreeActor := "https://a-tier3.example/actor"
+	insertReachabilityDiscovery(t, database, tierThreeActor, discoveryActive, observed.Unix()-100)
+	recentSuccess := observed.Add(-24 * time.Hour).Unix()
+	insertDirectoryObservation(t, database, tierThreeActor, storage.ReachabilityUnreachable, observed.Unix()-1, &recentSuccess, false)
+
+	tierFourActor := "https://a-tier4.example/actor"
+	old := observed.Add(-storage.DirectoryGraveyardAfter - time.Second).Unix()
+	insertReachabilityDiscovery(t, database, tierFourActor, discoveryActive, old)
+	insertDirectoryObservation(t, database, tierFourActor, storage.ReachabilityUnreachable, observed.Unix()-1, &old, false)
+
+	want := []string{tierOneActor, tierTwoActors[0], tierTwoActors[1], tierThreeActor, tierFourActor}
+	var got []string
+	cursor := storage.DirectoryProjectionCursor{}
+	for {
+		page, err := repository.ListDirectoryRelays(ctx, storage.DirectoryProjectionQuery{
+			After: cursor, Limit: 1, ObservedAt: observed,
+		})
+		if err != nil {
+			t.Fatalf("ListDirectoryRelays(%#v) error = %v", cursor, err)
+		}
+		for _, relay := range page.Relays {
+			got = append(got, relay.RelayActor)
+		}
+		if page.Next == (storage.DirectoryProjectionCursor{}) {
+			break
+		}
+		if !page.Next.Valid() || page.Next == cursor {
+			t.Fatalf("invalid/nonadvancing cursor: %#v", page.Next)
+		}
+		cursor = page.Next
+	}
+	if !equalStrings(got, want) {
+		t.Fatalf("tier pagination = %#v, want %#v", got, want)
+	}
+}
+
+func TestDirectoryProjectionSparseTierScanStaysBoundedAndContinues(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	observed := time.Unix(80_000_000, 0).UTC()
+
+	actors := make([]string, storage.MaximumDirectoryProjectionScan+5)
+	for index := range actors {
+		actor := fmt.Sprintf("https://relay-%03d.example/actor", index)
+		actors[index] = actor
+		insertReachabilityDiscovery(t, database, actor, discoveryActive, observed.Unix()-100)
+		checked := observed.Unix() - 1
+		insertDirectoryObservation(t, database, actor, storage.ReachabilityReachable, checked, &checked, false)
+	}
+
+	first, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("first sparse page error = %v", err)
+	}
+	if len(first.Relays) != 0 {
+		t.Fatalf("first sparse page relays = %#v, want none while Tier 1 scan is bounded", relayActors(first.Relays))
+	}
+	wantBoundary := actors[storage.MaximumDirectoryProjectionScan-1]
+	if first.Next != (storage.DirectoryProjectionCursor{
+		Tier: storage.DirectoryTierHeartbeatOnline, RelayActor: wantBoundary,
+	}) {
+		t.Fatalf("first sparse continuation = %#v, want Tier 1 boundary %q", first.Next, wantBoundary)
+	}
+
+	second, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+		After: first.Next, Limit: 2, ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("second sparse page error = %v", err)
+	}
+	if got := relayActors(second.Relays); !equalStrings(got, actors[:2]) {
+		t.Fatalf("second sparse page relays = %#v, want %#v", got, actors[:2])
+	}
+	for _, relay := range second.Relays {
+		if relay.Tier != storage.DirectoryTierOnline {
+			t.Fatalf("relay = %#v, want Tier 2", relay)
+		}
 	}
 }
 
@@ -438,50 +594,30 @@ func TestDirectoryProjectionPaginatesBackwardByCanonicalActor(t *testing.T) {
 	}
 }
 
-func TestDirectoryProjectionBoundsSparseInactiveCandidatesAndAdvancesCursor(t *testing.T) {
+func TestDirectoryProjectionFiltersInactiveRowsBeforeRankedPagination(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)
 	observed := time.Unix(20_000_000, 0).UTC()
 
-	for index := 0; index < storage.MaximumDirectoryProjectionScan+5; index++ {
+	for index := 0; index < 20; index++ {
 		actor := fmt.Sprintf("https://a%03d.example/actor", index)
 		insertReachabilityDiscovery(t, database, actor, discoveryRemoved, int64(index+1))
 	}
 	eligibleActor := "https://z.example/actor"
-	insertReachabilityDiscovery(t, database, eligibleActor, discoveryActive, 1_000)
+	insertReachabilityDiscovery(t, database, eligibleActor, discoveryActive, observed.Unix()-100)
 	checked := observed.Unix() - 1
 	insertDirectoryObservation(t, database, eligibleActor, storage.ReachabilityReachable, checked, &checked, false)
 
-	first, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
+	page, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
 		Limit: 1, ObservedAt: observed,
 	})
 	if err != nil {
-		t.Fatalf("first ListDirectoryRelays() error = %v", err)
+		t.Fatalf("ListDirectoryRelays() error = %v", err)
 	}
-	if len(first.Relays) != 0 || first.Next == (storage.DirectoryProjectionCursor{}) {
-		t.Fatalf("first page = %#v, want empty bounded page with continuation", first)
-	}
-
-	second, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
-		After: first.Next, Limit: 1, ObservedAt: observed,
-	})
-	if err != nil {
-		t.Fatalf("second ListDirectoryRelays() error = %v", err)
-	}
-	if len(second.Relays) != 1 || second.Relays[0].RelayActor != eligibleActor ||
-		second.Next != (storage.DirectoryProjectionCursor{}) ||
-		second.Previous == (storage.DirectoryProjectionCursor{}) {
-		t.Fatalf("second page = %#v, want final eligible relay with previous cursor", second)
-	}
-
-	back, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{
-		Before: second.Previous, Limit: 1, ObservedAt: observed,
-	})
-	if err != nil {
-		t.Fatalf("reverse sparse ListDirectoryRelays() error = %v", err)
-	}
-	if len(back.Relays) != 0 || back.Previous != (storage.DirectoryProjectionCursor{}) || back.Next != first.Next {
-		t.Fatalf("reverse sparse page = %#v, want original empty bounded page", back)
+	if len(page.Relays) != 1 || page.Relays[0].RelayActor != eligibleActor ||
+		page.Relays[0].Tier != storage.DirectoryTierOnline ||
+		page.Next != (storage.DirectoryProjectionCursor{}) {
+		t.Fatalf("page = %#v", page)
 	}
 }
 
@@ -516,9 +652,9 @@ func TestDirectoryProjectionRejectsInvalidInputAndFutureEvidence(t *testing.T) {
 		{},
 		{Limit: storage.MaximumDirectoryProjectionPage + 1, ObservedAt: observed},
 		{Limit: 1, ObservedAt: time.Unix(-1, 0)},
-		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{RelayActor: "HTTPS://relay.example/actor"}},
-		{Limit: 1, ObservedAt: observed, Before: storage.DirectoryProjectionCursor{RelayActor: "HTTPS://relay.example/actor"}},
-		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{RelayActor: "https://a.example/actor"}, Before: storage.DirectoryProjectionCursor{RelayActor: "https://b.example/actor"}},
+		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "HTTPS://relay.example/actor"}},
+		{Limit: 1, ObservedAt: observed, Before: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "HTTPS://relay.example/actor"}},
+		{Limit: 1, ObservedAt: observed, After: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://a.example/actor"}, Before: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://b.example/actor"}},
 	} {
 		_, err := repository.ListDirectoryRelays(context.Background(), query)
 		if !errors.Is(err, storage.ErrDirectoryProjectionInput) {
@@ -533,60 +669,6 @@ func TestDirectoryProjectionRejectsInvalidInputAndFutureEvidence(t *testing.T) {
 	_, err := repository.ListDirectoryRelays(context.Background(), storage.DirectoryProjectionQuery{Limit: 10, ObservedAt: observed})
 	if !errors.Is(err, storage.ErrDirectoryProjectionData) {
 		t.Fatalf("future evidence error = %v, want ErrDirectoryProjectionData", err)
-	}
-}
-
-func TestDirectoryProjectionStateValidatorsRejectUnknownValues(t *testing.T) {
-	if !validDirectoryLifecycleState(lifecycleRegistered) ||
-		!validDirectoryLifecycleState(lifecycleUnregistered) ||
-		!validDirectoryLifecycleState(lifecyclePruned) ||
-		validDirectoryLifecycleState("unexpected") {
-		t.Fatal("lifecycle state validator did not preserve the closed state set")
-	}
-	if !validDirectoryAdministrativeState(administrativeActive) ||
-		!validDirectoryAdministrativeState(administrativeSuspended) ||
-		validDirectoryAdministrativeState("unexpected") {
-		t.Fatal("administrative state validator did not preserve the closed state set")
-	}
-	if !validDirectoryDiscoveryState(discoveryActive) ||
-		!validDirectoryDiscoveryState(discoveryRemoved) ||
-		validDirectoryDiscoveryState("unexpected") {
-		t.Fatal("discovery state validator did not preserve the closed state set")
-	}
-}
-
-func TestDirectoryProjectionQueryPlanUsesActorKeysets(t *testing.T) {
-	database := openMigratedTestDatabase(t)
-	for _, test := range []struct {
-		statement string
-		keyset    string
-	}{
-		{directoryRelayCandidateSQL, "PRIMARY KEY (relay_actor>?)"},
-		{directoryDiscoveryCandidateSQL, "PRIMARY KEY (relay_actor>?)"},
-		{directoryRelayPreviousCandidateSQL, "PRIMARY KEY (relay_actor<?)"},
-		{directoryDiscoveryPreviousCandidateSQL, "PRIMARY KEY (relay_actor<?)"},
-	} {
-		rows, err := database.Query(`EXPLAIN QUERY PLAN `+test.statement, "https://m.example/actor", storage.MaximumDirectoryProjectionScan+1)
-		if err != nil {
-			t.Fatalf("EXPLAIN QUERY PLAN error = %v", err)
-		}
-		var details []string
-		for rows.Next() {
-			var id, parent, unused int
-			var detail string
-			if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
-				_ = rows.Close()
-				t.Fatalf("scan query plan: %v", err)
-			}
-			details = append(details, detail)
-		}
-		if err := rows.Close(); err != nil {
-			t.Fatalf("close query-plan rows: %v", err)
-		}
-		joined := strings.Join(details, "\n")
-		if !strings.Contains(joined, test.keyset) || strings.Contains(strings.ToUpper(joined), "TEMP B-TREE") {
-			t.Fatalf("candidate query plan is not actor-keyset bounded:\n%s", joined)
-		}
 	}
 }
 

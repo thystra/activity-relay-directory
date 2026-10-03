@@ -15,7 +15,7 @@ var _ storage.ReachabilityRepository = (*RelayRepository)(nil)
 const reachabilityEligibleCTE = `WITH eligible(relay_actor) AS (
 	SELECT relay_actor
 	FROM relays
-	WHERE lifecycle_state = ? AND administrative_state = ?
+	WHERE lifecycle_state IN (?, ?) AND administrative_state = ?
 	UNION
 	SELECT discovery.relay_actor
 	FROM relay_discoveries AS discovery
@@ -50,15 +50,20 @@ func (repository *RelayRepository) ReachabilityCandidates(
 		return storage.ReachabilityCandidatePage{}, storage.ErrReachabilityReadInput
 	}
 	cutoffUnix := observedUnix - int64(storage.ReachabilityFreshness/time.Second)
+	longOfflineCutoffUnix := observedUnix - int64(storage.ReachabilityUnreachableRetry/time.Second)
 	if query.After.HasLastChecked && query.After.LastCheckedUnix >= cutoffUnix {
 		return storage.ReachabilityCandidatePage{}, storage.ErrReachabilityReadInput
 	}
 
 	arguments := []any{
 		lifecycleRegistered,
+		lifecyclePruned,
 		administrativeActive,
 		discoveryActive,
 		administrativeSuspended,
+		string(storage.ReachabilityUnreachable),
+		longOfflineCutoffUnix,
+		longOfflineCutoffUnix,
 		cutoffUnix,
 	}
 	whereAfter := ""
@@ -93,11 +98,24 @@ func (repository *RelayRepository) ReachabilityCandidates(
 	SELECT eligible.relay_actor,
 	       observation.actor_last_checked_at_unix
 	FROM eligible
+	LEFT JOIN relays AS relay
+	  ON relay.relay_actor = eligible.relay_actor
+	LEFT JOIN relay_discoveries AS discovery
+	  ON discovery.relay_actor = eligible.relay_actor
 	LEFT JOIN relay_observations AS observation
 	  ON observation.relay_actor = eligible.relay_actor
 	WHERE (
 		observation.actor_last_checked_at_unix IS NULL
-		OR observation.actor_last_checked_at_unix < ?
+		OR observation.actor_last_checked_at_unix < CASE
+			WHEN observation.actor_state = ?
+			 AND MAX(
+			       COALESCE(relay.last_seen_at_unix, -1),
+			       COALESCE(discovery.first_discovered_at_unix, -1),
+			       COALESCE(observation.actor_last_success_at_unix, -1)
+			     ) <= ?
+			THEN ?
+			ELSE ?
+		END
 	)`+whereAfter+`
 	ORDER BY (observation.actor_last_checked_at_unix IS NOT NULL) ASC,
 	         observation.actor_last_checked_at_unix ASC,
@@ -272,7 +290,7 @@ func reachabilityEligible(ctx context.Context, transaction *sql.Tx, actor string
 		EXISTS (
 			SELECT 1 FROM relays
 			WHERE relay_actor = ?
-			  AND lifecycle_state = ?
+			  AND lifecycle_state IN (?, ?)
 			  AND administrative_state = ?
 		)
 		OR (
@@ -286,7 +304,7 @@ func reachabilityEligible(ctx context.Context, transaction *sql.Tx, actor string
 			)
 		)
 		THEN 1 ELSE 0 END`,
-		actor, lifecycleRegistered, administrativeActive,
+		actor, lifecycleRegistered, lifecyclePruned, administrativeActive,
 		actor, discoveryActive,
 		actor, administrativeSuspended,
 	).Scan(&eligible)

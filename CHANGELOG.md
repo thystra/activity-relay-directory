@@ -15,6 +15,15 @@
 - Add `--add-dead-relays` to discovery imports so unreachable or incompatible
   relay candidates can be retained for later rechecks without treating them as
   verified relay actors.
+- Retry retained unavailable relay candidates after 6 hours, 12 hours, 24 hours,
+  3 days, and then weekly; promote a candidate to a normal verified discovery
+  only after its canonical actor validates successfully.
+- Continue periodic recovery checks for known unavailable relays, reducing
+  long-term offline actors to weekly checks instead of dropping them.
+- Rank the richer public directory into four operational tiers: current
+  heartbeat plus online, online without a current heartbeat, unavailable, and a
+  180-day graveyard. Relays remain alphabetical within each tier, and the v2
+  public response schema/cursor now include the tier key.
 
 ## 1.1.0 - 2026-09-16
 

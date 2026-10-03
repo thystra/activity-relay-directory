@@ -44,12 +44,14 @@ after process restart. Later v1 pages reuse the authenticated captured
 observation time so stable data does not change health classification or the
 30-day cutoff during one bounded page walk.
 
-## `/v2/relays` 1.1 evidence projection
+## `/v2/relays` operational evidence projection
 
-`/v2/relays` is the richer public projection introduced in 1.1. Each relay
-object contains only reviewed public evidence:
+`/v2/relays` is the richer public projection introduced in 1.1 and extended in
+1.2. The response schema is now version 3. Each relay object contains only
+reviewed public evidence:
 
 - canonical `relay_actor` and `public_base_url`;
+- numeric operational `tier` (`1` through `4`);
 - `heartbeat.state` plus authenticated `last_seen_at`, or `not_observed` and
   `null` when no retained authenticated Directory observation exists;
 - independent actor `reachability.state`, `last_checked_at`, and
@@ -64,56 +66,67 @@ may truthfully be `Heartbeat: stale` while `Reachability: reachable`. A failed
 actor probe does not rewrite authenticated heartbeat recency, and a successful
 actor probe never fabricates a heartbeat or RFC 9421 verification.
 
-Public inclusion is an OR of independently reviewed participation paths, with a
-retained administrative suspension overriding both:
+Administrative suspension and explicit lifecycle/discovery removal still hide
+an identity. Otherwise the richer projection retains known verified identities
+through temporary and long-term outages and assigns one of four operational,
+non-prestige tiers:
 
-- an active registered lifecycle row is public while it remains inside the
-  original v1 heartbeat window; once it reaches the 30-day `prune` boundary, it
-  remains public only while the **current** actor state is `reachable`, the most
-  recent actor check is also the most recent success, and that success is no
-  more than the fixed six-hour reachability freshness window old; or
-- an active operator discovery is public only while that same current fresh
-  successful actor evidence exists.
+1. **Tier 1 — Heartbeat + Online.** The relay has an actual accepted heartbeat
+   within the fixed 36-hour healthy window and a successful actor check within
+   the fixed six-hour reachability freshness window.
+2. **Tier 2 — Online, no current heartbeat.** The actor is currently reachable,
+   but there is no current accepted heartbeat. This includes discovered relays
+   and lifecycle relays whose heartbeat is absent or stale.
+3. **Tier 3 — Offline / Unreachable.** The relay is known to the Directory but
+   does not have a current successful actor check and has been seen online
+   within the last 180 days.
+4. **Tier 4 — Graveyard.** The relay has not been seen online for at least 180
+   days. It remains retained and is still checked periodically so recovery can
+   move it back to Tier 1 or Tier 2.
 
-A current `unreachable` actor state therefore cannot be rescued by an older
-successful timestamp. Discovery provenance is not part of the projection:
-manual discovery, file import, self-registration, operator/source labels, and
-reason codes are intentionally indistinguishable to public clients.
+For graveyard age, the Directory uses the newest trustworthy online evidence:
+authenticated lifecycle `last_seen_at`, successful actor reachability, or the
+first known time when no later successful evidence exists. Unverified retained
+`--add-dead-relays` candidates are private maintenance state and do **not** enter
+any public tier until a later actor check successfully validates and promotes
+them to an active discovery.
 
-### v2 pagination and bounded sparse scans
+Discovery provenance is not part of the projection. Manual discovery, file
+import, self-registration, operator/source labels, and reason codes remain
+intentionally indistinguishable to public clients.
 
-The v2 page size also defaults to 50 and is capped at 100. Its stable position
-is canonical actor order rather than the mutable evidence timestamps. One
-request examines at most 400 retained actor identities, merging lifecycle and
-discovery primary-key streams and deduplicating by canonical actor. The detail
-query joins only the current lifecycle, discovery-state, and observation rows by
-primary key; it never joins private discovery or moderation event tables.
+### v2 pagination and tier ordering
 
-Because inactive retained identities can be interleaved with public ones, a v2
-request may validly return fewer than the requested number of relays — including
-zero — together with a non-empty `next_cursor`. Clients must follow that cursor
-to continue the bounded walk.
+The page size defaults to 50 and is capped at 100. One request examines at most
+400 retained actor identities, even when the requested tier is sparse. Results
+are ordered first by operational tier (`1`, `2`, `3`, `4`) and then
+alphabetically by canonical relay actor, which keeps normalized hostnames
+alphabetical inside each tier. Heartbeat frequency, check recency, popularity,
+traffic, or any other mutable activity metric never affects rank within a tier.
+If the 400-identity scan bound is reached before a public row is found, the page
+may contain zero rows with a continuation cursor; following that cursor resumes
+the bounded tier scan without exposing the skipped identity.
 
-The authenticated v2 cursor contains its own cursor version, the original issue
-time, and the last retained actor position. It uses the same process-local
-HMAC-SHA-256 key and five-minute maximum walk age as v1, but the cursor format is
-distinct and v1/v2 cursors are not interchangeable.
+The authenticated v2 cursor format is version 2 and contains its issue time,
+tier, and canonical actor position. It uses the same process-local
+HMAC-SHA-256 key and five-minute maximum walk age as v1, but v1 and v2 cursors
+remain intentionally non-interchangeable. The tier is part of the keyset because
+tier is now the primary public ordering key.
 
 Unlike v1's observation-pinned compatibility walk, each v2 page evaluates the
-latest retained evidence against that page request's current server time. This
-is required because reachability observations are latest-state records and may
-legitimately advance between pages. The actor keyset keeps forward progress
-bounded, but v2 is intentionally a live view rather than a historical snapshot:
-an actor whose eligibility changes behind an already-consumed cursor may not
-appear until a client starts a new walk from the first page.
+latest retained evidence against that request's current server time. Tier and
+reachability can therefore legitimately change between pages. The keyset keeps
+forward progress bounded, but v2 remains a live view rather than a historical
+snapshot; clients that require a fresh complete ordering should begin a new walk
+from the first page.
 
 HTTP presentation revalidates canonical identities, evidence relationships,
-strict actor ordering, page bounds, and direction-appropriate repository
-keysets before serialization. `/v2/relays` remains forward-only; reverse
-keysets are used only by the human directory's **Previous page** control.
-Malformed, noncanonical, oversized, expired, future-time, foreign-process,
-duplicate, tampered, cross-version, or otherwise invalid pagination fails with
-a fixed redacted error.
+strict `(tier, actor)` ordering, page bounds, and direction-appropriate
+repository keysets before serialization. `/v2/relays` remains forward-only;
+reverse keysets are used only by the human directory's **Previous page**
+control. Malformed, noncanonical, oversized, expired, future-time,
+foreign-process, duplicate, tampered, cross-version, or otherwise invalid
+pagination fails with a fixed redacted error.
 
 ## HTTP caching and admission
 
@@ -132,7 +145,7 @@ inherited from the common HTTP wrapper and there is no CORS write surface.
 
 `GET`/`HEAD` `/` renders the **v2** bounded projection through Go
 `html/template`; it does not have a second repository query or eligibility rule.
-Its pagination uses the same signed v2 actor-keyset token format,
+Its pagination uses the same signed v2 tier-plus-actor keyset token format,
 current-per-page evidence evaluation, page-size bounds, and five-minute walk
 lifetime. Forward links use the existing `cursor` query parameter. The human
 page additionally accepts a `before` query parameter for bounded reverse

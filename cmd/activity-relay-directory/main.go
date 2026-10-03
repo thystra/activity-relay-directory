@@ -17,6 +17,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/adminnotify"
 	"github.com/thystra/activity-relay-directory/internal/admission"
 	"github.com/thystra/activity-relay-directory/internal/buildinfo"
+	"github.com/thystra/activity-relay-directory/internal/candidatemaintenance"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
@@ -183,6 +184,28 @@ func run(arguments []string) int {
 				logger.Error("reachability maintenance failed", "error", err)
 			},
 		)
+		go runDiscoveryCandidateMaintenance(
+			signals,
+			reachabilityRepository,
+			reachabilityResolver,
+			storageContract.DiscoveryCandidateMaintenanceInterval,
+			time.Now,
+			func(result candidatemaintenance.Result) {
+				logger.Info(
+					"discovery candidate maintenance completed",
+					"observed_at_unix", result.ObservedUnix,
+					"scanned", result.Scanned,
+					"promoted", result.Promoted,
+					"unreachable", result.Unreachable,
+					"incompatible", result.Incompatible,
+					"skipped", result.Skipped,
+					"truncated", result.Truncated,
+				)
+			},
+			func(err error) {
+				logger.Error("discovery candidate maintenance failed", "error", err)
+			},
+		)
 	}
 
 	if cfg.SoftPruningEnabled {
@@ -291,6 +314,8 @@ func run(arguments []string) int {
 		"reachability_enabled", cfg.ReachabilityEnabled,
 		"reachability_interval", storageContract.ReachabilityMaintenanceInterval,
 		"reachability_freshness", storageContract.ReachabilityFreshness,
+		"reachability_unreachable_retry", storageContract.ReachabilityUnreachableRetry,
+		"discovery_candidate_maintenance_interval", storageContract.DiscoveryCandidateMaintenanceInterval,
 		"soft_pruning_enabled", cfg.SoftPruningEnabled,
 		"soft_pruning_interval", cfg.SoftPruningInterval,
 		"inactive_retention_days", cfg.InactiveRetentionDays,

@@ -166,7 +166,7 @@ separate explicit gates, and never echo an untrusted supplied URL in an error.
 Runtime key resolution must use `internal/actorresolver.Resolver`, never the
 default HTTP client or an environment proxy. Preserve all-answer DNS rejection,
 public-address connection pinning, redirect revalidation, request and response
-bounds, canonical fragment-bearing key IDs, exact `Application` or `Service`
+bounds, canonical fragment-bearing key IDs, exact `Application`, `Service`, or `Group`
 actor identity, exact key ID/owner binding, and the 2048-to-8192-bit RSA limit.
 Review the IANA special-purpose address registries before changing or releasing
 the address policy. Resolver construction and tests do not authorize verifier
@@ -203,16 +203,25 @@ health-projection tranche.
 
 Background reachability code must use `storage.ReachabilityRepository` and the
 shared `actorresolver.Resolver`. Keep it default-off and unreachable from public
-HTTP handlers. The fixed 1.1 policy is one-hour maintenance, six-hour actor
-freshness, pages <=24, runs <=96 actors, and <=8 concurrent remote probes.
-Candidate order is never-checked first, then oldest check, then canonical actor;
-administrative suspension suppresses both registered and discovered eligibility.
-Remote probes may run concurrently, but persistence is serialized and must
-transactionally revalidate eligibility plus equal/newer observation races. A
-complete non-truncated pass may refresh the process-local pruning-coverage gate;
-failed/truncated passes may not. Reachability never updates lifecycle
-`last_seen_at_unix`, registration/heartbeat state, or RFC 9421 evidence. See
-`docs/REACHABILITY.md`.
+HTTP handlers. The fixed policy is one-hour maintenance, six-hour freshness for
+ordinary actor checks, and weekly retries after a known relay has remained
+offline for seven days; pages stay <=24, runs <=96 actors, and each worker stays
+<=8 concurrent remote probes. Candidate order is never-checked first, then
+oldest check, then canonical actor; administrative suspension suppresses both
+registered and discovered eligibility. Soft-pruned lifecycle rows remain
+eligible for recovery checks. Remote probes may run concurrently, but
+persistence is serialized and must transactionally revalidate eligibility plus
+equal/newer observation races. A complete non-truncated pass may refresh the
+process-local pruning-coverage gate; failed/truncated passes may not.
+Reachability never updates lifecycle `last_seen_at_unix`,
+registration/heartbeat state, or RFC 9421 evidence.
+
+Retained unverified discovery candidates are a separate private maintenance
+path. Retry them after 6h, 12h, 24h, 3d, then every 7d indefinitely; keep each
+run bounded to pages <=24, <=96 candidates total, and <=8 concurrent probes.
+Only successful canonical actor validation may promote a candidate into normal
+verified discovery state. Candidate retries must not make unresolved rows
+public. See `docs/REACHABILITY.md` and `docs/DISCOVERY-REACHABILITY.md`.
 
 Soft-pruning code must use `storage.PruningRepository` and remain reversible.
 Candidate reads use the `(lifecycle_state, last_seen_at_unix, relay_actor)` index,
@@ -294,13 +303,17 @@ HTML-specific repository query, heartbeat/reachability classifier, moderation
 filter, or eligibility rule. Keep `/v1/relays` byte/semantic compatible with the
 1.0 health listing. `GET`/`HEAD` `/`, `/v2/relays`, and bundled static assets
 remain under the same default-off `DIRECTORY_PUBLIC_LISTING_ENABLED` gate. The
-v2 projection may serialize only canonical identity plus reviewed
-heartbeat/reachability/inbox/RFC 9421 evidence; never serialize discovery
-source/provenance, operator/reason data, audit events, probe errors, client
-addresses, signing-key identifiers, or internal registered/discovered flags.
-Bound v2 pages to 100 public rows and at most 400 retained actor identities per
-request, advancing a signed canonical-actor keyset even through sparse inactive
-rows. HTML must use Go `html/template`, automatic escaping, local assets only, a
+v2 projection may serialize only canonical identity plus the reviewed public
+operational tier and heartbeat/reachability/inbox/RFC 9421 evidence; never
+serialize discovery source/provenance, operator/reason data, audit events, probe
+errors, client addresses, signing-key identifiers, or internal
+registered/discovered flags. Bound v2 pages to 100 public rows and at most 400
+retained actor identities per request, advancing a signed `(tier, actor)` keyset
+even through sparse rows. Tier order is heartbeat+online, online without a
+current heartbeat, unavailable, then the 180-day graveyard; ordering inside each
+tier is canonical actor/hostname order and must not use heartbeat frequency,
+check recency, popularity, or another activity score. HTML must use Go
+`html/template`, automatic escaping, local assets only, a
 strict CSP, the same v2 authenticated cursor and one-minute cache policy, and no
 relay-provided HTML, scripts, fonts, analytics, or relay-controlled image
 fetches. Evidence-state meaning must never depend on hue alone: retain visible
