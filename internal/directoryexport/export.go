@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/profilecsv"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -44,11 +45,12 @@ type Format string
 const (
 	FormatHosts  Format = "hosts"
 	FormatActors Format = "actors"
+	FormatCSV    Format = "csv"
 )
 
 func (format Format) Valid() bool {
 	switch format {
-	case FormatHosts, FormatActors:
+	case FormatHosts, FormatActors, FormatCSV:
 		return true
 	default:
 		return false
@@ -62,9 +64,9 @@ type Request struct {
 }
 
 // Render walks the bounded public directory projection with one captured
-// observation time and returns a newline-delimited operator/public export.
-// Scope changes only which already-public tiers are emitted; it never exposes
-// discovery provenance or private maintenance candidates.
+// observation time and returns the requested local export. Scope changes only
+// which already-public tiers are emitted; it never exposes discovery provenance
+// or private maintenance candidates.
 func Render(
 	ctx context.Context,
 	repository storage.DirectoryProjectionRepository,
@@ -111,6 +113,9 @@ func Render(
 
 		if page.Next == (storage.DirectoryProjectionCursor{}) {
 			sortDirectoryRelays(relays)
+			if request.Format == FormatCSV {
+				return renderProfileCSV(ctx, repository, relays)
+			}
 			return renderRelays(relays, request.Format)
 		}
 		if !cursorAdvances(after, page.Next) {
@@ -173,4 +178,35 @@ func renderRelays(relays []storage.DirectoryProjectionRelay, format Format) ([]b
 		output.WriteByte('\n')
 	}
 	return []byte(output.String()), nil
+}
+
+type profileReader interface {
+	EffectiveProfile(context.Context, string) (storage.RelayProfile, error)
+}
+
+func renderProfileCSV(
+	ctx context.Context,
+	repository storage.DirectoryProjectionRepository,
+	relays []storage.DirectoryProjectionRelay,
+) ([]byte, error) {
+	profileRepository, ok := repository.(profileReader)
+	if !ok {
+		return nil, ErrExportConfiguration
+	}
+	records := make([]profilecsv.Record, 0, len(relays))
+	for _, relay := range relays {
+		profile, err := profileRepository.EffectiveProfile(ctx, relay.RelayActor)
+		if err != nil {
+			return nil, errors.Join(ErrExportData, err)
+		}
+		records = append(records, profilecsv.Record{
+			Relay:   relay.RelayActor,
+			Profile: profile,
+		})
+	}
+	body, err := profilecsv.Encode(records)
+	if err != nil {
+		return nil, errors.Join(ErrExportData, err)
+	}
+	return body, nil
 }

@@ -201,6 +201,88 @@ func TestAdminDiscoveryImportStoresLabelNotFilePathAndRemoveNeedsNoProbe(t *test
 	}
 }
 
+func TestAdminDiscoveryCSVImportPersistsProfileAndExportsSpreadsheetSafeCSV(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "directory.sqlite")
+	database, err := initializeDatabase(context.Background(), path)
+	if err != nil {
+		t.Fatalf("initializeDatabase() error = %v", err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close seed database: %v", err)
+	}
+	t.Setenv("DIRECTORY_DATABASE_PATH", path)
+
+	candidatePath := filepath.Join(directory, "relays.csv")
+	if err := osWriteFile(candidatePath, []byte(
+		"relay,notes,languages,source_url\n"+
+			"relay.example,=support,fr; en,https://source.example/list\n"),
+	); err != nil {
+		t.Fatalf("write CSV candidates: %v", err)
+	}
+	prober := &adminDiscoveryProber{
+		actor: actorresolver.ActorProbeResult{ActorID: "https://relay.example/actor"},
+	}
+	var stdout, stderr bytes.Buffer
+	code := runDiscoveryAdminWithProberFactory(
+		[]string{
+			"activity-relay-directory", "admin", "discovery", "import",
+			"--file", candidatePath,
+			"--input-format", "csv",
+			"--operator", "operator",
+			"--reason", "public_list",
+			"--source-label", "curated_list",
+			"--yes",
+		},
+		strings.NewReader(""), &stdout, &stderr,
+		func() time.Time { return time.Unix(200, 0).UTC() },
+		func() (discoverycommand.Prober, error) { return prober, nil },
+	)
+	if code != discoverycommand.ExitSuccess || !strings.Contains(stdout.String(), "profile_created=") {
+		t.Fatalf("CSV discovery import = (%d, %q, %q)", code, stdout.String(), stderr.String())
+	}
+
+	database, err = initializeDatabase(context.Background(), path)
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	var valueJSON, sourceLabel, sourceURL string
+	if err := database.QueryRow(`SELECT value_json, source_label, source_url
+		FROM relay_profile_values
+		WHERE relay_actor = ? AND source_kind = 'csv' AND field_name = 'notes'`,
+		"https://relay.example/actor",
+	).Scan(&valueJSON, &sourceLabel, &sourceURL); err != nil {
+		database.Close()
+		t.Fatalf("read CSV profile: %v", err)
+	}
+	if valueJSON != `"=support"` || sourceLabel != "curated_list" || sourceURL != "https://source.example/list" {
+		database.Close()
+		t.Fatalf("CSV profile = (%q, %q, %q)", valueJSON, sourceLabel, sourceURL)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatalf("close profile database: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	code = runAdmin(
+		[]string{
+			"activity-relay-directory", "admin", "export",
+			"--scope", "all",
+			"--format", "csv",
+		},
+		&stdout,
+		&stderr,
+		func() time.Time { return time.Unix(201, 0).UTC() },
+	)
+	if code != 0 || stderr.Len() != 0 ||
+		!strings.Contains(stdout.String(), "https://relay.example/actor") ||
+		!strings.Contains(stdout.String(), "'=support") ||
+		strings.Contains(stdout.String(), "https://source.example/list") {
+		t.Fatalf("CSV admin export = (%d, %q, %q)", code, stdout.String(), stderr.String())
+	}
+}
+
 func TestAdminDiscoveryImportReportsRegisteredLifecycleRelayAsAlreadyKnown(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "directory.sqlite")

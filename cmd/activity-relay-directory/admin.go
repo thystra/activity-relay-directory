@@ -691,7 +691,7 @@ func writeStorageUsage(output io.Writer) {
 }
 
 func writeExportUsage(output io.Writer) {
-	fmt.Fprintln(output, "usage: activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors]")
+	fmt.Fprintln(output, "usage: activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors|csv]")
 }
 
 func writeAdminUsage(output io.Writer) {
@@ -702,18 +702,18 @@ func writeAdminUsage(output io.Writer) {
 	fmt.Fprintln(output, "       activity-relay-directory admin audit --actor URL [--limit 1..100] [--after UNIX:ID] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
-	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH [--input-format lines|csv] --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin pruning dry-run [--limit 1..100] [--after-last-seen UNIX --after-actor URL] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention dry-run [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin retention purge --backup PATH [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin storage status|check|test-alert [--format human|json]")
-	fmt.Fprintln(output, "       activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors]")
+	fmt.Fprintln(output, "       activity-relay-directory admin export [--scope active|all|unavailable] [--format hosts|actors|csv]")
 }
 
 func writeDiscoveryUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
 	fmt.Fprintln(output, "       activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]")
-	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
+	fmt.Fprintln(output, "       activity-relay-directory admin discovery import --file PATH [--input-format lines|csv] --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]")
 }
 
 func writePruningUsage(output io.Writer) {

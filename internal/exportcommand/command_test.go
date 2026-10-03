@@ -32,6 +32,11 @@ func TestParseDefaultsAndValidates(t *testing.T) {
 		request.Format != directoryexport.FormatActors {
 		t.Fatalf("Parse explicit = %#v, %v", request, err)
 	}
+	request, err = Parse([]string{"--scope", "all", "--format", "csv"})
+	if err != nil || request.Scope != directoryexport.ScopeAll ||
+		request.Format != directoryexport.FormatCSV {
+		t.Fatalf("Parse CSV = %#v, %v", request, err)
+	}
 	for _, arguments := range [][]string{
 		{"--scope", "unknown"},
 		{"--format", "json"},

@@ -825,13 +825,17 @@ Repository: Directory.
 
 ### Tranche 26: CSV import and local export
 
-Repository: Directory.
+Completed in source (2026-10-03): discovery import accepts explicit
+`--input-format csv` while preserving the line-oriented default and
+`--format human|json` command output. Local `admin export --format csv` emits the
+effective verified relay catalog for the selected public-tier scope without
+changing hosts/actors output or public text downloads. CSV handling is bounded,
+deterministic, uses reversible semicolon/backslash list escaping, and applies
+spreadsheet formula-injection neutralization. CSV profile writes use only the
+schema-10 profile repository; unresolved retained candidates remain private and
+do not receive current profile assertions until they become verified identities.
 
-Extend discovery import with explicit `--input-format csv` while retaining the
-existing line-oriented default and `--format human|json` output option. Extend
-local `admin export` with `--format csv` without changing hosts/actors output or
-public text downloads. CSV handling must be bounded, deterministic,
-spreadsheet-safe, and round-trip tested.
+Repository: Directory.
 
 ### Tranche 27: public effective profile
 
@@ -861,6 +865,29 @@ migrations, source precedence/clear behavior, CSV formula-injection protection
 and round-trip, public privacy, `/v1/relays` and Protocol v1 compatibility,
 profile/tier independence, and real cross-repository Protocol v2 registration,
 heartbeat, fallback, and reconciliation.
+
+## Future public-facing funding/support surface
+
+This is a future operator-facing interface item, not part of the current 1.3
+profile/Protocol-v2 tranche. Provide an optional, default-absent **Support this
+site** section near the top of the public-facing Directory. It should be
+collapsed by default and visually secondary so it does not compete with relay
+discovery.
+
+The configuration should be extensible rather than hard-coded to particular
+providers. Model a bounded ordered list of entries such as `title` plus either
+an HTTPS `url` or a plain-text payment/wallet value. This should accommodate
+services such as Liberapay, PayPal, Ko-fi, Fediverse contact links, and
+cryptocurrency addresses without allowing arbitrary HTML, Markdown, script, or
+third-party embeds. Values must be escaped under the existing CSP/privacy
+boundary.
+
+Advertising or sponsorship blocks are a separate possible funding feature and
+require their own review before implementation. Any future design must be
+default-off, must not affect relay ordering/eligibility, and must address
+tracking, third-party content, CSP, disclosure, and privacy before adding any
+remote script, pixel, or personalized behavior. Prefer operator-hosted static
+content if this is pursued.
 
 ## Completion definition
 

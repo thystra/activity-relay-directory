@@ -161,11 +161,16 @@ Local operators can use the same projection without enabling public listing:
 activity-relay-directory admin export --scope active --format hosts
 activity-relay-directory admin export --scope all --format actors
 activity-relay-directory admin export --scope unavailable --format hosts
+activity-relay-directory admin export --scope all --format csv
 ```
 
 The local command opens the current database read-only. `hosts` is suitable as
 input to a later discovery import, including canonical non-default HTTPS ports;
-`actors` emits the canonical `/actor` URLs instead.
+`actors` emits the canonical `/actor` URLs instead. `csv` adds the effective
+reviewed descriptive profile for those same verified public-tier identities,
+omits private provenance and unresolved candidates, and uses the spreadsheet-safe
+round-trip rules in `docs/RELAY-PROFILES.md`. Public `/downloads/*.txt` routes
+remain host-only.
 
 ## HTTP caching and admission
 

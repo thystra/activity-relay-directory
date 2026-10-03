@@ -144,6 +144,20 @@ discovery identity; source replacement/clear and its private history event commi
 in one transaction with nonregressing server acceptance time. Keep source label,
 source URL, source priority, and event history private.
 
+Relay-profile CSV exchange must use `internal/profilecsv`, not ad-hoc comma or
+semicolon splitting. Keep the existing 256 KiB/100-candidate discovery import
+bounds, require explicit `--input-format csv`, parse and validate the complete
+file before network or durable mutation, reject unknown/duplicate headers and
+canonical duplicate relay rows, and preserve the line-oriented default. Local
+CSV export may include only verified public-tier identities plus effective
+descriptive fields; it must omit private provenance and pending candidates.
+Escape semicolons/backslashes reversibly inside multi-value cells. Neutralize
+spreadsheet formula triggers reversibly before normal CSV quoting and
+regression-test literal leading apostrophes as well as `=`, `+`, `-`, and `@`.
+Keep line-import JSON on `activity-relay-directory.discovery-admin.v1`; use the
+separate v2 command-result schema for CSV profile mutation summaries. Public
+`/downloads/*.txt` routes remain host-only.
+
 Relay lifecycle code must use the `storage.RelayRepository` contract after all
 authentication, safe-resolution, replay, and policy gates. Repository inputs
 must remain canonical and bounded. Use server acceptance time, reject per-actor
