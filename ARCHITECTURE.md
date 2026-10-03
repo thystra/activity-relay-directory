@@ -202,31 +202,36 @@ discovery, or file import.
 Actor and inbox diagnostics remain evidence-based. A successful actor check
 requires the existing proxy-free DNS/address/redirect controls, bounded HTTPS
 retrieval, ActivityStreams media type, valid bounded JSON, exact actor identity,
-and an accepted `Application` or `Service` type. A validated actor's declared
+and an accepted `Application`, `Service`, or `Group` type. A validated actor's declared
 canonical HTTPS inbox is positive inbox-capability evidence; an optional
 non-mutating inbox check may add diagnostics but must not POST a synthetic
 ActivityPub activity and must not treat a normal method rejection such as 405
 as proof that the inbox is absent. RFC 9421 is reported as verified only after
 the Directory has actually accepted an RFC 9421-signed lifecycle request.
 
-The existing `/v1/relays` representation remains unchanged. The 1.1 public
+The existing `/v1/relays` representation remains unchanged. The richer public
 projection is `GET /v2/relays`, and the human `/` page renders that same bounded
-projection rather than running a separate eligibility query. The v2 repository
-merges retained lifecycle and discovery actor-primary-key streams, scans at most
-400 identities per request, deduplicates by canonical actor, and uses a signed
-actor-keyset cursor with pages of at most 100 public entries. It exposes
-heartbeat health, independent actor reachability, actor-declared inbox
-diagnostics, and positive RFC 9421 evidence while keeping registration/discovery
-participation flags and discovery/operator provenance private.
+projection rather than running a separate eligibility query. The repository
+merges retained lifecycle and discovery identities, deduplicates by canonical
+actor, and uses a signed `(tier, actor)` keyset cursor with pages of at most 100
+entries while examining at most 400 retained identities per request. Sparse tier
+walks return a continuation rather than scanning the whole database. It exposes
+heartbeat health, independent actor reachability,
+actor-declared inbox diagnostics, positive RFC 9421 evidence, and the public
+operational tier while keeping registration/discovery participation flags and
+private discovery/operator provenance hidden.
 
-Moderation suspension continues to override all public eligibility. Registered
-entries remain public under the original version 1 heartbeat window, while a
-30-day heartbeat-prune-boundary row may remain visible only with current fresh
-reachable actor evidence. Discovered-only entries require that same current
-successful actor evidence and otherwise age out after the fixed six-hour
-reachability freshness window. Soft pruning must not transition a relay solely
-because heartbeat recency aged past 30 days while sufficiently recent current
-actor evidence proves that relay reachable. The detailed contract, persistence
+Moderation suspension and explicit removal continue to override public
+eligibility. Otherwise verified known identities are classified as Tier 1
+(current heartbeat plus current reachability), Tier 2 (currently reachable with
+no current heartbeat), Tier 3 (not currently reachable but seen online within
+180 days), or Tier 4 (graveyard, unseen online for at least 180 days). Ordering
+within a tier is alphabetical by canonical actor/hostname, not activity
+freshness. Long-term unreachable known relays continue weekly recovery checks.
+Unverified retained import candidates remain private until a later successful
+actor validation promotes them to normal discovery state. Soft pruning must not
+transition a relay solely because heartbeat recency aged past 30 days while
+sufficiently recent current actor evidence proves that relay reachable. The detailed contract, persistence
 plan, bounds, and acceptance cases are defined in
 `docs/DISCOVERY-REACHABILITY.md`, `docs/PUBLIC-LISTING.md`, and the post-1.0
 roadmap in `TODO.md`.

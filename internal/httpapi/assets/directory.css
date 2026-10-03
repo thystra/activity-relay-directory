@@ -162,6 +162,59 @@ a:focus-visible {
   text-decoration: none;
 }
 
+
+.tier-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+  margin: 0;
+}
+
+.tier-guide-item {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface-muted);
+}
+
+.tier-guide-item dt {
+  margin-bottom: 0.3rem;
+}
+
+.tier-guide-item dd {
+  margin: 0;
+}
+
+.tier-block + .tier-block {
+  margin-top: 1.5rem;
+}
+
+.tier-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.8rem;
+  padding: 0 0.2rem;
+}
+
+.tier-heading h3 {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.tier-heading .muted {
+  max-width: 52rem;
+  margin: 0.35rem 0 0;
+}
+
+.tier-count {
+  flex: none;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
 .relay-table {
   overflow: hidden;
   border: 1px solid var(--border);
@@ -530,5 +583,16 @@ code {
   .relay-details dl,
   .status-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 48rem) {
+  .tier-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .tier-heading {
+    align-items: start;
+    flex-direction: column;
   }
 }

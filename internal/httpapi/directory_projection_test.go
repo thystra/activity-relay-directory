@@ -27,9 +27,13 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 			{
 				RelayActor:           "https://relay.example/actor",
 				PublicBaseURL:        "https://relay.example",
+				LifecycleKnown:       true,
 				Registered:           true,
+				FirstKnownUnix:       lastSeen - 100,
+				Tier:                 storage.DirectoryTierHeartbeatOnline,
 				HeartbeatState:       storage.HeartbeatHealthy,
 				LastSeenUnix:         &lastSeen,
+				LastHeartbeatUnix:    &lastSeen,
 				ActorState:           storage.ReachabilityReachable,
 				ActorLastCheckedUnix: &checked,
 				ActorLastSuccessUnix: &checked,
@@ -43,6 +47,8 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 				RelayActor:           "https://relay2.example/actor",
 				PublicBaseURL:        "https://relay2.example",
 				Discovered:           true,
+				FirstKnownUnix:       lastSeen - 100,
+				Tier:                 storage.DirectoryTierOnline,
 				HeartbeatState:       storage.HeartbeatNotObserved,
 				ActorState:           storage.ReachabilityReachable,
 				ActorLastCheckedUnix: &discoveredChecked,
@@ -110,11 +116,44 @@ func TestDirectoryProjectionHeadSuppressesBodyAndPreservesValidators(t *testing.
 	}
 }
 
+func TestDirectoryProjectionAcceptsEmptyBoundedPageWithContinuation(t *testing.T) {
+	now := time.Unix(2_000, 0).UTC()
+	next := storage.DirectoryProjectionCursor{
+		Tier:       storage.DirectoryTierHeartbeatOnline,
+		RelayActor: "https://relay-399.example/actor",
+	}
+	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
+		Relays: []storage.DirectoryProjectionRelay{},
+		Next:   next,
+	}}
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.serveDirectoryProjection(response, httptest.NewRequest(http.MethodGet, directoryProjectionPath+"?limit=2", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %q", response.Code, response.Body.String())
+	}
+	var document directoryProjectionResponse
+	if err := jsonUnmarshalStrict(response.Body.Bytes(), &document); err != nil {
+		t.Fatalf("decode sparse page: %v", err)
+	}
+	if len(document.Relays) != 0 || document.Pagination.NextCursor == "" {
+		t.Fatalf("sparse response = %#v", document)
+	}
+	decoded, err := handler.decodeDirectoryProjectionCursor(document.Pagination.NextCursor)
+	if err != nil || decoded.Tier != next.Tier || decoded.RelayActor != next.RelayActor {
+		t.Fatalf("continuation = %#v error=%v", decoded, err)
+	}
+}
+
 func TestDirectoryProjectionCursorKeepsActorPositionButUsesCurrentEvidenceTime(t *testing.T) {
 	now := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{directoryProjectionRelayForTest(now, "https://relay.example/actor", storage.DirectoryTierOnline)},
+		Next:   storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
@@ -140,9 +179,10 @@ func TestDirectoryProjectionCursorKeepsActorPositionButUsesCurrentEvidenceTime(t
 	repository.directoryPage = storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{{
 		RelayActor:           "https://z.example/actor",
 		PublicBaseURL:        "https://z.example",
-		Registered:           true,
-		HeartbeatState:       storage.HeartbeatHealthy,
-		LastSeenUnix:         &newEvidence,
+		Discovered:           true,
+		FirstKnownUnix:       newEvidence - 100,
+		Tier:                 storage.DirectoryTierOnline,
+		HeartbeatState:       storage.HeartbeatNotObserved,
 		ActorState:           storage.ReachabilityReachable,
 		ActorLastCheckedUnix: &newEvidence,
 		ActorLastSuccessUnix: &newEvidence,
@@ -163,7 +203,7 @@ func TestDirectoryProjectionCursorKeepsActorPositionButUsesCurrentEvidenceTime(t
 		t.Fatalf("queries = %#v", repository.directoryQueries)
 	}
 	second := repository.directoryQueries[1]
-	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.RelayActor != "https://relay.example/actor" {
+	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.Tier != storage.DirectoryTierOnline || second.After.RelayActor != "https://relay.example/actor" {
 		t.Fatalf("second query = %#v", second)
 	}
 	decoded, err := handler.decodeDirectoryProjectionCursor(cursor)
@@ -175,8 +215,8 @@ func TestDirectoryProjectionCursorKeepsActorPositionButUsesCurrentEvidenceTime(t
 func TestDirectoryProjectionCursorRejectsTamperingExpiryForeignKeyAndV1Cursor(t *testing.T) {
 	current := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{directoryProjectionRelayForTest(current, "https://relay.example/actor", storage.DirectoryTierOnline)},
+		Next:   storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return current })
 	if err != nil {
@@ -213,7 +253,7 @@ func TestDirectoryProjectionCursorRejectsTamperingExpiryForeignKeyAndV1Cursor(t 
 		t.Fatalf("second NewPublicListingHandler() error = %v", err)
 	}
 	foreign, err := other.encodeDirectoryProjectionCursor(directoryProjectionCursor{
-		Version: directoryProjectionCursorVersion, IssuedUnix: 2_000, RelayActor: "https://relay.example/actor",
+		Version: directoryProjectionCursorVersion, IssuedUnix: 2_000, Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor",
 	})
 	if err != nil {
 		t.Fatalf("foreign encodeDirectoryProjectionCursor() error = %v", err)
@@ -248,11 +288,12 @@ func TestDirectoryProjectionCursorRejectsTamperingExpiryForeignKeyAndV1Cursor(t 
 }
 
 func TestV2CursorIsRejectedByV1Listing(t *testing.T) {
+	current := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{directoryProjectionRelayForTest(current, "https://relay.example/actor", storage.DirectoryTierOnline)},
+		Next:   storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor"},
 	}}
-	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(2_000, 0).UTC() })
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return current })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
@@ -289,7 +330,7 @@ func TestDirectoryProjectionRejectsInvalidQueryWithFixedRedactedError(t *testing
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, response.Code)
 		}
-		want := "{\"schema_version\":2,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
+		want := "{\"schema_version\":3,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
 		if response.Body.String() != want {
 			t.Fatalf("%s body = %q", target, response.Body.String())
 		}
@@ -337,16 +378,7 @@ func TestDirectoryProjectionRepositoryFailureAndInvalidRowsAreRedacted(t *testin
 func TestDirectoryProjectionRejectsRepositoryPaginationDrift(t *testing.T) {
 	now := time.Unix(2_000, 0).UTC()
 	valid := func(actor string) storage.DirectoryProjectionRelay {
-		seen := now.Unix() - 1
-		return storage.DirectoryProjectionRelay{
-			RelayActor:      actor,
-			PublicBaseURL:   strings.TrimSuffix(actor, "/actor"),
-			Registered:      true,
-			HeartbeatState:  storage.HeartbeatHealthy,
-			LastSeenUnix:    &seen,
-			ActorState:      storage.ReachabilityUnknown,
-			InboxProbeState: storage.InboxNotChecked,
-		}
+		return directoryProjectionRelayForTest(now, actor, storage.DirectoryTierOnline)
 	}
 
 	cases := map[string]storage.DirectoryProjectionPage{
@@ -361,11 +393,11 @@ func TestDirectoryProjectionRejectsRepositoryPaginationDrift(t *testing.T) {
 		}},
 		"rewinding next": {
 			Relays: []storage.DirectoryProjectionRelay{valid("https://b.example/actor")},
-			Next:   storage.DirectoryProjectionCursor{RelayActor: "https://a.example/actor"},
+			Next:   storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://a.example/actor"},
 		},
 		"noncanonical next": {
 			Relays: []storage.DirectoryProjectionRelay{valid("https://a.example/actor")},
-			Next:   storage.DirectoryProjectionCursor{RelayActor: "HTTPS://b.example/actor"},
+			Next:   storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "HTTPS://b.example/actor"},
 		},
 	}
 
@@ -424,4 +456,38 @@ func TestPublicListingAdmissionBudgetIsSharedWithDirectoryProjection(t *testing.
 		t.Fatalf("bounded v2 response = status %d headers %#v body %q", response.Code, response.Header(), response.Body.String())
 	}
 	close(block)
+}
+
+func directoryProjectionRelayForTest(
+	now time.Time,
+	actor string,
+	tier storage.DirectoryTier,
+) storage.DirectoryProjectionRelay {
+	checked := now.Unix() - 1
+	firstKnown := now.Unix() - 100
+	relay := storage.DirectoryProjectionRelay{
+		RelayActor:           actor,
+		PublicBaseURL:        strings.TrimSuffix(actor, "/actor"),
+		Discovered:           true,
+		FirstKnownUnix:       firstKnown,
+		Tier:                 tier,
+		HeartbeatState:       storage.HeartbeatNotObserved,
+		ActorState:           storage.ReachabilityReachable,
+		ActorLastCheckedUnix: &checked,
+		ActorLastSuccessUnix: &checked,
+		InboxProbeState:      storage.InboxNotChecked,
+	}
+	if tier == storage.DirectoryTierUnavailable || tier == storage.DirectoryTierGraveyard {
+		relay.ActorState = storage.ReachabilityUnreachable
+		relay.ActorLastCheckedUnix = &checked
+		if tier == storage.DirectoryTierGraveyard {
+			old := now.Add(-storage.DirectoryGraveyardAfter - time.Second).Unix()
+			relay.FirstKnownUnix = old
+			relay.ActorLastSuccessUnix = &old
+		} else {
+			recent := now.Add(-24 * time.Hour).Unix()
+			relay.ActorLastSuccessUnix = &recent
+		}
+	}
+	return relay
 }

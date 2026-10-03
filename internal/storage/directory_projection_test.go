@@ -33,99 +33,77 @@ func TestClassifyPublicHeartbeat(t *testing.T) {
 	}
 }
 
-func TestDirectoryProjectionEligibilityKeepsHeartbeatAndReachabilityIndependent(t *testing.T) {
-	observed := int64(20_000_000)
-	freshReachability := observed - int64(ReachabilityFreshness/time.Second)
-	oldHeartbeat := observed - int64(DeadBefore/time.Second)
+func TestClassifyDirectoryTierUsesHeartbeatReachabilityAndGraveyardAge(t *testing.T) {
+	observed := int64(40_000_000)
 
-	registeredReachable := validDirectoryProjectionRelayForTest(observed)
-	registeredReachable.LastSeenUnix = &oldHeartbeat
-	registeredReachable.HeartbeatState = HeartbeatPrune
-	registeredReachable.ActorLastCheckedUnix = &freshReachability
-	registeredReachable.ActorLastSuccessUnix = &freshReachability
-	if err := ValidateDirectoryProjectionRelay(registeredReachable, observed); err != nil {
-		t.Fatalf("registered reachable prune-boundary relay rejected: %v", err)
+	tierOne := validDirectoryProjectionRelayForTest(observed)
+	if got, err := ClassifyDirectoryTier(tierOne, observed); err != nil || got != DirectoryTierHeartbeatOnline {
+		t.Fatalf("Tier 1 = (%d, %v)", got, err)
 	}
 
-	registeredUnreachable := registeredReachable
-	registeredUnreachable.ActorState = ReachabilityUnreachable
-	if registeredUnreachable.PublicEligible(observed) {
-		t.Fatal("prune-boundary registered relay remained eligible on current unreachable evidence")
+	tierTwo := tierOne
+	tierTwo.Registered = false
+	tierTwo.Discovered = true
+	tierTwo.LastSeenUnix = nil
+	tierTwo.LastHeartbeatUnix = nil
+	tierTwo.HeartbeatState = HeartbeatNotObserved
+	if got, err := ClassifyDirectoryTier(tierTwo, observed); err != nil || got != DirectoryTierOnline {
+		t.Fatalf("Tier 2 = (%d, %v)", got, err)
 	}
 
-	discovered := registeredReachable
-	discovered.Registered = false
-	discovered.Discovered = true
-	discovered.LastSeenUnix = nil
-	discovered.HeartbeatState = HeartbeatNotObserved
-	if err := ValidateDirectoryProjectionRelay(discovered, observed); err != nil {
-		t.Fatalf("discovered-only reachable relay rejected: %v", err)
+	staleHeartbeat := observed - int64(HealthyThrough/time.Second) - 1
+	tierTwo = tierOne
+	tierTwo.LastHeartbeatUnix = &staleHeartbeat
+	if got, err := ClassifyDirectoryTier(tierTwo, observed); err != nil || got != DirectoryTierOnline {
+		t.Fatalf("stale-heartbeat Tier 2 = (%d, %v)", got, err)
 	}
 
-	discovered.ActorState = ReachabilityUnreachable
-	if discovered.PublicEligible(observed) {
-		t.Fatal("discovered-only relay remained eligible on current unreachable evidence")
+	tierThree := tierOne
+	tierThree.ActorState = ReachabilityUnreachable
+	checked := observed - 1
+	lastSuccess := observed - int64(30*24*time.Hour/time.Second)
+	tierThree.ActorLastCheckedUnix = &checked
+	tierThree.ActorLastSuccessUnix = &lastSuccess
+	tierThree.Tier = DirectoryTierUnavailable
+	if got, err := ClassifyDirectoryTier(tierThree, observed); err != nil || got != DirectoryTierUnavailable {
+		t.Fatalf("Tier 3 = (%d, %v)", got, err)
+	}
+	if err := ValidateDirectoryProjectionRelay(tierThree, observed); err != nil {
+		t.Fatalf("Tier 3 rejected: %v", err)
+	}
+
+	tierFour := tierThree
+	graveyardSeen := observed - int64(DirectoryGraveyardAfter/time.Second)
+	tierFour.LastSeenUnix = &graveyardSeen
+	tierFour.LastHeartbeatUnix = &graveyardSeen
+	tierFour.HeartbeatState = HeartbeatPrune
+	tierFour.ActorLastSuccessUnix = &graveyardSeen
+	tierFour.FirstKnownUnix = graveyardSeen - 1
+	tierFour.Tier = DirectoryTierGraveyard
+	if got, err := ClassifyDirectoryTier(tierFour, observed); err != nil || got != DirectoryTierGraveyard {
+		t.Fatalf("Tier 4 = (%d, %v)", got, err)
+	}
+	if err := ValidateDirectoryProjectionRelay(tierFour, observed); err != nil {
+		t.Fatalf("Tier 4 rejected: %v", err)
 	}
 }
 
-func TestDirectoryProjectionEligibilityBoundaries(t *testing.T) {
-	observed := int64(40_000_000)
+func TestDirectoryProjectionTierOneRequiresActualRecentHeartbeat(t *testing.T) {
+	observed := int64(50_000_000)
+	relay := validDirectoryProjectionRelayForTest(observed)
 
-	// A registered relay inside the original v1 heartbeat window remains public
-	// even when the latest independent actor check is unreachable.
-	deadSeen := observed - int64(StaleBefore/time.Second)
-	checked := observed - 1
-	oldSuccess := observed - int64(ReachabilityFreshness/time.Second) - 1
-	registered := validDirectoryProjectionRelayForTest(observed)
-	registered.LastSeenUnix = &deadSeen
-	registered.HeartbeatState = HeartbeatDead
-	registered.ActorState = ReachabilityUnreachable
-	registered.ActorLastCheckedUnix = &checked
-	registered.ActorLastSuccessUnix = &oldSuccess
-	if err := ValidateDirectoryProjectionRelay(registered, observed); err != nil {
-		t.Fatalf("dead registered relay with independent unreachable evidence rejected: %v", err)
+	// A recent register advances last_seen but does not create heartbeat evidence.
+	relay.LastHeartbeatUnix = nil
+	relay.Tier = DirectoryTierOnline
+	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierOnline {
+		t.Fatalf("registered without heartbeat = (%d, %v), want Tier 2", got, err)
 	}
 
-	// Discovery eligibility includes the exact six-hour boundary but expires one
-	// second later. No heartbeat is fabricated for this path.
-	fresh := observed - int64(ReachabilityFreshness/time.Second)
-	discovered := validDirectoryProjectionRelayForTest(observed)
-	discovered.Registered = false
-	discovered.Discovered = true
-	discovered.LastSeenUnix = nil
-	discovered.HeartbeatState = HeartbeatNotObserved
-	discovered.ActorState = ReachabilityReachable
-	discovered.ActorLastCheckedUnix = &fresh
-	discovered.ActorLastSuccessUnix = &fresh
-	if err := ValidateDirectoryProjectionRelay(discovered, observed); err != nil {
-		t.Fatalf("discovery at freshness boundary rejected: %v", err)
-	}
-
-	expired := fresh - 1
-	discovered.ActorLastCheckedUnix = &expired
-	discovered.ActorLastSuccessUnix = &expired
-	if discovered.PublicEligible(observed) {
-		t.Fatal("discovery older than freshness boundary remained public")
-	}
-	if err := ValidateDirectoryProjectionRelay(discovered, observed); !errors.Is(err, ErrDirectoryProjectionData) {
-		t.Fatalf("expired discovered relay error = %v, want ErrDirectoryProjectionData", err)
-	}
-
-	// A registered relay at the 30-day heartbeat boundary may use current actor
-	// reachability, but not actor evidence older than the same freshness bound.
-	pruneSeen := observed - int64(DeadBefore/time.Second)
-	registered = validDirectoryProjectionRelayForTest(observed)
-	registered.LastSeenUnix = &pruneSeen
-	registered.HeartbeatState = HeartbeatPrune
-	registered.ActorLastCheckedUnix = &fresh
-	registered.ActorLastSuccessUnix = &fresh
-	if err := ValidateDirectoryProjectionRelay(registered, observed); err != nil {
-		t.Fatalf("prune-boundary relay with fresh reachability rejected: %v", err)
-	}
-	registered.ActorLastCheckedUnix = &expired
-	registered.ActorLastSuccessUnix = &expired
-	if registered.PublicEligible(observed) {
-		t.Fatal("prune-boundary relay remained public with expired reachability")
+	boundary := observed - int64(HealthyThrough/time.Second)
+	relay.LastHeartbeatUnix = &boundary
+	relay.Tier = DirectoryTierHeartbeatOnline
+	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierHeartbeatOnline {
+		t.Fatalf("heartbeat boundary = (%d, %v), want Tier 1", got, err)
 	}
 }
 
@@ -136,8 +114,10 @@ func TestValidateDirectoryProjectionRelayRejectsInconsistentEvidence(t *testing.
 		name string
 		edit func(*DirectoryProjectionRelay)
 	}{
-		{name: "no path", edit: func(r *DirectoryProjectionRelay) { r.Registered = false }},
+		{name: "no path", edit: func(r *DirectoryProjectionRelay) { r.LifecycleKnown = false; r.Registered = false }},
+		{name: "registered without lifecycle", edit: func(r *DirectoryProjectionRelay) { r.LifecycleKnown = false }},
 		{name: "wrong heartbeat", edit: func(r *DirectoryProjectionRelay) { r.HeartbeatState = HeartbeatDead }},
+		{name: "heartbeat after last seen", edit: func(r *DirectoryProjectionRelay) { future := *r.LastSeenUnix + 1; r.LastHeartbeatUnix = &future }},
 		{name: "future actor check", edit: func(r *DirectoryProjectionRelay) {
 			future := observed + 1
 			r.ActorLastCheckedUnix = &future
@@ -146,6 +126,7 @@ func TestValidateDirectoryProjectionRelayRejectsInconsistentEvidence(t *testing.
 		{name: "reachable timestamps differ", edit: func(r *DirectoryProjectionRelay) { earlier := observed - 2; r.ActorLastSuccessUnix = &earlier }},
 		{name: "noncanonical inbox", edit: func(r *DirectoryProjectionRelay) { r.InboxURL = "HTTPS://relay.example/inbox" }},
 		{name: "checked inbox without time", edit: func(r *DirectoryProjectionRelay) { r.InboxProbeState = InboxResponsive; r.InboxLastCheckedUnix = nil }},
+		{name: "wrong tier", edit: func(r *DirectoryProjectionRelay) { r.Tier = DirectoryTierOnline }},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -160,6 +141,7 @@ func TestValidateDirectoryProjectionRelayRejectsInconsistentEvidence(t *testing.
 
 func validDirectoryProjectionRelayForTest(observed int64) DirectoryProjectionRelay {
 	lastSeen := observed - 10
+	lastHeartbeat := observed - 10
 	checked := observed - 5
 	inboxDeclared := observed - 5
 	inboxChecked := observed - 5
@@ -167,9 +149,13 @@ func validDirectoryProjectionRelayForTest(observed int64) DirectoryProjectionRel
 	return DirectoryProjectionRelay{
 		RelayActor:           "https://relay.example/actor",
 		PublicBaseURL:        "https://relay.example",
+		LifecycleKnown:       true,
 		Registered:           true,
+		FirstKnownUnix:       observed - 100,
+		Tier:                 DirectoryTierHeartbeatOnline,
 		HeartbeatState:       HeartbeatHealthy,
 		LastSeenUnix:         &lastSeen,
+		LastHeartbeatUnix:    &lastHeartbeat,
 		ActorState:           ReachabilityReachable,
 		ActorLastCheckedUnix: &checked,
 		ActorLastSuccessUnix: &checked,

@@ -27,8 +27,16 @@ var (
 	humanDirectoryStylesheet []byte
 )
 
+type humanDirectoryTierBlock struct {
+	Tier        storage.DirectoryTier
+	Title       string
+	Description string
+	Relays      []directoryProjectionRelay
+}
+
 type humanDirectoryPage struct {
 	Listing             directoryProjectionResponse
+	TierBlocks          []humanDirectoryTierBlock
 	PreviousURL         string
 	NextURL             string
 	Stylesheet          string
@@ -40,6 +48,56 @@ type humanDirectoryPage struct {
 	FediverseID         string
 	FediverseURL        string
 	OperatorDiagnostics []string
+}
+
+func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
+	switch tier {
+	case storage.DirectoryTierHeartbeatOnline:
+		return "Tier 1 — Heartbeat + Online"
+	case storage.DirectoryTierOnline:
+		return "Tier 2 — Online, no current heartbeat"
+	case storage.DirectoryTierUnavailable:
+		return "Tier 3 — Offline / Unreachable"
+	case storage.DirectoryTierGraveyard:
+		return "Tier 4 — Graveyard"
+	default:
+		return "Unknown tier"
+	}
+}
+
+func humanDirectoryTierDescription(tier storage.DirectoryTier) string {
+	switch tier {
+	case storage.DirectoryTierHeartbeatOnline:
+		return "These relays send a directory heartbeat and were reachable at the latest check."
+	case storage.DirectoryTierOnline:
+		return "These relays are known to the directory and were reachable at the latest check, but do not currently send a directory heartbeat."
+	case storage.DirectoryTierUnavailable:
+		return "These relays could not be reached at the latest check but have been seen online within the last six months."
+	case storage.DirectoryTierGraveyard:
+		return "These relays have not been seen online for at least six months. They remain listed for historical reference and are checked periodically in case they return."
+	default:
+		return ""
+	}
+}
+
+func buildHumanDirectoryTierBlocks(relays []directoryProjectionRelay) []humanDirectoryTierBlock {
+	blocks := make([]humanDirectoryTierBlock, 0, 4)
+	for tier := storage.DirectoryTierHeartbeatOnline; tier <= storage.DirectoryTierGraveyard; tier++ {
+		block := humanDirectoryTierBlock{
+			Tier:        tier,
+			Title:       humanDirectoryTierTitle(tier),
+			Description: humanDirectoryTierDescription(tier),
+		}
+		for _, relay := range relays {
+			if relay.Tier == tier {
+				block.Relays = append(block.Relays, relay)
+			}
+		}
+		if len(block.Relays) != 0 {
+			blocks = append(blocks, block)
+		}
+	}
+	return blocks
 }
 
 func humanRelayLabel(raw string) string {
@@ -146,6 +204,7 @@ func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseW
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
 		Listing:             listing,
+		TierBlocks:          buildHumanDirectoryTierBlocks(listing.Relays),
 		PreviousURL:         previousURL,
 		NextURL:             nextURL,
 		Stylesheet:          directoryStylesheetPath,

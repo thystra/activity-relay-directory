@@ -45,7 +45,7 @@ service account. The root filesystem remains read-only, and the volume is the
 only persistent writable service path. `DIRECTORY_DATA_VOLUME` may select the
 Compose volume name without changing the in-container database path.
 
-## Schema through version 8
+## Schema through version 9
 
 The initial migration creates four owned tables:
 
@@ -88,7 +88,9 @@ Schema versions 6 and 7 add inactive-retention and database-growth state; their
 operational contracts are described below. Version 8 adds operator discovery,
 independent reachability/RFC 9421 evidence, and hard-retention policy version 2
 without changing the released `relays` lifecycle columns or version 1
-`last_seen_at_unix` semantics.
+`last_seen_at_unix` semantics. Version 9 adds private retained discovery
+candidates and append-only candidate events for `--add-dead-relays`; these rows
+are not verified discoveries and do not authorize public listing.
 
 The relay row retains the first accepted registration timestamp. Unregister is
 a lifecycle transition, not a hard deletion, and administrative suspension is
@@ -420,6 +422,27 @@ events and moderation events are never deleted. An observation row is deleted
 only after a primary lifecycle/discovery row is purged and no
 other lifecycle or discovery owner remains. See `docs/RETENTION.md` and
 `docs/DISCOVERY-REACHABILITY.md`.
+
+
+## Schema version 9: retained discovery candidates
+
+Schema version 9 adds `relay_discovery_candidates` and
+`discovery_candidate_events`. Candidate rows retain canonical candidate actor
+URL/public-base hints that passed syntax/network-target gates but whose actor
+was unreachable or incompatible during an explicit operator import. The current
+row stores `unreachable|incompatible|resolved`, first-seen and last-check times,
+last successful check when present, and a failure count. Append-only private
+events preserve the bounded operator/reason/source provenance used if a later
+maintenance check promotes the candidate.
+
+Unresolved candidate rows are intentionally separate from `relay_discoveries`
+and `relay_observations`; they do not fabricate actor verification, lifecycle
+participation, heartbeat, RFC 9421 evidence, or public eligibility. With
+background reachability enabled, retry timing is computed from the retained
+failure count at fixed 6-hour, 12-hour, 24-hour, 3-day, then weekly intervals. A
+successful canonical actor check transactionally creates/reactivates the normal
+discovery and reachable observation, records the discovery audit, and marks the
+candidate resolved.
 
 ## Backup and recovery boundary
 

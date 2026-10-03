@@ -44,7 +44,7 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		}
 	}
 	body := response.Body.String()
-	statusIndex := strings.Index(body, "What the statuses mean")
+	statusIndex := strings.Index(body, "How the relay tiers work")
 	directoryIndex := strings.Index(body, "Participating relays")
 	if statusIndex < 0 || directoryIndex < 0 || statusIndex > directoryIndex {
 		t.Fatalf("status help must appear before relay table: status=%d directory=%d", statusIndex, directoryIndex)
@@ -65,7 +65,7 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		"Public relay directory",
 		"Participating relays",
 		"No relays are listed yet",
-		"What the statuses mean",
+		"How the relay tiers work",
 		"Click on a relay's line for details.",
 	} {
 		if !strings.Contains(body, required) {
@@ -90,11 +90,12 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		".site-header",
 		".hero h1",
 		".panel",
+		".tier-guide",
+		".tier-block",
 		".relay-table",
 		".relay-summary",
 		".heartbeat-healthy",
 		".reachability-reachable",
-		".status-grid",
 		".empty-state",
 		".pagination",
 		".pagination-previous",
@@ -115,12 +116,11 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 	for _, required := range []string{
 		`{{heartbeatLabel .Heartbeat.State}}`,
 		`{{reachabilityLabel .Reachability.State}}`,
-		`<strong>Healthy</strong>`,
-		`<strong>Stale</strong>`,
-		`<strong>Dead</strong>`,
-		`<strong>Reachable</strong>`,
-		`<strong>Unreachable</strong>`,
-		`<strong>Not checked</strong>`,
+		`Tier 1 — Heartbeat + Online`,
+		`Tier 2 — Online, no current heartbeat`,
+		`Tier 3 — Offline / Unreachable`,
+		`Tier 4 — Graveyard`,
+		`alphabetical by hostname inside each tier`,
 	} {
 		if !strings.Contains(humanDirectoryTemplateSource, required) {
 			t.Fatalf("directory template missing visible evidence label %q", required)

@@ -13,6 +13,21 @@ constructed), and `enrollment_open` (the current durable first-registration
 policy). These booleans are intentionally independent. Failure to read the
 durable policy makes the status request fail closed without database detail.
 
+## Public directory projection vocabulary
+
+The read-only `GET /v2/relays` representation is versioned independently from
+the signed lifecycle request protocol. On the 1.2 development line its
+`schema_version` is `3`. Each relay object includes the closed numeric `tier`
+vocabulary `1|2|3|4`, representing heartbeat+online, online without a current
+heartbeat, unavailable, and the 180-day graveyard respectively. Public ordering
+is `(tier, relay_actor)` and the authenticated v2 cursor format version is `2`,
+carrying both tier and actor position. See `docs/PUBLIC-LISTING.md` for the
+complete inclusion, timing, pagination, and privacy contract.
+
+This public tier is presentation of retained evidence, not a lifecycle state and
+not an admission score. It never exposes discovery source, operator metadata,
+or unresolved `--add-dead-relays` candidate provenance.
+
 ## Versioning and encoding
 
 Every request and response contains the integer `protocol_version`. Version 1
@@ -117,7 +132,7 @@ the canonical `relay_actor` in the request body.
 The production resolver accepts a canonical fragment-bearing key ID
 whose fragment-free form is the actor URL. It retrieves only that HTTPS actor
 document through the bounded network policy in `docs/RESOLUTION.md`. The actor
-must be an `Application` or `Service`, its `id` must equal the requested actor
+must be an `Application`, `Service`, or `Group`, its `id` must equal the requested actor
 URL, and exactly one embedded public key must have the requested key ID and the
 actor as owner. This is authenticated key discovery for signature verification,
 not registration authorization. Enabled lifecycle handlers reach it only after

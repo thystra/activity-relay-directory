@@ -6,10 +6,10 @@ This document defines the approved Activity-Relay Directory 1.1 design for
 operator discovery, independent relay reachability, endpoint diagnostics, and
 their interaction with the existing version 1 lifecycle contract.
 
-Schema version 8 persistence, the local operator discovery/import surface, the
-default-off bounded background reachability worker, and the richer public 1.1
-Directory projection are implemented and source-accepted for the 1.1 release
-line. See `docs/REACHABILITY.md` for worker scheduling/soft-pruning interaction
+Schema version 9 persistence, the local operator discovery/import surface, the
+default-off bounded background reachability worker, retained candidate retry,
+and the richer public Directory projection are implemented on the 1.2
+development line. See `docs/REACHABILITY.md` for worker scheduling/soft-pruning interaction
 and `docs/PUBLIC-LISTING.md` for the public projection contract. The released
 1.0.0 lifecycle and `/v1/relays` representation remain compatibility
 authorities in 1.1; the richer projection is additive rather than a
@@ -109,12 +109,34 @@ The implemented local commands are:
 ```text
 activity-relay-directory admin discovery add --url URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
 activity-relay-directory admin discovery remove --actor URL --operator ID --reason CODE [--source-label LABEL] [--yes] [--format human|json]
-activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--yes] [--format human|json]
+activity-relay-directory admin discovery import --file PATH --operator ID --reason CODE --source-label LABEL [--add-dead-relays] [--yes] [--format human|json]
 ```
 
 Single-add confirmation requires typing the independently validated canonical
 actor. Removal requires typing the exact canonical actor supplied to the local
 command. No discovery command creates a public administrative HTTP route.
+
+## Retained unavailable candidates and retry
+
+`discovery import --add-dead-relays` keeps candidates whose canonical actor URL
+is syntactically valid but whose actor is currently unreachable or incompatible.
+These rows live in `relay_discovery_candidates`, not `relay_discoveries`, so a
+failed actor check never fabricates a verified relay identity or public listing.
+Malformed input, explicit HTTP URLs, and prohibited network targets remain
+rejected rather than retained.
+
+When background reachability is explicitly enabled, the service also retries
+these private candidates. The fixed retry schedule after consecutive failures is
+6 hours, 12 hours, 24 hours, 3 days, then 7 days. After reaching the seven-day
+interval, retries continue weekly without an automatic expiry. If a later check
+validates the exact canonical actor, ARD transactionally creates or reactivates
+the normal discovery, records the successful actor/inbox observation, and marks
+the retained candidate resolved. Original operator/source provenance remains
+private and is carried into the promoted discovery audit.
+
+A never-verified candidate remains private even after six months. The public
+Tier 4 graveyard contains only identities that have previously crossed a
+reviewed verified lifecycle or discovery path.
 
 ## Actor discovery and verification
 
@@ -131,7 +153,7 @@ At minimum the path preserves:
 - ActivityStreams-compatible response media type;
 - bounded valid JSON;
 - exact canonical actor `id`; and
-- an accepted `Application` or `Service` actor type.
+- an accepted `Application`, `Service`, or `Group` actor type.
 
 The current RFC 9421 key resolver additionally requires a requested signing key.
 The 1.1 actor probe must share the safe fetch/actor-validation primitives without
@@ -146,7 +168,7 @@ authority for canonical actor identity and its declared inbox.
 The actor probe shares the exact bounded ActivityStreams GET path used by RFC
 9421 key resolution but deliberately does not require one historical signing
 key. The actor `id` must exactly match the requested canonical `/actor` URL and
-its type must include `Application` or `Service`. A present inbox must itself be
+its type must include `Application`, `Service`, or `Group`. A present inbox must itself be
 a canonical HTTPS URL before it can be recorded or probed.
 
 ## Inbox capability and diagnostics
@@ -169,8 +191,9 @@ Canonical actor reachability is the independent liveness signal.
 
 ## Private persistence contract
 
-Schema version 8 implements three responsibilities without rewriting the
-released `relays` lifecycle table.
+Schema version 9 retains the schema-version-8 discovery and observation model
+and adds private unresolved-candidate state without rewriting the released
+`relays` lifecycle table.
 
 ### `relay_discoveries`
 
@@ -212,6 +235,15 @@ Authenticated unregister advances it when the actor still has retained
 lifecycle or discovery identity; an otherwise unknown unregister does not create
 an observation row. None of these operations fabricate actor reachability or
 alter the version 1 `last_seen_at_unix` rule.
+
+### `relay_discovery_candidates` and `discovery_candidate_events`
+
+Schema version 9 stores unresolved candidate actor URLs separately from verified
+discoveries. Current state records first-seen time, last check, last successful
+check when one exists, consecutive failure count, and the closed
+`unreachable|incompatible|resolved` state. Private append-only candidate events
+preserve the bounded operator/reason/source provenance needed for later
+promotion. No candidate row is itself public authorization.
 
 ### Version-7 upgrade
 
@@ -264,18 +296,13 @@ repository/projection path. Public fields include:
 They do not expose discovery source, source label, operator ID, reason code,
 private probe errors, client IP address, signing key IDs, or audit events.
 
-Public eligibility is an OR of separately justified participation paths, with
-administrative suspension overriding both:
-
-- an authenticated registration may authorize an entry under its reviewed
-  lifecycle/reachability rules; or
-- an active operator discovery may authorize an entry while sufficiently recent
-  successful actor evidence exists.
-
-The exact reachability freshness window is the fixed six-hour Tranche 21
-contract. A discovered-only entry therefore ages out of public eligibility when
-that current successful actor evidence becomes older than six hours, even if
-operator discovery remains active.
+Public ordering is now the four-tier operational model shared with
+`docs/PUBLIC-LISTING.md`: heartbeat+online, online without a current heartbeat,
+unavailable, and the 180-day graveyard. Verified known identities remain
+visible through outages unless explicitly removed or administratively
+suspended. Within every tier ordering is alphabetical by canonical actor rather
+than heartbeat/check frequency. Unverified retained candidates remain private
+until successful promotion.
 
 ## Soft pruning interaction
 
@@ -300,7 +327,10 @@ storage-growth write-admission boundary for observation persistence.
 The reviewed implementation sets a fixed default interval and minimum interval
 and captures one server observation time per bounded run. Failure of one relay
 does not abort unrelated candidates. Cancellation stops new work promptly and
-does not convert canceled probes into negative reachability evidence.
+does not convert canceled probes into negative reachability evidence. A known
+relay that has remained offline for at least seven days is reduced to weekly
+actor rechecks; checks continue even after the relay crosses the 180-day
+public-graveyard boundary so a recovered relay can return automatically.
 
 ## Required implementation order
 

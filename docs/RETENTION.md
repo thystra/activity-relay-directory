@@ -3,8 +3,8 @@
 Hard retention is a deliberately narrow **purge** policy for durable inactive
 Directory state. Purge is irreversible. It is not the 30-day **prune**
 transition: soft pruning remains reversible, keeps the relay lifecycle row and
-history, and is used by the health/public-visibility lifecycle. Schema version 8
-advances the hard-retention contract to policy version 2 so removed discovery
+history, and is used by the health/public-visibility lifecycle. Current schema version 9
+retains the hard-retention policy version 2 introduced by migration 8, so removed discovery
 state and unowned observation state are covered without erasing private
 discovery audit.
 
@@ -18,10 +18,10 @@ local purge command with a verified pre-retention backup.
 Hard retention remains independent from actor reachability. For reversible
 soft pruning, however, 1.1 treats fresh current actor reachability as separate
 evidence from lifecycle heartbeat recency. When background reachability is
-enabled, automatic soft pruning waits for recent complete reachability coverage
-and both candidate selection and the final pruning transaction protect a relay
-whose current actor state is `reachable` with a success inside the fixed
-six-hour window. See `docs/REACHABILITY.md`.
+enabled, automatic soft pruning waits for a recent complete non-truncated
+reachability pass over all actors due under the current cadence. Candidate
+selection and the final pruning transaction still protect a relay whose current
+actor state is `reachable` with a success inside the fixed six-hour window. See `docs/REACHABILITY.md`.
 
 
 ## Threat model

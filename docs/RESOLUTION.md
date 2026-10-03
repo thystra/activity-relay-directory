@@ -62,7 +62,7 @@ closed.
 JSON permits unknown ActivityStreams extensions but rejects duplicate member
 names at every object depth, trailing values, nesting beyond 32 levels, and
 containers above 4096 entries. The actor must have an `id` exactly equal to the fragment-free requested URL and
-include `Application` or `Service` in its type. RFC 9421 key resolution further
+include `Application`, `Service`, or `Group` in its type. RFC 9421 key resolution further
 requires no more than eight embedded public keys and exactly one key whose `id`
 is the requested key ID and whose `owner` is the actor ID.
 

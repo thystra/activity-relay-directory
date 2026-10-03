@@ -23,9 +23,13 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		Relays: []storage.DirectoryProjectionRelay{{
 			RelayActor:           "https://relay.example/a&b",
 			PublicBaseURL:        "https://relay.example",
+			LifecycleKnown:       true,
 			Registered:           true,
+			FirstKnownUnix:       lastSeen - 100,
+			Tier:                 storage.DirectoryTierHeartbeatOnline,
 			HeartbeatState:       storage.HeartbeatHealthy,
 			LastSeenUnix:         &lastSeen,
+			LastHeartbeatUnix:    &lastSeen,
 			ActorState:           storage.ReachabilityReachable,
 			ActorLastCheckedUnix: &checked,
 			ActorLastSuccessUnix: &checked,
@@ -158,8 +162,10 @@ func TestHumanDirectoryHeadSuppressesBodyAndPreservesValidators(t *testing.T) {
 func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T) {
 	now := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{
+			directoryProjectionRelayForTest(now, "https://relay.example/actor", storage.DirectoryTierOnline),
+		},
+		Next: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
@@ -185,7 +191,9 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 	}
 
 	repository.mu.Lock()
-	repository.directoryPage.Next = storage.DirectoryProjectionCursor{}
+	repository.directoryPage = storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{
+		directoryProjectionRelayForTest(now, "https://z.example/actor", storage.DirectoryTierOnline),
+	}}
 	repository.mu.Unlock()
 
 	jsonResponse := httptest.NewRecorder()
@@ -202,7 +210,7 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 		t.Fatalf("queries = %#v", repository.directoryQueries)
 	}
 	second := repository.directoryQueries[1]
-	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.RelayActor != "https://relay.example/actor" {
+	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After.Tier != storage.DirectoryTierOnline || second.After.RelayActor != "https://relay.example/actor" {
 		t.Fatalf("second query = %#v", second)
 	}
 }
@@ -210,15 +218,17 @@ func TestHumanDirectoryUsesSameAuthenticatedCursorAndProjectionAsV2(t *testing.T
 func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *testing.T) {
 	now := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays:   []storage.DirectoryProjectionRelay{},
-		Previous: storage.DirectoryProjectionCursor{RelayActor: "https://c.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{
+			directoryProjectionRelayForTest(now, "https://c.example/actor", storage.DirectoryTierOnline),
+		},
+		Previous: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://c.example/actor"},
 	}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
 	current, err := handler.encodeDirectoryProjectionCursor(directoryProjectionCursor{
-		Version: directoryProjectionCursorVersion, IssuedUnix: now.Unix(), RelayActor: "https://b.example/actor",
+		Version: directoryProjectionCursorVersion, IssuedUnix: now.Unix(), Tier: storage.DirectoryTierOnline, RelayActor: "https://b.example/actor",
 	})
 	if err != nil {
 		t.Fatalf("encode current cursor: %v", err)
@@ -244,7 +254,7 @@ func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *test
 	decodedBefore, err := handler.decodeDirectoryProjectionCursor(before)
 	if err != nil ||
 		decodedBefore.IssuedUnix != now.Unix() ||
-		decodedBefore.RelayActor != "https://c.example/actor" {
+		decodedBefore.Tier != storage.DirectoryTierOnline || decodedBefore.RelayActor != "https://c.example/actor" {
 		t.Fatalf("previous cursor = %#v error=%v", decodedBefore, err)
 	}
 	originalIssuedUnix := decodedBefore.IssuedUnix
@@ -255,8 +265,10 @@ func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *test
 	now = now.Add(30 * time.Second)
 	repository.mu.Lock()
 	repository.directoryPage = storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://b.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{
+			directoryProjectionRelayForTest(now, "https://b.example/actor", storage.DirectoryTierOnline),
+		},
+		Next: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://b.example/actor"},
 	}
 	repository.mu.Unlock()
 
@@ -280,7 +292,7 @@ func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *test
 	decodedNext, err := handler.decodeDirectoryProjectionCursor(nextCursor)
 	if err != nil ||
 		decodedNext.IssuedUnix != originalIssuedUnix ||
-		decodedNext.RelayActor != "https://b.example/actor" {
+		decodedNext.Tier != storage.DirectoryTierOnline || decodedNext.RelayActor != "https://b.example/actor" {
 		t.Fatalf("reverse next cursor = %#v error=%v", decodedNext, err)
 	}
 
@@ -292,7 +304,7 @@ func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *test
 	second := repository.directoryQueries[1]
 	repository.mu.Unlock()
 	if !second.ObservedAt.Equal(now) || second.Limit != 7 || second.After != (storage.DirectoryProjectionCursor{}) ||
-		second.Before.RelayActor != "https://c.example/actor" {
+		second.Before.Tier != storage.DirectoryTierOnline || second.Before.RelayActor != "https://c.example/actor" {
 		t.Fatalf("reverse query = %#v", second)
 	}
 
@@ -316,11 +328,14 @@ func TestHumanDirectoryProvidesPreviousPageWithoutChangingV2QuerySurface(t *test
 }
 
 func TestHumanDirectoryRejectsTamperedCursorAndBackendFailureWithoutDisclosure(t *testing.T) {
+	now := time.Unix(2_000, 0).UTC()
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
-		Relays: []storage.DirectoryProjectionRelay{},
-		Next:   storage.DirectoryProjectionCursor{RelayActor: "https://relay.example/actor"},
+		Relays: []storage.DirectoryProjectionRelay{
+			directoryProjectionRelayForTest(now, "https://relay.example/actor", storage.DirectoryTierOnline),
+		},
+		Next: storage.DirectoryProjectionCursor{Tier: storage.DirectoryTierOnline, RelayActor: "https://relay.example/actor"},
 	}}
-	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(2_000, 0).UTC() })
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("NewPublicListingHandler() error = %v", err)
 	}
@@ -410,4 +425,29 @@ func extractHTMLAttribute(t *testing.T, body, prefix, suffix string) string {
 		t.Fatalf("missing HTML attribute suffix %q in %q", suffix, body)
 	}
 	return html.UnescapeString(body[start : start+end])
+}
+
+func TestBuildHumanDirectoryTierBlocksPreservesTierAndAlphabeticalOrder(t *testing.T) {
+	relays := []directoryProjectionRelay{
+		{RelayActor: "https://a.example/actor", Tier: storage.DirectoryTierHeartbeatOnline},
+		{RelayActor: "https://b.example/actor", Tier: storage.DirectoryTierHeartbeatOnline},
+		{RelayActor: "https://c.example/actor", Tier: storage.DirectoryTierOnline},
+		{RelayActor: "https://d.example/actor", Tier: storage.DirectoryTierUnavailable},
+		{RelayActor: "https://e.example/actor", Tier: storage.DirectoryTierGraveyard},
+	}
+	blocks := buildHumanDirectoryTierBlocks(relays)
+	if len(blocks) != 4 {
+		t.Fatalf("blocks = %#v", blocks)
+	}
+	for index, block := range blocks {
+		wantTier := storage.DirectoryTier(index + 1)
+		if block.Tier != wantTier || block.Title == "" || block.Description == "" {
+			t.Fatalf("block[%d] = %#v", index, block)
+		}
+	}
+	if len(blocks[0].Relays) != 2 ||
+		blocks[0].Relays[0].RelayActor != "https://a.example/actor" ||
+		blocks[0].Relays[1].RelayActor != "https://b.example/actor" {
+		t.Fatalf("tier 1 relays = %#v", blocks[0].Relays)
+	}
 }

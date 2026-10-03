@@ -27,18 +27,26 @@
     <section class="status-help panel" aria-labelledby="status-heading">
       <div class="section-heading">
         <div>
-          <h2 id="status-heading">What the statuses mean</h2>
-          <p class="muted">Heartbeat and reachability tell you different things about a relay.</p>
+          <h2 id="status-heading">How the relay tiers work</h2>
+          <p class="muted">Tiers describe operational confidence, not popularity. Relays are alphabetical by hostname inside each tier.</p>
         </div>
       </div>
-      <dl class="status-grid">
-        <div class="status-definition">
-          <dt>Heartbeat</dt>
-          <dd><strong>Healthy</strong> means the relay sent a recent heartbeat. <strong>Stale</strong> or <strong>Dead</strong> means that heartbeat is getting old, even if the relay is still reachable.</dd>
+      <dl class="tier-guide">
+        <div class="tier-guide-item tier-guide-1">
+          <dt>Tier 1 — Heartbeat + Online</dt>
+          <dd>These relays send a directory heartbeat and were reachable at the latest check.</dd>
         </div>
-        <div class="status-definition">
-          <dt>Reachability</dt>
-          <dd><strong>Reachable</strong> means the directory could recently connect to the relay's public actor. <strong>Unreachable</strong> means the latest check failed. <strong>Not checked</strong> means there is no recent check to show.</dd>
+        <div class="tier-guide-item tier-guide-2">
+          <dt>Tier 2 — Online, no current heartbeat</dt>
+          <dd>These relays are known to the directory and were reachable at the latest check, but do not currently send a directory heartbeat.</dd>
+        </div>
+        <div class="tier-guide-item tier-guide-3">
+          <dt>Tier 3 — Offline / Unreachable</dt>
+          <dd>These relays could not be reached at the latest check but have been seen online within the last six months.</dd>
+        </div>
+        <div class="tier-guide-item tier-guide-4">
+          <dt>Tier 4 — Graveyard</dt>
+          <dd>These relays have not been seen online for at least six months. They remain listed for historical reference and are checked periodically in case they return.</dd>
         </div>
       </dl>
     </section>
@@ -53,60 +61,72 @@
       </div>
 
 
-      <div class="relay-table" aria-label="Participating relays">
-        <div class="relay-table-header" aria-hidden="true">
-          <span>Relay</span>
-          <span>Heartbeat</span>
-          <span>Reachability</span>
-          <span>Last heartbeat</span>
-          <span>Last checked</span>
+
+      <section class="tier-block tier-block-1" aria-labelledby="tier-heading-1">
+        <div class="tier-heading">
+          <div>
+            <p class="eyebrow">Tier 1</p>
+            <h3 id="tier-heading-1">Tier 1 — Heartbeat &#43; Online</h3>
+            <p class="muted">These relays send a directory heartbeat and were reachable at the latest check.</p>
+          </div>
+          <span class="tier-count">1 relay on this page</span>
         </div>
-        <ul class="relay-rows">
+        <div class="relay-table" aria-label="Tier 1 — Heartbeat &#43; Online relays">
+          <div class="relay-table-header" aria-hidden="true">
+            <span>Relay</span>
+            <span>Heartbeat</span>
+            <span>Reachability</span>
+            <span>Last heartbeat</span>
+            <span>Last checked</span>
+          </div>
+          <ul class="relay-rows">
 
-          <li>
-            <details class="relay-row">
-              <summary class="relay-summary">
-                <span class="relay-name">
-                  <a href="https://relay.example" rel="noreferrer">relay.example</a>
-                </span>
-                <span class="relay-cell relay-heartbeat">
-                  <span class="cell-label">Heartbeat</span>
-                  <span class="signal-badge heartbeat-healthy">Healthy</span>
-                </span>
-                <span class="relay-cell relay-reachability">
-                  <span class="cell-label">Reachability</span>
-                  <span class="signal-badge reachability-reachable">Reachable</span>
-                </span>
-                <span class="relay-cell relay-time">
-                  <span class="cell-label">Last heartbeat</span>
-                  <time datetime="1970-01-02T03:46:40Z">1970-01-02 03:46 UTC</time>
-                </span>
-                <span class="relay-cell relay-time">
-                  <span class="cell-label">Last checked</span>
-                  <time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time>
-                </span>
-              </summary>
-              <div class="relay-details">
-                <dl>
-                  <div>
-                    <dt>Actor</dt>
-                    <dd><code>https://relay.example/a&amp;b</code></dd>
-                  </div>
-                  <div>
-                    <dt>Inbox</dt>
-                    <dd><code>https://relay.example/inbox/a&amp;b</code></dd>
-                  </div>
-                  <div>
-                    <dt>Last successful check</dt>
-                    <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time></dd>
-                  </div>
-                </dl>
-              </div>
-            </details>
-          </li>
+            <li>
+              <details class="relay-row">
+                <summary class="relay-summary">
+                  <span class="relay-name">
+                    <a href="https://relay.example" rel="noreferrer">relay.example</a>
+                  </span>
+                  <span class="relay-cell relay-heartbeat">
+                    <span class="cell-label">Heartbeat</span>
+                    <span class="signal-badge heartbeat-healthy">Healthy</span>
+                  </span>
+                  <span class="relay-cell relay-reachability">
+                    <span class="cell-label">Reachability</span>
+                    <span class="signal-badge reachability-reachable">Reachable</span>
+                  </span>
+                  <span class="relay-cell relay-time">
+                    <span class="cell-label">Last heartbeat</span>
+                    <time datetime="1970-01-02T03:46:40Z">1970-01-02 03:46 UTC</time>
+                  </span>
+                  <span class="relay-cell relay-time">
+                    <span class="cell-label">Last checked</span>
+                    <time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time>
+                  </span>
+                </summary>
+                <div class="relay-details">
+                  <dl>
+                    <div>
+                      <dt>Actor</dt>
+                      <dd><code>https://relay.example/a&amp;b</code></dd>
+                    </div>
+                    <div>
+                      <dt>Inbox</dt>
+                      <dd><code>https://relay.example/inbox/a&amp;b</code></dd>
+                    </div>
+                    <div>
+                      <dt>Last successful check</dt>
+                      <dd><time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time></dd>
+                    </div>
+                  </dl>
+                </div>
+              </details>
+            </li>
 
-        </ul>
-      </div>
+          </ul>
+        </div>
+      </section>
+
 
 
       <nav class="pagination" aria-label="Directory pages">

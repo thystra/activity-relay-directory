@@ -15,6 +15,12 @@ const (
 	// as current for maintenance selection and soft-pruning protection.
 	ReachabilityFreshness = 6 * time.Hour
 
+	// ReachabilityUnreachableRetry is the low-frequency cadence for a known relay
+	// that has remained offline for at least seven days. Such relays continue to
+	// be checked indefinitely so a recovery can move them out of unavailable or
+	// graveyard presentation without requiring operator intervention.
+	ReachabilityUnreachableRetry = 7 * 24 * time.Hour
+
 	// MaximumReachabilityCandidatePage bounds each private candidate read.
 	MaximumReachabilityCandidatePage = 24
 
@@ -54,8 +60,10 @@ func (cursor ReachabilityCandidateCursor) Valid() bool {
 }
 
 // ReachabilityCandidateQuery requests one bounded page against one captured
-// server observation time. An actor is due when it has never been checked or
-// its last check is older than ReachabilityFreshness.
+// server observation time. Normally an actor is due when it has never been
+// checked or its last check is older than ReachabilityFreshness. A relay that
+// is currently unreachable and has not been seen online for at least seven
+// days is retried at ReachabilityUnreachableRetry instead.
 type ReachabilityCandidateQuery struct {
 	After      ReachabilityCandidateCursor
 	Limit      int
