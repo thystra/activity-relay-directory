@@ -4,6 +4,10 @@
 
 - Show the running application version in the public-facing Directory footer,
   using the same runtime build identity exposed by `/v1/status`.
+- Carry forward release-validation verifier-authority, clean-room, and rollback
+  safety rules from the retired documentation branch, including authoritative
+  object checks, project-neutral baselines, offline rollback, and continuation
+  from observed state after partial mutations.
 
 ## 1.2.0 - 2026-10-03
 
