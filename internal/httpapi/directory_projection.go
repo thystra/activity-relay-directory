@@ -20,7 +20,7 @@ import (
 
 const (
 	directoryProjectionPath          = "/v2/relays"
-	directoryProjectionSchemaVersion = 3
+	directoryProjectionSchemaVersion = 4
 	directoryProjectionCursorVersion = 2
 )
 
@@ -214,10 +214,35 @@ type directoryProjectionRelay struct {
 	RelayActor    string                          `json:"relay_actor"`
 	PublicBaseURL string                          `json:"public_base_url"`
 	Tier          storage.DirectoryTier           `json:"tier"`
+	Profile       directoryProjectionProfile      `json:"profile"`
 	Heartbeat     directoryProjectionHeartbeat    `json:"heartbeat"`
 	Reachability  directoryProjectionReachability `json:"reachability"`
 	Inbox         directoryProjectionInbox        `json:"inbox"`
 	RFC9421       directoryProjectionRFC9421      `json:"rfc9421"`
+}
+
+type directoryProjectionProfile struct {
+	ParticipationMode string   `json:"participation_mode"`
+	Availability      string   `json:"availability"`
+	RelayType         string   `json:"relay_type"`
+	Languages         []string `json:"languages"`
+	Countries         []string `json:"countries"`
+	Regions           []string `json:"regions"`
+	Topics            []string `json:"topics"`
+	ContactFediverse  string   `json:"contact_fediverse"`
+	ContactEmail      string   `json:"contact_email"`
+	ContactURL        string   `json:"contact_url"`
+	ParticipationURL  string   `json:"participation_url"`
+	Notes             string   `json:"notes"`
+}
+
+func (profile directoryProjectionProfile) Empty() bool {
+	return profile.ParticipationMode == "" && profile.Availability == "" &&
+		profile.RelayType == "" && len(profile.Languages) == 0 &&
+		len(profile.Countries) == 0 && len(profile.Regions) == 0 &&
+		len(profile.Topics) == 0 && profile.ContactFediverse == "" &&
+		profile.ContactEmail == "" && profile.ContactURL == "" &&
+		profile.ParticipationURL == "" && profile.Notes == ""
 }
 
 type directoryProjectionHeartbeat struct {
@@ -291,6 +316,7 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 		RelayActor:    relay.RelayActor,
 		PublicBaseURL: relay.PublicBaseURL,
 		Tier:          relay.Tier,
+		Profile:       presentDirectoryProjectionProfile(relay.Profile),
 		Heartbeat: directoryProjectionHeartbeat{
 			State:      relay.HeartbeatState,
 			LastSeenAt: formatProjectionUnix(relay.LastSeenUnix),
@@ -318,6 +344,23 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 		presented.RFC9421.State = "verified"
 	}
 	return presented
+}
+
+func presentDirectoryProjectionProfile(profile storage.RelayProfile) directoryProjectionProfile {
+	return directoryProjectionProfile{
+		ParticipationMode: profile.ParticipationMode,
+		Availability:      profile.Availability,
+		RelayType:         profile.RelayType,
+		Languages:         append([]string{}, profile.Languages...),
+		Countries:         append([]string{}, profile.Countries...),
+		Regions:           append([]string{}, profile.Regions...),
+		Topics:            append([]string{}, profile.Topics...),
+		ContactFediverse:  profile.ContactFediverse,
+		ContactEmail:      profile.ContactEmail,
+		ContactURL:        profile.ContactURL,
+		ParticipationURL:  profile.ParticipationURL,
+		Notes:             profile.Notes,
+	}
 }
 
 func formatProjectionUnix(value *int64) *string {

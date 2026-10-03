@@ -89,6 +89,80 @@ func TestDirectoryProjectionOrdersOperationalTiersAndKeepsParticipationPathsInde
 	}
 }
 
+func TestDirectoryProjectionPublishesEffectiveProfileWithoutChangingOperationalTier(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	observed := time.Unix(20_000_000, 0).UTC()
+	fresh := observed.Add(-time.Second).Unix()
+	actor := "https://profile.example/actor"
+
+	insertReachabilityDiscovery(t, database, actor, discoveryActive, observed.Unix()-100)
+	insertDirectoryObservation(t, database, actor, storage.ReachabilityReachable, fresh, &fresh, true)
+
+	if _, err := repository.ReplaceProfileSource(ctx, storage.ProfileSourceIntent{
+		RelayActor: actor,
+		Source: storage.ProfileSource{
+			Kind:        storage.ProfileSourceCSV,
+			SourceLabel: "curated",
+		},
+		Profile: storage.RelayProfile{
+			Availability: "public",
+			Languages:    []string{"en"},
+			Topics:       []string{"general"},
+		},
+	}, observed.Add(-3*time.Second)); err != nil {
+		t.Fatalf("ReplaceProfileSource(csv) error = %v", err)
+	}
+	if _, err := repository.ReplaceProfileSource(ctx, storage.ProfileSourceIntent{
+		RelayActor: actor,
+		Source: storage.ProfileSource{
+			Kind: storage.ProfileSourceRelay,
+		},
+		Profile: storage.RelayProfile{
+			Availability: "relay supplied",
+			Languages:    []string{"fr"},
+			ContactURL:   "https://profile.example/contact",
+		},
+	}, observed.Add(-2*time.Second)); err != nil {
+		t.Fatalf("ReplaceProfileSource(relay) error = %v", err)
+	}
+	if _, err := repository.ReplaceProfileSource(ctx, storage.ProfileSourceIntent{
+		RelayActor: actor,
+		Source: storage.ProfileSource{
+			Kind:        storage.ProfileSourceOverride,
+			SourceLabel: "operator",
+		},
+		Profile: storage.RelayProfile{
+			Notes: "operator reviewed note",
+		},
+	}, observed.Add(-time.Second)); err != nil {
+		t.Fatalf("ReplaceProfileSource(override) error = %v", err)
+	}
+
+	page, err := repository.ListDirectoryRelays(ctx, storage.DirectoryProjectionQuery{
+		Limit:      storage.MaximumDirectoryProjectionPage,
+		ObservedAt: observed,
+	})
+	if err != nil {
+		t.Fatalf("ListDirectoryRelays() error = %v", err)
+	}
+	if len(page.Relays) != 1 {
+		t.Fatalf("relays = %#v", page.Relays)
+	}
+	relay := page.Relays[0]
+	if relay.Tier != storage.DirectoryTierOnline {
+		t.Fatalf("tier = %d, want %d", relay.Tier, storage.DirectoryTierOnline)
+	}
+	if relay.Profile.Availability != "relay supplied" ||
+		len(relay.Profile.Languages) != 1 || relay.Profile.Languages[0] != "fr" ||
+		len(relay.Profile.Topics) != 1 || relay.Profile.Topics[0] != "general" ||
+		relay.Profile.ContactURL != "https://profile.example/contact" ||
+		relay.Profile.Notes != "operator reviewed note" {
+		t.Fatalf("effective profile = %#v", relay.Profile)
+	}
+}
+
 func TestTranche23AcceptanceParticipationMatrix(t *testing.T) {
 	database := openMigratedTestDatabase(t)
 	repository := newTestRelayRepository(t, database)

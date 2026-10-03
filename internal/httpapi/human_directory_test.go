@@ -126,6 +126,58 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	}
 }
 
+func TestHumanDirectoryRendersEffectiveProfileAsEscapedTextAndHTTPSLinks(t *testing.T) {
+	now := time.Unix(100_100, 0).UTC()
+	relay := directoryProjectionRelayForTest(now, "https://profile.example/actor", storage.DirectoryTierOnline)
+	relay.Profile = storage.RelayProfile{
+		ParticipationMode: "open <community>",
+		Availability:      "public",
+		Languages:         []string{"en", "fr"},
+		ContactEmail:      "relay@example.com",
+		ContactURL:        "https://profile.example/contact",
+		ParticipationURL:  "https://profile.example/join",
+		Notes:             "Friends & neighbors <welcome>",
+	}
+	repository := &publicListingRepositoryStub{
+		summary: storage.DirectorySummary{
+			KnownRelays:  1,
+			OnlineRelays: 1,
+		},
+		directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{relay}},
+	}
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+
+	response := httptest.NewRecorder()
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, required := range []string{
+		">Profile</h4>",
+		"open &lt;community&gt;",
+		"en, fr",
+		"relay@example.com",
+		`href="https://profile.example/contact"`,
+		`href="https://profile.example/join"`,
+		"Friends &amp; neighbors &lt;welcome&gt;",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("body missing %q: %q", required, body)
+		}
+	}
+	for _, forbidden := range []string{
+		"<community>", "<welcome>", "source_kind", "source_label", "source_url", "operator_id",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("unsafe/private content %q present: %q", forbidden, body)
+		}
+	}
+}
+
 func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
 	if got := humanRelayLabel("https://relay.example/path/"); got != "relay.example/path" {
 		t.Fatalf("humanRelayLabel() = %q", got)

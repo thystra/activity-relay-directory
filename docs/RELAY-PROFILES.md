@@ -32,8 +32,8 @@ The existing contracts remain stable:
   provenance data.
 
 The read-only `/v2/relays` API is versioned independently from lifecycle
-Protocol v2. When profile fields become public, `/v2/relays` is expected to move
-from schema 3 to schema 4 while retaining the existing tier/evidence model.
+Protocol v2. Public profile projection moves `/v2/relays` from schema 3 to schema
+4 while retaining the existing tier/evidence model.
 
 ## Identity is not profile data
 
@@ -285,16 +285,23 @@ operational evidence.
 
 ## Public projection and human page
 
-When profile persistence/import is stable, the richer public API may add one
-reviewed `profile` object in `/v2/relays` schema 4. The object contains only the
-effective public descriptive fields. It must not reveal which source won a
+`/v2/relays` schema 4 adds one reviewed `profile` object. The object contains
+only the twelve effective public descriptive fields. Missing scalar fields are
+serialized as empty strings and missing multi-value fields as empty arrays so
+the profile shape remains deterministic. It does not reveal which source won a
 field or whether another lower-priority assertion exists.
 
-The public-facing Directory page must render from the same reviewed projection,
-not from a second profile query or independent eligibility rule. Profile values
-must be escaped plain text/links under the existing CSP and privacy boundary.
-Operational tier ordering remains based solely on Directory heartbeat and
-reachability evidence.
+The public-facing Directory page renders from that same reviewed projection,
+not from a second profile query or independent eligibility rule. Empty profiles
+do not add a profile section to the human page. Non-empty profile text is
+escaped plain text; the two profile URL fields are already-normalized HTTPS
+links. No profile value authorizes a fetch. Operational tier ordering remains
+based solely on Directory heartbeat and reachability evidence.
+
+The SQLite public projection resolves source precedence in one bounded batch
+for the same retained actor set already being projected. Public serializers
+receive only the normalized effective profile and never receive source labels,
+source URLs, source kinds, precedence ranks, or profile history.
 
 ## 1.3 implementation order
 

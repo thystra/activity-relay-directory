@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Publish the effective reviewed relay profile in `/v2/relays` schema 4 and on
+  the human Directory page while keeping profile provenance/history private and
+  keeping descriptive metadata independent from operational tiering and public
+  eligibility.
 - Add bounded relay-profile CSV import/export with explicit `--input-format csv`,
   deterministic escaped-semicolon list fields, spreadsheet formula-injection
   neutralization, and source-scoped writes through the schema-10 profile

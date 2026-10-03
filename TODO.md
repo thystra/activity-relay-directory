@@ -839,6 +839,12 @@ Repository: Directory.
 
 ### Tranche 27: public effective profile
 
+Completed in source (2026-10-03): `/v2/relays` schema 4 now includes one
+deterministic effective `profile` object and the human Directory renders the
+same reviewed projection. Source precedence is resolved inside the bounded
+SQLite projection; provenance, history, pending candidates, and source priority
+remain private, and profile data cannot change public eligibility or tiering.
+
 Repository: Directory.
 
 Add only effective reviewed descriptive fields to `/v2/relays` schema 4 and the

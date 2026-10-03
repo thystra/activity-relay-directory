@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
@@ -121,6 +122,7 @@ type DirectoryProjectionQuery struct {
 type DirectoryProjectionRelay struct {
 	RelayActor    string
 	PublicBaseURL string
+	Profile       RelayProfile
 
 	LifecycleKnown bool
 	Registered     bool
@@ -213,6 +215,10 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 	if err != nil || identity.RelayActor != relay.RelayActor || identity.PublicBaseURL != relay.PublicBaseURL {
 		return ErrDirectoryProjectionData
 	}
+	normalizedProfile, err := NormalizeRelayProfile(relay.Profile)
+	if err != nil || !equalRelayProfile(relay.Profile, normalizedProfile) {
+		return ErrDirectoryProjectionData
+	}
 
 	heartbeat, err := ClassifyPublicHeartbeat(relay.LastSeenUnix, observedUnix)
 	if err != nil || heartbeat != relay.HeartbeatState {
@@ -294,6 +300,21 @@ func ValidateDirectoryProjectionRelay(relay DirectoryProjectionRelay, observedUn
 		return ErrDirectoryProjectionData
 	}
 	return nil
+}
+
+func equalRelayProfile(left, right RelayProfile) bool {
+	return left.ParticipationMode == right.ParticipationMode &&
+		left.Availability == right.Availability &&
+		left.RelayType == right.RelayType &&
+		slices.Equal(left.Languages, right.Languages) &&
+		slices.Equal(left.Countries, right.Countries) &&
+		slices.Equal(left.Regions, right.Regions) &&
+		slices.Equal(left.Topics, right.Topics) &&
+		left.ContactFediverse == right.ContactFediverse &&
+		left.ContactEmail == right.ContactEmail &&
+		left.ContactURL == right.ContactURL &&
+		left.ParticipationURL == right.ParticipationURL &&
+		left.Notes == right.Notes
 }
 
 func validObservedTime(value *int64, observedUnix int64) bool {
