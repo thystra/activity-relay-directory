@@ -79,11 +79,26 @@ Imported `source_url` is separate private provenance for a CSV assertion. It is
 not part of the public profile and must not be serialized by public APIs or the
 human Directory.
 
-Exact value grammars and byte/item limits are frozen with the implementation
-tranche, but all values must remain bounded, UTF-8, free of control characters,
-and safe to render as plain text. URL fields must use the same conservative
-canonical-HTTPS principles used elsewhere in the project and must not trigger
-remote retrieval merely because they are present in profile data.
+Schema-10 persistence freezes these initial bounds and normalization rules:
+
+- `participation_mode`, `availability`, and `relay_type`: at most 256 UTF-8
+  bytes after surrounding whitespace is trimmed;
+- `languages`, `countries`, `regions`, and `topics`: at most 16 non-empty
+  values, each at most 128 UTF-8 bytes, trimmed, deduplicated, and sorted
+  deterministically;
+- `contact_fediverse`: at most 256 UTF-8 bytes;
+- `contact_email`: at most 320 UTF-8 bytes and a bare parseable mailbox address,
+  not a display-name form;
+- `contact_url` and `participation_url`: at most 2048 bytes and canonical HTTPS
+  URLs using the existing strict canonical relay-URL syntax (canonical FQDN/IP,
+  no credentials/query/fragment, canonical path/port);
+- `notes`: at most 1024 UTF-8 bytes; and
+- private imported `source_url`: at most 2048 bytes under the same canonical
+  HTTPS URL rules.
+
+All text rejects control characters. Presence of a profile URL never authorizes
+network retrieval; it is descriptive data only. Current scalar/list values are
+stored as bounded canonical JSON with a 4096-byte storage ceiling.
 
 `participation_mode` is descriptive profile metadata. It must not be inferred
 from Activity-Relay's broad address-distribution/fan-out settings and must not
@@ -132,10 +147,23 @@ Public responses expose only the effective reviewed profile values. They never
 expose source labels, source priority, import paths, source URLs, operator IDs,
 reason codes, profile event history, or protocol reconciliation state.
 
-Earlier migrations remain immutable. The first profile-persistence migration
-is expected to become schema 10 and must add source-scoped current profile state
-plus append-only private history without rewriting migrations 0001 through
-0009.
+Earlier migrations remain immutable. Schema 10 is
+`0010_relay_profiles.sql`; it adds source-scoped current profile state plus
+append-only private history without rewriting migrations 0001 through 0009.
+`relay_profile_values` is keyed by actor/source/field and exists only while at
+least one retained lifecycle or verified-discovery identity remains.
+`relay_profile_events` records `set|clear`, private provenance, server acceptance
+time, and a monotonic per-actor/source/field revision. Current assertion cleanup
+does not erase this history; a later reappearance continues the retained event
+revision sequence.
+
+Source replacement is atomic for one source: all twelve fields are normalized
+and compared in one write-admitted transaction. An omitted/empty value clears
+that source's current assertion, revealing the next lower-priority source when
+one exists. Unchanged fields create no event. Server acceptance time may not
+regress for a source. Schema 10 does not yet add the future explicit local
+operator suppression/tombstone capability described above; clearing an override
+therefore reveals the next source rather than suppressing it.
 
 ## CSV import contract
 

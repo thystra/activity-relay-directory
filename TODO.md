@@ -804,22 +804,24 @@ heartbeat, reachability, tier, moderation, enrollment, or public eligibility.
 
 ### Tranche 24: profile and compatibility contract
 
-Repository: Directory.
+Completed (2026-10-03): `docs/RELAY-PROFILES.md` freezes the profile fields,
+per-field source precedence, private provenance boundary, CSV compatibility
+rules, public-projection direction, and lifecycle Protocol v2 synchronization
+model. Lifecycle Protocol v1 and `/v1/relays` remain frozen.
 
-Freeze the profile fields, per-field source precedence, private provenance
-boundary, CSV compatibility rules, public-projection direction, and lifecycle
-Protocol v2 synchronization model before persistence or protocol code lands.
-Lifecycle Protocol v1 and `/v1/relays` remain frozen.
+Repository: Directory.
 
 ### Tranche 25: schema-10 profile persistence
 
-Repository: Directory.
+Completed in source (2026-10-03): schema 10 adds bounded source-scoped current
+profile state plus append-only private history without changing migrations 0001
+through 0009. Effective profile reads resolve each field independently as local
+override, authenticated relay self-report, CSV, then absent. Profile writes use
+the shared storage write-admission boundary and cannot change operational
+observations, moderation, lifecycle, tiering, or public eligibility. Public
+projection and CSV command surfaces remain later tranches.
 
-Add bounded source-scoped current profile state plus append-only private history.
-Preserve migrations 0001 through 0009 byte-for-byte. Effective profile reads use
-per-field precedence: local override, authenticated relay self-report, CSV,
-then absent. No profile mutation may change operational observations or
-moderation/lifecycle state.
+Repository: Directory.
 
 ### Tranche 26: CSV import and local export
 
