@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0-rc1 - 2026-10-03
 
 - Add lifecycle Protocol v2 profile synchronization with separately signed v2
   routes, complete relay-owned profile replacement on register, identity-only
