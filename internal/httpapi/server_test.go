@@ -12,7 +12,6 @@ import (
 
 	"github.com/thystra/activity-relay-directory/internal/config"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
-	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
