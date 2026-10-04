@@ -7,7 +7,7 @@ mixing operator/imported claims with the Directory's own operational evidence.
 The feature has three inputs:
 
 1. local operator imports, including spreadsheet-friendly CSV;
-2. authenticated relay self-reporting through a future lifecycle Protocol v2;
+2. authenticated relay self-reporting through lifecycle Protocol v2;
 3. optional local operator overrides for exceptional corrections.
 
 The Directory must keep these descriptive inputs separate from heartbeat,
@@ -252,32 +252,39 @@ separate explicit scope/command rather than silently changing `--scope all`.
 
 ## Lifecycle Protocol v2 profile synchronization
 
-Lifecycle Protocol v2 is a future cross-repository extension and is distinct
-from the existing `/v2/relays` read API. Protocol v1 remains supported and
-unchanged.
+Lifecycle Protocol v2 is the authenticated self-report contract and is distinct
+from the independently versioned `/v2/relays` read API. Protocol v1 remains
+supported and unchanged.
 
-Protocol v2 registration will carry the relay's complete current descriptive
-profile together with its canonical identity. Heartbeat remains a liveness
-operation and must not resend or mutate profile fields. Unregister remains a
+Protocol v2 registration carries the relay's complete current descriptive
+profile together with its canonical identity. All twelve profile fields are
+required in the wire object; empty strings or arrays explicitly clear the
+relay-owned assertion for that field. Heartbeat remains a liveness-only
+operation and does not resend or mutate profile fields. Unregister remains a
 lifecycle transition and does not erase retained profile history by itself.
 
-Activity-Relay should send a v2 registration when:
+Activity-Relay sends a v2 registration when:
 
 - first registering;
 - reconciling an explicit `relay_not_registered` result;
 - startup/reconciliation discovers that its normalized profile changed; or
 - an operator explicitly requests synchronization.
 
-The client should compute a deterministic normalized-profile digest/revision so
+The client computes a deterministic digest of the normalized complete profile so
 an unchanged profile does not cause config-driven re-registration. Every
 network attempt still receives a fresh nonce and fresh RFC 9421 signature.
 
-The v2 signature profile, endpoint/version negotiation, strict JSON shape, and
-cross-repository fixtures must be frozen together before either repository
-activates Protocol v2. A v2-capable relay must be able to fall back to Protocol
-v1 when a Directory does not advertise v2 support. Capability negotiation must
-be proven not to break existing v1 clients before it is added to a currently
-versioned status document.
+Protocol v2 uses `/v2/relays/register`, `/v2/relays/heartbeat`, and
+`/v2/relays/unregister`, with `protocol_version: 2` and the dedicated RFC 9421
+tag `activity-relay-directory-v2`. The required components, digest algorithm,
+actor/key binding, replay reservation, time bounds, and outcome/error vocabulary
+otherwise remain aligned with Protocol v1.
+
+`GET /v1/status` schema 4 advertises ordered `lifecycle_protocol_versions`. A
+v2-capable relay selects v2 only when version 2 is advertised; schema-2/3 status
+documents are treated as v1-only. A status transport/validation failure is not
+a downgrade signal. The identical shared signed registration fixture under
+`testdata/directory/v2/` is retained in both repositories.
 
 An authenticated relay profile supersedes lower-priority imported CSV values
 field by field, but it never supersedes local moderation or Directory-observed

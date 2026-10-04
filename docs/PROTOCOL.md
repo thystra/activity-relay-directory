@@ -2,15 +2,19 @@
 
 ## Status and scope
 
-Version 1 vocabulary and JSON message shapes are defined here and in
-`testdata/directory/v1/`. The signed lifecycle HTTP routes compose these
-contracts but remain disabled together by default. See `docs/HANDLERS.md` for
+Lifecycle Protocol v1 remains the compatibility baseline defined here and in
+`testdata/directory/v1/`. Protocol v2 adds authenticated descriptive profile
+synchronization without changing v1 message shapes or outcomes. Both lifecycle
+versions remain disabled together by default. See `docs/HANDLERS.md` for
 activation, ordering, status mapping, and operational bounds.
 
-`GET /v1/status` schema version 2 reports `lifecycle_enabled` (the requested
+`GET /v1/status` schema version 4 reports `lifecycle_enabled` (the requested
 process configuration), `lifecycle_available` (the complete graph actually
-constructed), and `enrollment_open` (the current durable first-registration
-policy). These booleans are intentionally independent. Failure to read the
+constructed), `enrollment_open` (the current durable first-registration
+policy), and `lifecycle_protocol_versions`. The version list is ordered, uses
+integer protocol versions, always includes v1, and includes v2 only when the
+complete v2 verifier/profile graph is available. These fields are independent
+of the separately versioned public relay-listing schema. Failure to read the
 durable policy makes the status request fail closed without database detail.
 
 ## Public directory projection vocabulary
@@ -32,21 +36,26 @@ or unresolved `--add-dead-relays` candidate provenance.
 
 ## Versioning and encoding
 
-Every request and response contains the integer `protocol_version`. Version 1
-uses UTF-8 JSON with the strict media type `application/json`. Implementations
-must reject unknown fields, trailing JSON values, unsupported versions, and
-bodies above the configured size limit.
+Every request and response contains the integer `protocol_version`. Both
+lifecycle versions use UTF-8 JSON with the strict media type
+`application/json`. Implementations reject unknown fields, duplicate member
+names, trailing JSON values, unsupported versions, and bodies above the
+configured size limit.
 
-The signed operations and their endpoints are:
+The signed operations and endpoints are:
 
-| Operation | Method and path | Purpose |
-|---|---|---|
-| `register` | `POST /v1/relays/register` | Create, update, or confirm a relay entry. |
-| `heartbeat` | `POST /v1/relays/heartbeat` | Record current liveness. |
-| `unregister` | `POST /v1/relays/unregister` | Remove an active listing. |
+| Operation | Protocol v1 | Protocol v2 | Purpose |
+|---|---|---|---|
+| `register` | `POST /v1/relays/register` | `POST /v2/relays/register` | Create, restore, or confirm a relay entry; v2 also replaces the relay-owned descriptive profile. |
+| `heartbeat` | `POST /v1/relays/heartbeat` | `POST /v2/relays/heartbeat` | Record current liveness. |
+| `unregister` | `POST /v1/relays/unregister` | `POST /v2/relays/unregister` | Remove an active listing. |
 
 The request body repeats the operation name. A mismatch between the target
-path and body operation is an `invalid_request` error.
+path and body operation is an `invalid_request` error. Protocol v1 clients keep
+using the v1 paths unchanged. A v2-capable client selects v2 only after a valid
+status document advertises version 2; schema-2/3 status documents imply v1-only
+compatibility. A failed or malformed status request is not permission to
+silently downgrade.
 
 ## Relay identity
 
@@ -54,7 +63,7 @@ path and body operation is an `invalid_request` error.
 directory identity. Register also carries `public_base_url`, the public origin
 operators expect people and clients to visit.
 
-Version 1 canonical URL syntax requires:
+Both lifecycle versions use the same canonical URL syntax:
 
 - HTTPS with no credentials, query, or fragment;
 - a lower-case fully qualified ASCII DNS name or canonical IP literal;
@@ -78,14 +87,18 @@ membership lists, user identities, or a site-level relationship graph.
 
 ## Authentication envelope
 
-All three operations require the version 1 RFC 9421 HTTP Message Signature
+Both lifecycle versions use the same reviewed RFC 9421 HTTP Message Signature
 profile and RFC 9530 `Content-Digest` over the exact JSON bytes. Enabled
-handlers invoke the complete verifier and durable replay path.
+handlers invoke the complete verifier and durable replay path. The versions are
+cryptographically separated by the required signature tag: v1 requires
+`tag="activity-relay-directory-v1"`; v2 requires
+`tag="activity-relay-directory-v2"`. A valid v1 envelope therefore cannot be
+reinterpreted as a v2 request, or vice versa.
 
-Version 1 accepts exactly one paired `Signature-Input` and `Signature`
+Each version accepts exactly one paired `Signature-Input` and `Signature`
 dictionary member. The label is chosen by the client, while the signature must
-carry `tag="activity-relay-directory-v1"` and
-`alg="rsa-v1_5-sha256"`. Component parameters, signature-value parameters,
+carry the version-appropriate tag and `alg="rsa-v1_5-sha256"`. Component
+parameters, signature-value parameters,
 unknown signature parameters, mismatched labels, and additional signature
 members are rejected. The required covered components, in the order clients
 should emit them, are:
@@ -109,7 +122,7 @@ minutes after `created`. Key IDs are bounded to 2048 bytes and nonces to 256
 bytes. Those values remain HTTP signature metadata rather than duplicate JSON
 fields.
 
-Version 1 requires the `sha-256` member of the RFC 9530 Structured Fields
+Both lifecycle versions require the `sha-256` member of the RFC 9530 Structured Fields
 dictionary. Its value is a 32-byte Byte Sequence containing SHA-256 over the
 exact message content bytes, before any JSON decoding or reserialization.
 Additional digest algorithms may be present and are ignored by this profile.
@@ -199,18 +212,49 @@ actor resolver and durable replay store before calling the state repository at
 a server-owned acceptance time. It remains unavailable unless the complete
 lifecycle graph is explicitly enabled.
 
+## Protocol v2 register profile contract
+
+Protocol v2 register preserves the v1 canonical relay identity and lifecycle
+outcomes while adding one required `profile` object. The object is a complete
+replacement of the relay-owned profile source and contains exactly these twelve
+fields: `participation_mode`, `availability`, `relay_type`, `languages`,
+`countries`, `regions`, `topics`, `contact_fediverse`, `contact_email`,
+`contact_url`, `participation_url`, and `notes`. All fields must be present.
+Empty strings and empty arrays explicitly clear the corresponding relay-owned
+assertion. Unknown, omitted, `null`, duplicate, noncanonical, or oversized
+values are rejected.
+
+The profile is normalized through the same storage contract used by CSV and
+operator profile writes. List values are trimmed, deduplicated, sorted, and
+limited by the shared profile bounds; email and HTTPS URL fields use the same
+canonical validation rules. Replacing the relay source does not alter CSV or
+operator assertions. Effective values continue to resolve field by field as
+operator override, authenticated relay self-report, CSV, then absent.
+
+Profile mutation is descriptive only. It does not establish liveness, change
+moderation or enrollment, affect reachability or pruning, or influence public
+eligibility/tiering. The server uses one acceptance time for the lifecycle and
+profile portions of a v2 register. A storage failure is returned as a protocol
+error so a client can safely retry registration to converge.
+
+Protocol v2 heartbeat and unregister remain identity-only. Supplying profile or
+registration fields to either operation is invalid; heartbeat never refreshes
+or mutates descriptive profile data, and unregister does not erase private
+profile history.
+
 ## Heartbeat request contract
 
-`DecodeHeartbeatRequest` applies the same strict single-object and configurable
-1 MiB maximum body rules as registration. It accepts only protocol version 1,
-the `heartbeat` operation, and an already canonical `relay_actor`. Registration
-metadata such as `public_base_url` is an unknown field and is rejected, so a
-heartbeat cannot create or silently alter a registration.
+The version-specific heartbeat decoder applies the same strict single-object
+and configurable 1 MiB maximum body rules as registration. It accepts only the
+selected protocol version, the `heartbeat` operation, and an already canonical
+`relay_actor`. Registration metadata such as `public_base_url` and `profile` is
+an unknown field and is rejected, so a heartbeat cannot create or silently
+alter a registration or profile.
 
-The authenticated composition accepts only `POST /v1/relays/heartbeat` with no
-query or fragment. Body, version, operation, target, and canonical actor checks
-finish before key resolution or nonce reservation. The signing key must bind to
-the exact actor, and the resulting nonce is reserved atomically.
+Authenticated composition accepts only the matching versioned heartbeat path
+with no query or fragment. Body, version, operation, target, and canonical actor
+checks finish before key resolution or nonce reservation. The signing key must
+bind to the exact actor, and the resulting nonce is reserved atomically.
 
 The contract function establishes only an authenticated heartbeat intent. It
 does not prove that the actor is registered or administratively active, record
@@ -228,13 +272,13 @@ An actor without an active registration receives the stable
 
 ## Unregister request contract
 
-`DecodeUnregisterRequest` applies the shared strict single-object and
-configurable 1 MiB maximum body rules. It accepts only protocol version 1, the
-`unregister` operation, and an already canonical `relay_actor`. Registration
-metadata and every other unknown field are rejected.
+The version-specific unregister decoder applies the shared strict single-object
+and configurable 1 MiB maximum body rules. It accepts only the selected protocol
+version, the `unregister` operation, and an already canonical `relay_actor`.
+Registration metadata, profile data, and every other unknown field are rejected.
 
-The authenticated composition accepts only `POST /v1/relays/unregister` with
-no query or fragment. Body, version, operation, target, and canonical actor
+Authenticated composition accepts only the matching versioned unregister path
+with no query or fragment. Body, version, operation, target, and canonical actor
 checks finish before key resolution or nonce reservation. The signing key must
 bind to the exact actor, and the resulting nonce is reserved atomically. A
 signed heartbeat or registration request cannot satisfy this contract.
@@ -287,7 +331,7 @@ Successful responses use a closed, operation-specific outcome vocabulary:
 it does not replace the actor identity.
 
 Errors use a stable code and a bounded human-readable message. Clients branch
-on the code, never the message. Version 1 codes are:
+on the code, never the message. Both lifecycle versions use the same closed error codes:
 
 - `invalid_request`
 - `unsupported_protocol_version`
@@ -331,21 +375,19 @@ public response fields; no moderation HTTP target is defined in this document.
 
 ## Fixtures
 
-Files under `testdata/directory/v1/` are normative examples for the fields,
-digest encoding, and closed vocabulary defined in this tranche. Go tests
-decode them with unknown field rejection, verify that outcomes match their
-operations, require the registration identity to already be canonical, and
-check the digest against the fixture's exact body string bytes. Later server
-and Activity-Relay client implementations must reuse these fixtures or prove
-byte-for-byte digest and semantic message compatibility with them.
+Files under `testdata/directory/v1/` remain the normative Protocol v1 examples.
+Files under `testdata/directory/v2/` freeze the Protocol v2 profile-sync wire
+contract. Tests decode with strict unknown/duplicate-field rejection, require
+canonical identity, and check digest/signature material against the fixture's
+exact body bytes.
 
-`rfc9421-register.valid.json` is a complete verification vector containing the
-exact request target, fields, body, signature, and public test key. It contains
-no private key. Tests fix verification time inside the vector's validity window
-and require cryptographic verification plus relay-actor binding.
+`rfc9421-register.valid.json` is the original complete v1 verification vector.
+The v1 `activity-relay-register.valid.json` remains byte-compatible with the
+Activity-Relay v1 client. Neither compatibility vector changes for Protocol v2.
 
-`activity-relay-register.valid.json` is generated by the dormant
-Activity-Relay version 1 client using its existing RSA actor key shape. An
-identical copy is retained in both repositories; the client test reproduces
-its exact bytes and the directory handler test accepts it with the real
-verifier.
+`testdata/directory/v2/activity-relay-register.valid.json` is the shared v2
+registration vector. It contains the complete twelve-field profile, exact v2
+target, RFC 9530 digest, RFC 9421 signature with the v2 tag, and public test
+key; it contains no private key. An identical copy is retained in the
+Activity-Relay repository. Both repositories must verify the exact shared
+fixture before the v2 path is activated or released.

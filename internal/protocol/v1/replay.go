@@ -153,11 +153,26 @@ func (verifier *RFC9421Verifier) VerifyPOSTAndReserve(
 	relayActor string,
 	store RFC9421ReplayStore,
 ) (*RFC9421Verification, error) {
+	return verifier.VerifyPOSTAndReserveWithTag(
+		request, body, relayActor, RFC9421SignatureTag, store,
+	)
+}
+
+// VerifyPOSTAndReserveWithTag applies the shared directory RFC 9421 profile,
+// actor binding, and replay reservation while requiring a version-specific
+// signature tag.
+func (verifier *RFC9421Verifier) VerifyPOSTAndReserveWithTag(
+	request *http.Request,
+	body []byte,
+	relayActor string,
+	expectedTag string,
+	store RFC9421ReplayStore,
+) (*RFC9421Verification, error) {
 	if verifier == nil || request == nil || store == nil {
 		return nil, ErrRFC9421ReplayStore
 	}
 
-	verification, err := verifier.VerifyPOST(request, body)
+	verification, err := verifier.VerifyPOSTWithTag(request, body, expectedTag)
 	if err != nil {
 		return nil, err
 	}

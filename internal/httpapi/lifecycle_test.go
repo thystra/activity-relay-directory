@@ -22,6 +22,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/admission"
 	"github.com/thystra/activity-relay-directory/internal/config"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 	storageSQLite "github.com/thystra/activity-relay-directory/internal/storage/sqlite"
 )
@@ -648,6 +649,23 @@ func TestLifecycleRoutesFailClosedWhenUnavailable(t *testing.T) {
 		assertProtocolError(t, response, http.StatusServiceUnavailable, v1.ErrorLifecycleUnavailable)
 		if bytes.Contains(response.Body.Bytes(), []byte("private-body")) {
 			t.Fatalf("unavailable response disclosed body: %q", response.Body.String())
+		}
+
+		v2Request := httptest.NewRequest(http.MethodPost, v2.RegisterEndpointPath, bytes.NewBufferString("private-v2-body"))
+		v2Response := httptest.NewRecorder()
+		handler.ServeHTTP(v2Response, v2Request)
+		if v2Response.Code != http.StatusServiceUnavailable {
+			t.Fatalf("v2 status = %d, want %d", v2Response.Code, http.StatusServiceUnavailable)
+		}
+		var document v2.ErrorResponse
+		if err := json.Unmarshal(v2Response.Body.Bytes(), &document); err != nil {
+			t.Fatalf("decode v2 error response: %v", err)
+		}
+		if document.ProtocolVersion != v2.Version || document.Error.Code != v2.ErrorLifecycleUnavailable {
+			t.Fatalf("v2 error response = %#v", document)
+		}
+		if bytes.Contains(v2Response.Body.Bytes(), []byte("private-v2-body")) {
+			t.Fatalf("v2 unavailable response disclosed body: %q", v2Response.Body.String())
 		}
 	}
 }

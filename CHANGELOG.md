@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add lifecycle Protocol v2 profile synchronization with separately signed v2
+  routes, complete relay-owned profile replacement on register, identity-only
+  heartbeat/unregister, status-schema-4 capability advertisement, and a shared
+  cross-repository signed fixture while preserving Protocol v1 compatibility.
 - Publish the effective reviewed relay profile in `/v2/relays` schema 4 and on
   the human Directory page while keeping profile provenance/history private and
   keeping descriptive metadata independent from operational tiering and public

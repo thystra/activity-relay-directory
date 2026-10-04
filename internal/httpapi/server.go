@@ -9,10 +9,11 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/directoryexport"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
 )
 
 const (
-	statusSchemaVersion = 3
+	statusSchemaVersion = 4
 	readinessTimeout    = 2 * time.Second
 )
 
@@ -112,16 +113,21 @@ func NewHandlerWithRuntime(
 				return
 			}
 		}
+		protocolVersions := []int{v1.Version}
+		if lifecycle != nil && lifecycle.supportsV2() {
+			protocolVersions = append(protocolVersions, v2.Version)
+		}
 		writeJSON(response, request, http.StatusOK, map[string]any{
-			"schema_version":           statusSchemaVersion,
-			"service":                  "activity-relay-directory",
-			"version":                  version,
-			"public_base_url":          cfg.PublicBaseURL,
-			"lifecycle_enabled":        cfg.LifecycleEnabled,
-			"lifecycle_available":      lifecycleAvailable,
-			"enrollment_open":          enrollmentOpen,
-			"public_listing_enabled":   cfg.PublicListingEnabled,
-			"public_listing_available": publicListingAvailable,
+			"schema_version":              statusSchemaVersion,
+			"lifecycle_protocol_versions": protocolVersions,
+			"service":                     "activity-relay-directory",
+			"version":                     version,
+			"public_base_url":             cfg.PublicBaseURL,
+			"lifecycle_enabled":           cfg.LifecycleEnabled,
+			"lifecycle_available":         lifecycleAvailable,
+			"enrollment_open":             enrollmentOpen,
+			"public_listing_enabled":      cfg.PublicListingEnabled,
+			"public_listing_available":    publicListingAvailable,
 		})
 	})
 
@@ -131,12 +137,21 @@ func NewHandlerWithRuntime(
 	}
 	registerLifecycleRoute := func(path string, operation v1.Operation) {
 		mux.HandleFunc(path, func(response http.ResponseWriter, request *http.Request) {
-			active.serve(response, request, operation)
+			active.serveV1(response, request, operation)
 		})
 	}
 	registerLifecycleRoute(v1.RegisterEndpointPath, v1.OperationRegister)
 	registerLifecycleRoute(v1.HeartbeatEndpointPath, v1.OperationHeartbeat)
 	registerLifecycleRoute(v1.UnregisterEndpointPath, v1.OperationUnregister)
+
+	registerLifecycleV2Route := func(path string, operation v2.Operation) {
+		mux.HandleFunc(path, func(response http.ResponseWriter, request *http.Request) {
+			active.serveV2(response, request, operation)
+		})
+	}
+	registerLifecycleV2Route(v2.RegisterEndpointPath, v2.OperationRegister)
+	registerLifecycleV2Route(v2.HeartbeatEndpointPath, v2.OperationHeartbeat)
+	registerLifecycleV2Route(v2.UnregisterEndpointPath, v2.OperationUnregister)
 
 	if cfg.PublicListingEnabled {
 		mux.HandleFunc("/v1/relays", func(response http.ResponseWriter, request *http.Request) {

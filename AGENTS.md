@@ -167,6 +167,18 @@ the human page may omit an empty profile section. Profile text is escaped plain
 text, profile links are limited to the normalized HTTPS URL fields, and profile
 values must never affect public eligibility or operational tier ordering.
 
+Lifecycle Protocol v2 is additive to the frozen v1 contract and is not the same
+version namespace as the `/v2/relays` read API. Keep the v1 routes, message
+shapes, and `activity-relay-directory-v1` signature tag unchanged. V2 uses
+separate `/v2/relays/*` routes and the `activity-relay-directory-v2` tag. Only
+v2 register carries descriptive profile data, and it must carry the complete
+twelve-field normalized profile so empty values clear the relay-owned source;
+v2 heartbeat and unregister remain identity-only. `/v1/status` capability
+advertisement and the shared signed v2 fixture must stay synchronized with the
+Activity-Relay client. Profile synchronization remains descriptive and cannot
+change any operational eligibility, moderation, reachability, pruning, or tier
+rule.
+
 Relay lifecycle code must use the `storage.RelayRepository` contract after all
 authentication, safe-resolution, replay, and policy gates. Repository inputs
 must remain canonical and bounded. Use server acceptance time, reject per-actor

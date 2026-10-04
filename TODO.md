@@ -847,20 +847,19 @@ remain private, and profile data cannot change public eligibility or tiering.
 
 Repository: Directory.
 
-Add only effective reviewed descriptive fields to `/v2/relays` schema 4 and the
-public-facing page. Keep provenance, source priority, pending candidates, and
-profile history private. Public tier ordering remains operational evidence only.
-
 ### Tranche 28: lifecycle Protocol v2 profile sync
 
-Repositories: Directory and Activity-Relay.
+Directory side completed in source (2026-10-03): lifecycle Protocol v2 uses
+separate `/v2/relays/*` signed routes, a dedicated v2 signature tag, and a
+complete twelve-field normalized profile on register while heartbeat and
+unregister remain identity-only. `/v1/status` schema 4 advertises supported
+lifecycle protocol versions, Protocol v1 remains unchanged, and the shared v2
+registration fixture freezes the cross-repository wire contract. Activity-Relay
+provides the companion capability negotiation, v1 fallback, profile-digest
+reconciliation, and explicit operator sync. Neither side activates directory
+traffic merely because v2 support exists.
 
-Add a separately versioned authenticated lifecycle profile contract. V2 register
-carries the complete normalized profile; heartbeat remains liveness-only.
-Activity-Relay reconciles on first registration, explicit not-registered state,
-profile change, or operator sync, and falls back to Protocol v1 when v2 is not
-available. Freeze capability negotiation and shared fixtures in both
-repositories before activation.
+Repositories: Directory and Activity-Relay.
 
 ### Tranche 29: 1.3 acceptance and release gate
 

@@ -262,8 +262,9 @@ func validRFC9421ComponentName(component string) bool {
 func validateRFC9421Parameters(
 	params sigparams.Params,
 	now time.Time,
+	expectedTag string,
 ) error {
-	if params.Tag != RFC9421SignatureTag ||
+	if expectedTag == "" || params.Tag != expectedTag ||
 		params.Alg != RFC9421SignatureAlgorithm {
 		return ErrRFC9421Policy
 	}
@@ -435,6 +436,18 @@ func (verifier *RFC9421Verifier) VerifyPOST(
 	request *http.Request,
 	body []byte,
 ) (*RFC9421Verification, error) {
+	return verifier.VerifyPOSTWithTag(request, body, RFC9421SignatureTag)
+}
+
+// VerifyPOSTWithTag verifies the shared directory RFC 9421 profile while
+// requiring the caller-supplied version-specific signature tag. Versioned
+// protocol packages use this to prevent one lifecycle version from accepting
+// another version's signed envelope.
+func (verifier *RFC9421Verifier) VerifyPOSTWithTag(
+	request *http.Request,
+	body []byte,
+	expectedTag string,
+) (*RFC9421Verification, error) {
 	if verifier == nil || request == nil || request.Header == nil {
 		return nil, ErrRFC9421Policy
 	}
@@ -447,7 +460,7 @@ func (verifier *RFC9421Verifier) VerifyPOST(
 	if err != nil {
 		return nil, err
 	}
-	if err := validateRFC9421Parameters(message.params, now); err != nil {
+	if err := validateRFC9421Parameters(message.params, now, expectedTag); err != nil {
 		return nil, err
 	}
 	if err := VerifyRFC9530ContentDigestSHA256(

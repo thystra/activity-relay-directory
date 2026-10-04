@@ -12,6 +12,7 @@ import (
 
 	"github.com/thystra/activity-relay-directory/internal/config"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -117,6 +118,11 @@ func TestStatusReportsLifecycleAndEnrollmentUnavailable(t *testing.T) {
 
 	if body["schema_version"] != float64(statusSchemaVersion) {
 		t.Fatalf("schema_version = %#v", body["schema_version"])
+	}
+
+	versions, ok := body["lifecycle_protocol_versions"].([]any)
+	if !ok || len(versions) != 1 || versions[0] != float64(v1.Version) {
+		t.Fatalf("lifecycle_protocol_versions = %#v, want [1]", body["lifecycle_protocol_versions"])
 	}
 
 	if body["lifecycle_enabled"] != false {

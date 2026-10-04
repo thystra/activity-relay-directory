@@ -21,6 +21,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
+	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
 	"github.com/thystra/activity-relay-directory/internal/pruning"
 	"github.com/thystra/activity-relay-directory/internal/reachability"
 	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
@@ -386,6 +387,10 @@ func initializeLifecycle(
 	if err != nil {
 		return nil, err
 	}
+	v2Verifier, err := v2.NewRFC9421Verifier(verifier)
+	if err != nil {
+		return nil, err
+	}
 	replayStore, err := storage.NewRFC9421ReplayStore(database, writeAdmission)
 	if err != nil {
 		return nil, err
@@ -395,13 +400,15 @@ func initializeLifecycle(
 		return nil, err
 	}
 	handler, err := httpapi.NewLifecycleHandler(httpapi.LifecycleDependencies{
-		Verifier:         verifier,
-		ReplayStore:      replayStore,
-		Repository:       repository,
-		SourceResolver:   sourceResolver,
-		Limiter:          limiter,
-		MaximumBodyBytes: cfg.MaxRequestBodyBytes,
-		Now:              time.Now,
+		Verifier:          verifier,
+		V2Verifier:        v2Verifier,
+		ReplayStore:       replayStore,
+		Repository:        repository,
+		ProfileRepository: repository,
+		SourceResolver:    sourceResolver,
+		Limiter:           limiter,
+		MaximumBodyBytes:  cfg.MaxRequestBodyBytes,
+		Now:               time.Now,
 	})
 	if err != nil {
 		return nil, err
