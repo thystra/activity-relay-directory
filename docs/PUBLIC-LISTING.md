@@ -306,6 +306,11 @@ OPERATOR-WEBSITE: "https://operator.example/"
 OPERATOR-EMAIL: "operator@example.org"
 FEDIVERSE-OPERATOR-ID: "@operator@social.example"
 FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
+SUPPORT:
+  - title: "Liberapay"
+    url: "https://liberapay.com/example/"
+  - title: "Bitcoin"
+    value: "bc1qexample"
 ```
 
 `OPERATOR-WEBSITE` and `OPERATOR-EMAIL` are independently optional values. The two
@@ -313,6 +318,12 @@ Fediverse values are a pair: either both are present or both are absent. The
 displayed `@user@host` identifier links to the explicit HTTPS profile URL; the
 Directory never derives a profile URL because Friendica, Mastodon, and other
 Fediverse applications use different URL layouts.
+
+`SUPPORT` is an optional ordered list of at most eight presentation-only methods.
+Each entry requires a title and exactly one absolute HTTPS `url` or escaped
+plain-text `value`. The human page renders valid entries in a collapsed `Support
+this directory` block near the top. The Directory does not accept arbitrary
+HTML, Markdown, scripts, embeds, pixels, or other third-party support content.
 
 This YAML is public-presentation metadata only. It does not replace the
 `DIRECTORY_*` runtime environment, is not emitted by `/v1/relays`,

@@ -337,9 +337,17 @@ OPERATOR-WEBSITE: "https://operator.example/"
 OPERATOR-EMAIL: "operator@example.org"
 FEDIVERSE-OPERATOR-ID: "@operator@social.example"
 FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
+SUPPORT:
+  - title: "Liberapay"
+    url: "https://liberapay.com/example/"
+  - title: "Bitcoin"
+    value: "bc1qexample"
 ```
 
-Empty values are omitted. The Fediverse ID and profile URL must be supplied
+Empty values are omitted. `SUPPORT` is optional and renders a collapsed,
+presentation-only `Support this directory` block near the top of the human page.
+Each support entry has a title and exactly one HTTPS URL or plain-text value.
+ The Fediverse ID and profile URL must be supplied
 together. See [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) for validation
 rules and alternate configuration paths.
 

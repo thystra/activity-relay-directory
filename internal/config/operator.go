@@ -18,6 +18,10 @@ import (
 const (
 	defaultOperatorConfigPath  = "/etc/activity-relay-directory/config.yml"
 	maximumOperatorConfigBytes = 64 * 1024
+	maximumSupportEntries      = 8
+	maximumSupportTitleBytes   = 80
+	maximumSupportValueBytes   = 512
+	maximumSupportURLBytes     = 2048
 
 	operatorWebsiteMalformedDiagnostic = "OPERATOR-WEBSITE is malformed in config.yml."
 	operatorEmailMalformedDiagnostic   = "OPERATOR-EMAIL is malformed in config.yml."
@@ -25,6 +29,7 @@ const (
 	fediverseURLMalformedDiagnostic    = "FEDIVERSE-OPERATOR-URL is malformed in config.yml."
 	fediverseIDMissingDiagnostic       = "Please configure FEDIVERSE-OPERATOR-ID in config.yml."
 	fediverseURLMissingDiagnostic      = "Please configure FEDIVERSE-OPERATOR-URL in config.yml."
+	supportTooManyDiagnostic           = "SUPPORT has too many entries in config.yml."
 )
 
 var (
@@ -41,14 +46,31 @@ type OperatorMetadata struct {
 	Email        string
 	FediverseID  string
 	FediverseURL string
+	Support      []SupportEntry
 	Diagnostics  []string
 }
 
+// SupportEntry is one optional public support method. Exactly one of URL and
+// Value is populated after validation. Values are presentation-only and are
+// never copied into JSON/status APIs.
+type SupportEntry struct {
+	Title string
+	URL   string
+	Value string
+}
+
 type operatorConfigFile struct {
-	Website      string `yaml:"OPERATOR-WEBSITE"`
-	Email        string `yaml:"OPERATOR-EMAIL"`
-	FediverseID  string `yaml:"FEDIVERSE-OPERATOR-ID"`
-	FediverseURL string `yaml:"FEDIVERSE-OPERATOR-URL"`
+	Website      string               `yaml:"OPERATOR-WEBSITE"`
+	Email        string               `yaml:"OPERATOR-EMAIL"`
+	FediverseID  string               `yaml:"FEDIVERSE-OPERATOR-ID"`
+	FediverseURL string               `yaml:"FEDIVERSE-OPERATOR-URL"`
+	Support      []supportConfigEntry `yaml:"SUPPORT"`
+}
+
+type supportConfigEntry struct {
+	Title string `yaml:"title"`
+	URL   string `yaml:"url"`
+	Value string `yaml:"value"`
 }
 
 // LoadOperatorMetadata reads the optional presentation-only YAML configuration.
@@ -110,6 +132,7 @@ func loadOperatorMetadataFile(path string, explicit bool) (OperatorMetadata, err
 		Email:        strings.TrimSpace(decoded.Email),
 		FediverseID:  strings.TrimSpace(decoded.FediverseID),
 		FediverseURL: strings.TrimSpace(decoded.FediverseURL),
+		Support:      decoded.Support,
 	}), nil
 }
 
@@ -167,7 +190,50 @@ func sanitizeOperatorMetadata(raw operatorConfigFile) OperatorMetadata {
 		metadata.FediverseURL = raw.FediverseURL
 	}
 
+	metadata.Support, metadata.Diagnostics = sanitizeSupportEntries(raw.Support, metadata.Diagnostics)
+
 	return metadata
+}
+
+func sanitizeSupportEntries(raw []supportConfigEntry, diagnostics []string) ([]SupportEntry, []string) {
+	if len(raw) == 0 {
+		return nil, diagnostics
+	}
+	if len(raw) > maximumSupportEntries {
+		return nil, append(diagnostics, supportTooManyDiagnostic)
+	}
+
+	entries := make([]SupportEntry, 0, len(raw))
+	for index, item := range raw {
+		title := strings.TrimSpace(item.Title)
+		link := strings.TrimSpace(item.URL)
+		value := strings.TrimSpace(item.Value)
+		diagnostic := fmt.Sprintf("SUPPORT entry %d is malformed in config.yml.", index+1)
+
+		if title == "" || len(title) > maximumSupportTitleBytes || containsOperatorControl(title) ||
+			(link == "") == (value == "") {
+			diagnostics = append(diagnostics, diagnostic)
+			continue
+		}
+
+		entry := SupportEntry{Title: title}
+		if link != "" {
+			if len(link) > maximumSupportURLBytes || containsOperatorControl(link) ||
+				validatePublicHTTPSURL("SUPPORT url", link) != nil {
+				diagnostics = append(diagnostics, diagnostic)
+				continue
+			}
+			entry.URL = link
+		} else {
+			if len(value) > maximumSupportValueBytes || containsOperatorControl(value) {
+				diagnostics = append(diagnostics, diagnostic)
+				continue
+			}
+			entry.Value = value
+		}
+		entries = append(entries, entry)
+	}
+	return entries, diagnostics
 }
 
 func validOperatorEmail(value string) bool {

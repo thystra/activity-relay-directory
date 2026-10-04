@@ -871,24 +871,19 @@ and round-trip, public privacy, `/v1/relays` and Protocol v1 compatibility,
 profile/tier independence, and real cross-repository Protocol v2 registration,
 heartbeat, fallback, and reconciliation.
 
-## Future public-facing funding/support surface
+## Public-facing funding/support surface
 
-This is a future operator-facing interface item, not part of the current 1.3
-profile/Protocol-v2 tranche. Provide an optional, default-absent **Support this
-site** section near the top of the public-facing Directory. It should be
-collapsed by default and visually secondary so it does not compete with relay
-discovery.
+RC2 implements the optional, default-absent **Support this directory** section
+near the top of the public-facing Directory. It is collapsed by default and
+visually secondary so it does not compete with relay discovery. Configuration
+is a bounded ordered `SUPPORT` list: each entry has `title` plus exactly one
+absolute HTTPS `url` or escaped plain-text `value`. Arbitrary HTML, Markdown,
+script, remote embeds, pixels, and other third-party content are not accepted.
+Support metadata is presentation-only and never affects relay ordering,
+eligibility, APIs, lifecycle, or protocol behavior.
 
-The configuration should be extensible rather than hard-coded to particular
-providers. Model a bounded ordered list of entries such as `title` plus either
-an HTTPS `url` or a plain-text payment/wallet value. This should accommodate
-services such as Liberapay, PayPal, Ko-fi, Fediverse contact links, and
-cryptocurrency addresses without allowing arbitrary HTML, Markdown, script, or
-third-party embeds. Values must be escaped under the existing CSP/privacy
-boundary.
-
-Advertising or sponsorship blocks are a separate possible funding feature and
-require their own review before implementation. Any future design must be
+Advertising or sponsorship blocks remain a separate possible funding feature
+and require their own review before implementation. Any future design must be
 default-off, must not affect relay ordering/eligibility, and must address
 tracking, third-party content, CSP, disclosure, and privacy before adding any
 remote script, pixel, or personalized behavior. Prefer operator-hosted static

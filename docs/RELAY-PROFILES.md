@@ -300,10 +300,17 @@ field or whether another lower-priority assertion exists.
 
 The public-facing Directory page renders from that same reviewed projection,
 not from a second profile query or independent eligibility rule. Empty profiles
-do not add a profile section to the human page. Non-empty profile text is
-escaped plain text; the two profile URL fields are already-normalized HTTPS
-links. No profile value authorizes a fetch. Operational tier ordering remains
-based solely on Directory heartbeat and reachability evidence.
+do not add a profile section to the human page. Non-empty profiles are grouped
+for human readability without changing wire names: `participation_mode` is
+displayed as **Registration status**, `participation_url` as **About this relay**,
+operator/contact/notes information appears first, and relay type/topics appear
+under **Relay focus**. Languages, countries, and regions are shown below the
+focus introduction only when at least one of those lists is nonempty; empty
+lists mean that no focus has been asserted and do not render synthetic `any`,
+`all`, or `global` values. Profile text is escaped plain text and the two profile
+URL fields are already-normalized HTTPS links. No profile value authorizes a
+fetch. Operational tier ordering remains based solely on Directory heartbeat
+and reachability evidence.
 
 The SQLite public projection resolves source precedence in one bounded batch
 for the same retained actor set already being projected. Public serializers

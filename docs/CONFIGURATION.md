@@ -60,6 +60,7 @@ Directory page.
 | `OPERATOR-WEBSITE` | Nice-to-have | render `Operator website` as the exact absolute HTTPS URL | suppress the website link | suppress the value and show `OPERATOR-WEBSITE is malformed in config.yml.` |
 | `OPERATOR-EMAIL` | Nice-to-have | render the exact address through `mailto:` | suppress the email link | suppress the value and show `OPERATOR-EMAIL is malformed in config.yml.` |
 | `FEDIVERSE-OPERATOR-ID` + `FEDIVERSE-OPERATOR-URL` | Nice-to-have multi-key object | when both are valid, render the exact `@user@host` linked to the explicit absolute HTTPS profile URL | when both are absent, suppress Fediverse presentation with no diagnostic | ID missing: `Please configure FEDIVERSE-OPERATOR-ID in config.yml.`; URL missing: `Please configure FEDIVERSE-OPERATOR-URL in config.yml.`; malformed supplied members get their own `... is malformed in config.yml.` diagnostic; no partial Fediverse link is rendered |
+| `SUPPORT` | Nice-to-have ordered list | render a collapsed `Support this directory` block; at most 8 entries, each with a nonempty `title` and exactly one absolute HTTPS `url` or escaped plain-text `value` | suppress the support block | malformed entries are suppressed and diagnosed; more than 8 entries suppresses the entire block and reports `SUPPORT has too many entries in config.yml.` |
 
 Operator email syntax is deliberately loose. It requires one nonempty local
 part, `@`, a domain containing at least one dot, and a nonempty suffix. It does
@@ -71,8 +72,11 @@ field is malformed or incomplete. For example, a valid website and email remain
 visible when a Fediverse URL is supplied without its required ID; the page also
 shows the missing-ID diagnostic.
 
-Operator values and operator diagnostics are presentation-only. Neither may be
-copied into `/v1/relays`, `/v1/status`, or private administrative configuration.
+Operator values, support methods, and operator diagnostics are presentation-only.
+They are escaped under the existing CSP and are never copied into `/v1/relays`,
+`/v1/status`, `/v2/relays`, or private administrative configuration. `SUPPORT`
+does not accept HTML, Markdown, scripts, remote embeds, tracking pixels, or other
+third-party content.
 
 ## Required state-matrix coverage
 

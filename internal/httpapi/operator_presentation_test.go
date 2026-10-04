@@ -156,6 +156,46 @@ func TestHumanDirectoryOperatorDiagnosticsRenderWithoutUnsafePartialLinks(t *tes
 	}
 }
 
+func TestHumanDirectorySupportBlockIsOptionalEscapedAndPresentationOnly(t *testing.T) {
+	base := newOperatorPresentationTestHandler(t)
+	empty := renderOperatorPresentation(t, base)
+	if strings.Contains(empty, "Support this directory") {
+		t.Fatalf("default-absent support block rendered: %q", empty)
+	}
+
+	handler := base.WithOperatorMetadata(config.OperatorMetadata{
+		Support: []config.SupportEntry{
+			{Title: "Liberapay & friends", URL: "https://support.example/path?x=1&y=2"},
+			{Title: "Wallet <primary>", Value: "bc1qexample&value"},
+		},
+	})
+	body := renderOperatorPresentation(t, handler)
+	for _, required := range []string{
+		"Support this directory",
+		"Optional ways to support the operation of this public directory.",
+		"Liberapay &amp; friends",
+		`href="https://support.example/path?x=1&amp;y=2"`,
+		"Wallet &lt;primary&gt;",
+		"bc1qexample&amp;value",
+	} {
+		if !strings.Contains(body, required) {
+			t.Fatalf("support block missing %q: %q", required, body)
+		}
+	}
+	if strings.Contains(body, "<primary>") {
+		t.Fatalf("support value was not escaped: %q", body)
+	}
+
+	response := httptest.NewRecorder()
+	handler.serve(response, httptest.NewRequest(http.MethodGet, "/v1/relays", nil))
+	jsonBody := response.Body.String()
+	for _, forbidden := range []string{"support.example", "bc1qexample", "Liberapay", "Wallet"} {
+		if strings.Contains(jsonBody, forbidden) {
+			t.Fatalf("JSON projection leaked support metadata %q: %q", forbidden, jsonBody)
+		}
+	}
+}
+
 func TestHumanDirectoryOperatorMetadataDoesNotChangeJSONProjection(t *testing.T) {
 	base := newOperatorPresentationTestHandler(t)
 	handler := base.WithOperatorMetadata(config.OperatorMetadata{

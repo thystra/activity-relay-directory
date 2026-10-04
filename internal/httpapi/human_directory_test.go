@@ -132,7 +132,11 @@ func TestHumanDirectoryRendersEffectiveProfileAsEscapedTextAndHTTPSLinks(t *test
 	relay.Profile = storage.RelayProfile{
 		ParticipationMode: "open <community>",
 		Availability:      "public",
+		RelayType:         "regional",
 		Languages:         []string{"en", "fr"},
+		Countries:         []string{"US"},
+		Regions:           []string{"North America"},
+		Topics:            []string{"general"},
 		ContactEmail:      "relay@example.com",
 		ContactURL:        "https://profile.example/contact",
 		ParticipationURL:  "https://profile.example/join",
@@ -157,9 +161,17 @@ func TestHumanDirectoryRendersEffectiveProfileAsEscapedTextAndHTTPSLinks(t *test
 	}
 	body := response.Body.String()
 	for _, required := range []string{
-		">Profile</h4>",
+		">Relay information</h4>",
+		">Registration status</dt>",
+		">About this relay</dt>",
+		">Relay focus</h4>",
+		"This relay is focused on the following languages, countries, and/or regions:",
 		"open &lt;community&gt;",
+		"regional",
+		"general",
 		"en, fr",
+		"US",
+		"North America",
 		"relay@example.com",
 		`href="https://profile.example/contact"`,
 		`href="https://profile.example/join"`,
@@ -175,6 +187,34 @@ func TestHumanDirectoryRendersEffectiveProfileAsEscapedTextAndHTTPSLinks(t *test
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("unsafe/private content %q present: %q", forbidden, body)
 		}
+	}
+}
+
+func TestHumanDirectorySuppressesLocationFocusIntroWhenNoLocationFocusIsDeclared(t *testing.T) {
+	now := time.Unix(100_100, 0).UTC()
+	relay := directoryProjectionRelayForTest(now, "https://profile.example/actor", storage.DirectoryTierOnline)
+	relay.Profile = storage.RelayProfile{
+		ParticipationMode: "open",
+		RelayType:         "general",
+		Topics:            []string{"general"},
+	}
+	repository := &publicListingRepositoryStub{
+		summary:       storage.DirectorySummary{KnownRelays: 1, OnlineRelays: 1},
+		directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{relay}},
+	}
+	handler, err := NewPublicListingHandler(repository, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewPublicListingHandler() error = %v", err)
+	}
+	response := httptest.NewRecorder()
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := response.Body.String()
+	if !strings.Contains(body, ">Relay focus</h4>") || !strings.Contains(body, ">Topics</dt>") {
+		t.Fatalf("relay focus missing: %q", body)
+	}
+	if strings.Contains(body, "This relay is focused on the following languages, countries, and/or regions:") ||
+		strings.Contains(body, ">Languages</dt>") || strings.Contains(body, ">Countries</dt>") || strings.Contains(body, ">Regions</dt>") {
+		t.Fatalf("empty location focus unexpectedly rendered: %q", body)
 	}
 }
 

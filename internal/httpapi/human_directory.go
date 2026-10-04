@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/config"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -54,6 +55,7 @@ type humanDirectoryPage struct {
 	FediverseID            string
 	FediverseURL           string
 	OperatorDiagnostics    []string
+	SupportEntries         []config.SupportEntry
 }
 
 func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
@@ -244,6 +246,7 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		FediverseID:            operator.FediverseID,
 		FediverseURL:           operator.FediverseURL,
 		OperatorDiagnostics:    operator.Diagnostics,
+		SupportEntries:         operator.Support,
 	})
 	if err != nil {
 		writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")

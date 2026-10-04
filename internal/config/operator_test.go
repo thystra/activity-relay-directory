@@ -23,6 +23,11 @@ OPERATOR-WEBSITE: "https://operator.example/"
 OPERATOR-EMAIL: "operator@example.museum"
 FEDIVERSE-OPERATOR-ID: "@operator@social.example"
 FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
+SUPPORT:
+  - title: "Liberapay"
+    url: "https://liberapay.example/operator"
+  - title: "Bitcoin"
+    value: "bc1qexample"
 `)
 	got, err := loadOperatorMetadataFile(path, true)
 	if err != nil {
@@ -33,6 +38,10 @@ FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
 		Email:        "operator@example.museum",
 		FediverseID:  "@operator@social.example",
 		FediverseURL: "https://social.example/@operator",
+		Support: []SupportEntry{
+			{Title: "Liberapay", URL: "https://liberapay.example/operator"},
+			{Title: "Bitcoin", Value: "bc1qexample"},
+		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("metadata = %#v, want %#v", got, want)
@@ -180,6 +189,57 @@ FEDIVERSE-OPERATOR-ID: "bad-handle"
 				t.Fatalf("diagnostics = %#v, want %#v", got.Diagnostics, tc.wantDiagnostics)
 			}
 		})
+	}
+}
+
+func TestLoadOperatorMetadataSupportValidation(t *testing.T) {
+	path := writeOperatorConfig(t, `
+SUPPORT:
+  - title: "Valid link"
+    url: "https://support.example/path"
+  - title: "Valid value"
+    value: "wallet-address"
+  - title: "Insecure link"
+    url: "http://support.example/"
+  - title: "Ambiguous"
+    url: "https://support.example/other"
+    value: "also-a-value"
+  - title: ""
+    value: "missing-title"
+`)
+	got, err := loadOperatorMetadataFile(path, true)
+	if err != nil {
+		t.Fatalf("loadOperatorMetadataFile() error = %v", err)
+	}
+	wantSupport := []SupportEntry{
+		{Title: "Valid link", URL: "https://support.example/path"},
+		{Title: "Valid value", Value: "wallet-address"},
+	}
+	if !reflect.DeepEqual(got.Support, wantSupport) {
+		t.Fatalf("support = %#v, want %#v", got.Support, wantSupport)
+	}
+	wantDiagnostics := []string{
+		"SUPPORT entry 3 is malformed in config.yml.",
+		"SUPPORT entry 4 is malformed in config.yml.",
+		"SUPPORT entry 5 is malformed in config.yml.",
+	}
+	if !reflect.DeepEqual(got.Diagnostics, wantDiagnostics) {
+		t.Fatalf("diagnostics = %#v, want %#v", got.Diagnostics, wantDiagnostics)
+	}
+}
+
+func TestLoadOperatorMetadataSupportEntryBound(t *testing.T) {
+	var body strings.Builder
+	body.WriteString("SUPPORT:\n")
+	for index := 0; index < maximumSupportEntries+1; index++ {
+		body.WriteString("  - title: method\n    value: value\n")
+	}
+	got, err := loadOperatorMetadataFile(writeOperatorConfig(t, body.String()), true)
+	if err != nil {
+		t.Fatalf("loadOperatorMetadataFile() error = %v", err)
+	}
+	if len(got.Support) != 0 || !reflect.DeepEqual(got.Diagnostics, []string{supportTooManyDiagnostic}) {
+		t.Fatalf("bounded support = %#v diagnostics=%#v", got.Support, got.Diagnostics)
 	}
 }
 

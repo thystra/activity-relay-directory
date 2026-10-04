@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.0-rc2 - 2026-10-04
+
+- Reorganize the human relay profile into `Relay information` and `Relay focus`,
+  display `participation_mode` as `Registration status` and `participation_url`
+  as `About this relay`, and suppress the language/country/region focus
+  subsection when none of those values are declared. Protocol/API field names
+  remain unchanged.
+- Add an optional collapsed `Support this directory` block backed by up to eight
+  provider-neutral `SUPPORT` entries containing a title and exactly one HTTPS
+  URL or escaped plain-text value. Support metadata remains presentation-only
+  and is excluded from directory/status APIs and operational decisions.
+
 ## 1.3.0-rc1 - 2026-10-03
 
 - Add lifecycle Protocol v2 profile synchronization with separately signed v2

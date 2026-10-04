@@ -25,3 +25,13 @@ OPERATOR-WEBSITE: ""
 OPERATOR-EMAIL: ""
 FEDIVERSE-OPERATOR-ID: ""
 FEDIVERSE-OPERATOR-URL: ""
+
+# Optional public support methods for the human Directory page. This block is
+# absent by default in the UI. Each entry needs a title and exactly one of an
+# absolute HTTPS url or a plain-text value. No HTML, Markdown, embeds, scripts,
+# pixels, or third-party content are accepted.
+# SUPPORT:
+#   - title: "Liberapay"
+#     url: "https://liberapay.com/example/"
+#   - title: "Bitcoin"
+#     value: "bc1qexample"
