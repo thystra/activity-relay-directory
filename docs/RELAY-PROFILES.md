@@ -100,7 +100,7 @@ All text rejects control characters. Presence of a profile URL never authorizes
 network retrieval; it is descriptive data only. Current scalar/list values are
 stored as bounded canonical JSON with a 4096-byte storage ceiling.
 
-`participation_mode` is descriptive profile metadata. It must not be inferred
+`participation_mode` is descriptive profile metadata. For authenticated Protocol v2 relay self-report its non-empty values are restricted to `open`, `restricted`, or `closed`. It must not be inferred
 from Activity-Relay's broad address-distribution/fan-out settings and must not
 claim hashtag filtering or another routing policy unless that behavior is
 actually implemented and explicitly declared by the relay/operator.
@@ -292,7 +292,7 @@ operational evidence.
 
 ## Public projection and human page
 
-`/v2/relays` schema 4 adds one reviewed `profile` object. The object contains
+`/v2/relays` schema 5 retains the reviewed `profile` object and adds separate bounded relay telemetry. The object contains
 only the twelve effective public descriptive fields. Missing scalar fields are
 serialized as empty strings and missing multi-value fields as empty arrays so
 the profile shape remains deterministic. It does not reveal which source won a
@@ -336,3 +336,13 @@ The implementation order is intentionally staged:
 No later stage may use profile data to shortcut the identity, moderation,
 reachability, tiering, or public-eligibility rules established by earlier
 releases.
+
+
+### Receiving-site telemetry
+
+Receiving-site count is not a profile field and does not participate in
+`override > relay > csv` precedence. Protocol v2 register/heartbeat may report
+a bounded `receiving_instance_count`; ARD stores it separately with server
+receipt time. Missing telemetry leaves the previous report unchanged. It is
+public informational telemetry only and is excluded from all operational tier,
+reachability, moderation, enrollment, pruning, and eligibility decisions.

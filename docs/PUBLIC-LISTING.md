@@ -335,3 +335,17 @@ the human page shows deterministic configuration diagnostics.
 
 The public data exposed remains limited by the repository, eligibility, moderation, 
 evidence-validation, and serialization rules described above.
+
+
+### Schema 5 relay telemetry
+
+Schema 5 adds a `telemetry` object to each `/v2/relays` relay containing
+`receiving_instance_count` and `reported_at`. Both are nullable when a relay has
+not reported telemetry. The count is self-reported and informational; it is not
+a ranking or tier input. The human Directory exposes the count as **Sites** on
+the compact row and keeps the report timestamp in expanded details.
+
+The human page also permits `?registration=open`, `restricted`, or `closed`.
+Within each operational tier, rows are ordered open, restricted, closed, then
+unreported; this secondary ordering never permits a self-reported registration
+status to change a relay's operational tier.

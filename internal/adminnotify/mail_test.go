@@ -183,3 +183,25 @@ func testExecutable(t *testing.T) string {
 	}
 	return path
 }
+
+func TestCommandMailerDoesNotInterpretShellMetacharacters(t *testing.T) {
+	command := testExecutable(t)
+	mailer, err := NewCommandMailer(command, []string{"admin@example.com"}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	subject := `$(touch /tmp/ard-owned); echo pwned; ' " & | > <`
+	var gotArgs []string
+	mailer.run = func(_ context.Context, _ string, args []string, stdin io.Reader) ([]byte, []byte, error) {
+		gotArgs = append([]string(nil), args...)
+		_, _ = io.ReadAll(stdin)
+		return nil, nil, nil
+	}
+	if err := mailer.Send(context.Background(), subject, "body; $(uname)"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"-s", subject, "admin@example.com"}
+	if !reflect.DeepEqual(gotArgs, want) {
+		t.Fatalf("argv = %#v, want %#v", gotArgs, want)
+	}
+}

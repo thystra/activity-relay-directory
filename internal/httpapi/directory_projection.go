@@ -20,7 +20,7 @@ import (
 
 const (
 	directoryProjectionPath          = "/v2/relays"
-	directoryProjectionSchemaVersion = 4
+	directoryProjectionSchemaVersion = 5
 	directoryProjectionCursorVersion = 2
 )
 
@@ -189,6 +189,7 @@ func directoryProjectionUnavailable() *publicListingFailure {
 
 type directoryProjectionQuery struct {
 	limit            int
+	registration     string
 	after            storage.DirectoryProjectionCursor
 	before           storage.DirectoryProjectionCursor
 	observedAt       time.Time
@@ -215,6 +216,7 @@ type directoryProjectionRelay struct {
 	PublicBaseURL string                          `json:"public_base_url"`
 	Tier          storage.DirectoryTier           `json:"tier"`
 	Profile       directoryProjectionProfile      `json:"profile"`
+	Telemetry     directoryProjectionTelemetry    `json:"telemetry"`
 	Heartbeat     directoryProjectionHeartbeat    `json:"heartbeat"`
 	Reachability  directoryProjectionReachability `json:"reachability"`
 	Inbox         directoryProjectionInbox        `json:"inbox"`
@@ -243,6 +245,11 @@ func (profile directoryProjectionProfile) Empty() bool {
 		len(profile.Topics) == 0 && profile.ContactFediverse == "" &&
 		profile.ContactEmail == "" && profile.ContactURL == "" &&
 		profile.ParticipationURL == "" && profile.Notes == ""
+}
+
+type directoryProjectionTelemetry struct {
+	ReceivingInstanceCount *int    `json:"receiving_instance_count"`
+	ReportedAt             *string `json:"reported_at"`
 }
 
 type directoryProjectionHeartbeat struct {
@@ -317,6 +324,10 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 		PublicBaseURL: relay.PublicBaseURL,
 		Tier:          relay.Tier,
 		Profile:       presentDirectoryProjectionProfile(relay.Profile),
+		Telemetry: directoryProjectionTelemetry{
+			ReceivingInstanceCount: relay.ReceivingInstanceCount,
+			ReportedAt:             formatProjectionUnix(relay.TelemetryReportedUnix),
+		},
 		Heartbeat: directoryProjectionHeartbeat{
 			State:      relay.HeartbeatState,
 			LastSeenAt: formatProjectionUnix(relay.LastSeenUnix),
@@ -376,7 +387,15 @@ func (handler *PublicListingHandler) parseDirectoryProjectionQuery(rawQuery stri
 }
 
 func (handler *PublicListingHandler) parseHumanDirectoryProjectionQuery(rawQuery string, now time.Time) (directoryProjectionQuery, error) {
-	return handler.parseDirectoryProjectionQueryMode(rawQuery, now, true)
+	result, err := handler.parseDirectoryProjectionQueryMode(rawQuery, now, true)
+	if err != nil {
+		return directoryProjectionQuery{}, err
+	}
+	values, _ := url.ParseQuery(rawQuery)
+	if _, exists := values["limit"]; !exists {
+		result.limit = storage.MaximumDirectoryProjectionPage
+	}
+	return result, nil
 }
 
 func (handler *PublicListingHandler) parseDirectoryProjectionQueryMode(
@@ -389,7 +408,7 @@ func (handler *PublicListingHandler) parseDirectoryProjectionQueryMode(
 		return directoryProjectionQuery{}, err
 	}
 	for key, entries := range values {
-		allowed := key == "limit" || key == "cursor" || (allowBefore && key == "before")
+		allowed := key == "limit" || key == "cursor" || (allowBefore && (key == "before" || key == "registration"))
 		if !allowed || len(entries) != 1 {
 			return directoryProjectionQuery{}, errors.New("invalid directory projection query")
 		}
@@ -401,6 +420,14 @@ func (handler *PublicListingHandler) parseDirectoryProjectionQueryMode(
 	}
 
 	result := directoryProjectionQuery{limit: storage.DefaultDirectoryProjectionPage}
+	if entries, exists := values["registration"]; exists {
+		switch entries[0] {
+		case "open", "restricted", "closed":
+			result.registration = entries[0]
+		default:
+			return directoryProjectionQuery{}, errors.New("invalid registration filter")
+		}
+	}
 	if entries, exists := values["limit"]; exists {
 		raw := entries[0]
 		limit, err := strconv.Atoi(raw)

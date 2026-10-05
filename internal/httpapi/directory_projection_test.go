@@ -21,6 +21,8 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 	checked := int64(100_050)
 	declared := int64(100_040)
 	verified := int64(100_000)
+	receivingCount := 12
+	telemetryReported := int64(100_020)
 	discoveredChecked := int64(100_090)
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{
 		Relays: []storage.DirectoryProjectionRelay{
@@ -45,17 +47,19 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 					ParticipationURL:  "https://relay.example/join",
 					Notes:             "Public community relay",
 				},
-				HeartbeatState:       storage.HeartbeatHealthy,
-				LastSeenUnix:         &lastSeen,
-				LastHeartbeatUnix:    &lastSeen,
-				ActorState:           storage.ReachabilityReachable,
-				ActorLastCheckedUnix: &checked,
-				ActorLastSuccessUnix: &checked,
-				InboxURL:             "https://relay.example/inbox",
-				InboxDeclaredUnix:    &declared,
-				InboxProbeState:      storage.InboxMethodRejected,
-				InboxLastCheckedUnix: &checked,
-				RFC9421VerifiedUnix:  &verified,
+				HeartbeatState:         storage.HeartbeatHealthy,
+				LastSeenUnix:           &lastSeen,
+				LastHeartbeatUnix:      &lastSeen,
+				ActorState:             storage.ReachabilityReachable,
+				ActorLastCheckedUnix:   &checked,
+				ActorLastSuccessUnix:   &checked,
+				InboxURL:               "https://relay.example/inbox",
+				InboxDeclaredUnix:      &declared,
+				InboxProbeState:        storage.InboxMethodRejected,
+				InboxLastCheckedUnix:   &checked,
+				RFC9421VerifiedUnix:    &verified,
+				ReceivingInstanceCount: &receivingCount,
+				TelemetryReportedUnix:  &telemetryReported,
 			},
 			{
 				RelayActor:           "https://relay2.example/actor",
@@ -344,7 +348,7 @@ func TestDirectoryProjectionRejectsInvalidQueryWithFixedRedactedError(t *testing
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, response.Code)
 		}
-		want := "{\"schema_version\":4,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
+		want := "{\"schema_version\":5,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
 		if response.Body.String() != want {
 			t.Fatalf("%s body = %q", target, response.Body.String())
 		}

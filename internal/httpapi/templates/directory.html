@@ -39,7 +39,7 @@
       <div class="section-heading">
         <div>
           <h2 id="status-heading">How the relay tiers work</h2>
-          <p class="muted">Tiers describe operational confidence, not popularity. Relays are alphabetical by hostname inside each tier.</p>
+          <p class="muted">Tiers describe operational confidence, not popularity. Inside each tier, open relays are shown first, then restricted, closed, and unreported relays.</p>
         </div>
       </div>
       <dl class="tier-guide">
@@ -72,6 +72,14 @@
         </div>
       </div>
 
+      <nav class="registration-filters" aria-label="Filter relays by registration status">
+        <span class="muted">Registration:</span>
+        <a class="button-link{{if not .RegistrationFilter}} active{{end}}" href="{{.AllRegistrationURL}}">All</a>
+        <a class="button-link{{if eq .RegistrationFilter "open"}} active{{end}}" href="{{.OpenRegistrationURL}}">Open</a>
+        <a class="button-link{{if eq .RegistrationFilter "restricted"}} active{{end}}" href="{{.RestrictedRegistrationURL}}">Restricted</a>
+        <a class="button-link{{if eq .RegistrationFilter "closed"}} active{{end}}" href="{{.ClosedRegistrationURL}}">Closed</a>
+      </nav>
+
       <nav class="download-links" aria-label="Relay list downloads">
         <span class="muted">Download host lists:</span>
         <a class="button-link" href="{{.ActiveDownloadURL}}" download>Active relays</a>
@@ -93,10 +101,10 @@
         <div class="relay-table" aria-label="{{.Title}} relays">
           <div class="relay-table-header" aria-hidden="true">
             <span>Relay</span>
-            <span>Heartbeat</span>
+            <span>Registration</span>
+            <span>Sites</span>
+            <span><span aria-hidden="true">♥</span> Heartbeat</span>
             <span>Reachability</span>
-            <span>Last heartbeat</span>
-            <span>Last checked</span>
           </div>
           <ul class="relay-rows">
 {{range .Relays}}
@@ -106,21 +114,21 @@
                   <span class="relay-name">
                     <a href="{{.PublicBaseURL}}" rel="noreferrer">{{relayLabel .PublicBaseURL}}</a>
                   </span>
+                  <span class="relay-cell relay-registration">
+                    <span class="cell-label">Registration</span>
+                    <span class="signal-badge registration-{{participationClass .Profile.ParticipationMode}}">{{participationLabel .Profile.ParticipationMode}}</span>
+                  </span>
+                  <span class="relay-cell relay-sites">
+                    <span class="cell-label">Subscribed sites</span>
+                    {{if .Telemetry.ReceivingInstanceCount}}{{.Telemetry.ReceivingInstanceCount}}{{else}}<span class="muted">—</span>{{end}}
+                  </span>
                   <span class="relay-cell relay-heartbeat">
                     <span class="cell-label">Heartbeat</span>
-                    <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
+                    <span aria-hidden="true" class="heartbeat-symbol">♥</span> <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
                   </span>
                   <span class="relay-cell relay-reachability">
                     <span class="cell-label">Reachability</span>
                     <span class="signal-badge reachability-{{.Reachability.State}}">{{reachabilityLabel .Reachability.State}}</span>
-                  </span>
-                  <span class="relay-cell relay-time">
-                    <span class="cell-label">Last heartbeat</span>
-                    {{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{humanTime .Heartbeat.LastSeenAt}}</time>{{else}}<span class="muted">None yet</span>{{end}}
-                  </span>
-                  <span class="relay-cell relay-time">
-                    <span class="cell-label">Last checked</span>
-                    {{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{humanTime .Reachability.LastCheckedAt}}</time>{{else}}<span class="muted">Not checked</span>{{end}}
                   </span>
                 </summary>
                 <div class="relay-details">
@@ -134,8 +142,16 @@
                       <dd>{{if .Inbox.URL}}<code>{{.Inbox.URL}}</code>{{else}}Not listed{{end}}</dd>
                     </div>
                     <div>
+                      <dt>Last heartbeat</dt>
+                      <dd>{{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{humanTime .Heartbeat.LastSeenAt}}</time>{{else}}None yet{{end}}</dd>
+                    </div>
+                    <div>
                       <dt>Last successful check</dt>
                       <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
+                    </div>
+                    <div>
+                      <dt>Subscribed sites reported</dt>
+                      <dd>{{if .Telemetry.ReceivingInstanceCount}}{{.Telemetry.ReceivingInstanceCount}}{{else}}Not reported{{end}}{{if .Telemetry.ReportedAt}} · <time datetime="{{.Telemetry.ReportedAt}}">{{humanTime .Telemetry.ReportedAt}}</time>{{end}}</dd>
                     </div>
                   </dl>{{if not .Profile.Empty}}
                   <div class="relay-profile">

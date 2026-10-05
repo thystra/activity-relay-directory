@@ -56,12 +56,17 @@ type profileWire struct {
 	Notes             *string   `json:"notes"`
 }
 
+type telemetryWire struct {
+	ReceivingInstanceCount *int `json:"receiving_instance_count"`
+}
+
 type registerWire struct {
-	ProtocolVersion int         `json:"protocol_version"`
-	Operation       Operation   `json:"operation"`
-	RelayActor      string      `json:"relay_actor"`
-	PublicBaseURL   string      `json:"public_base_url"`
-	Profile         profileWire `json:"profile"`
+	ProtocolVersion int            `json:"protocol_version"`
+	Operation       Operation      `json:"operation"`
+	RelayActor      string         `json:"relay_actor"`
+	PublicBaseURL   string         `json:"public_base_url"`
+	Profile         profileWire    `json:"profile"`
+	Telemetry       *telemetryWire `json:"telemetry,omitempty"`
 }
 
 func (profile profileWire) normalized() (storage.RelayProfile, error) {
@@ -72,7 +77,7 @@ func (profile profileWire) normalized() (storage.RelayProfile, error) {
 		profile.ContactURL == nil || profile.ParticipationURL == nil || profile.Notes == nil {
 		return storage.RelayProfile{}, storage.ErrProfileInput
 	}
-	return storage.NormalizeRelayProfile(storage.RelayProfile{
+	normalized, err := storage.NormalizeRelayProfile(storage.RelayProfile{
 		ParticipationMode: *profile.ParticipationMode,
 		Availability:      *profile.Availability,
 		RelayType:         *profile.RelayType,
@@ -86,6 +91,36 @@ func (profile profileWire) normalized() (storage.RelayProfile, error) {
 		ParticipationURL:  *profile.ParticipationURL,
 		Notes:             *profile.Notes,
 	})
+	if err != nil {
+		return storage.RelayProfile{}, err
+	}
+	switch normalized.ParticipationMode {
+	case "", "open", "restricted", "closed":
+		return normalized, nil
+	default:
+		return storage.RelayProfile{}, storage.ErrProfileInput
+	}
+}
+
+func (telemetry *telemetryWire) normalized(relayActor string) (*storage.TelemetryIntent, error) {
+	if telemetry == nil {
+		return nil, nil
+	}
+	if telemetry.ReceivingInstanceCount == nil {
+		return nil, storage.ErrTelemetryInput
+	}
+	intent := storage.TelemetryIntent{RelayActor: relayActor, ReceivingInstanceCount: *telemetry.ReceivingInstanceCount}
+	if intent.ReceivingInstanceCount < 0 || intent.ReceivingInstanceCount > storage.MaximumReceivingInstanceCount {
+		return nil, storage.ErrTelemetryInput
+	}
+	return &intent, nil
+}
+
+type heartbeatWire struct {
+	ProtocolVersion int            `json:"protocol_version"`
+	Operation       Operation      `json:"operation"`
+	RelayActor      string         `json:"relay_actor"`
+	Telemetry       *telemetryWire `json:"telemetry,omitempty"`
 }
 
 func DecodeRegisterRequest(body []byte, maximumBytes int64) (RegisterRequest, error) {
@@ -113,18 +148,46 @@ func DecodeRegisterRequest(body []byte, maximumBytes int64) (RegisterRequest, er
 	if err != nil {
 		return RegisterRequest{}, ErrRegisterRequest
 	}
+	telemetry, err := wire.Telemetry.normalized(wire.RelayActor)
+	if err != nil {
+		return RegisterRequest{}, ErrRegisterRequest
+	}
 	return RegisterRequest{
 		ProtocolVersion: wire.ProtocolVersion,
 		Operation:       wire.Operation,
 		RelayActor:      wire.RelayActor,
 		PublicBaseURL:   wire.PublicBaseURL,
 		Profile:         profile,
+		Telemetry:       telemetry,
 	}, nil
 }
 
-func DecodeHeartbeatRequest(body []byte, maximumBytes int64) (IdentityRequest, error) {
-	return decodeIdentityRequest(body, maximumBytes, MaximumHeartbeatBodyBytes, OperationHeartbeat,
-		ErrHeartbeatConfiguration, ErrHeartbeatBodyTooLarge, ErrHeartbeatProtocolVersion, ErrHeartbeatRequest)
+func DecodeHeartbeatRequest(body []byte, maximumBytes int64) (HeartbeatRequest, error) {
+	if maximumBytes <= 0 || maximumBytes > MaximumHeartbeatBodyBytes {
+		return HeartbeatRequest{}, ErrHeartbeatConfiguration
+	}
+	if int64(len(body)) > maximumBytes {
+		return HeartbeatRequest{}, ErrHeartbeatBodyTooLarge
+	}
+	var wire heartbeatWire
+	if err := decodeStrictJSON(body, &wire); err != nil {
+		return HeartbeatRequest{}, ErrHeartbeatRequest
+	}
+	if wire.ProtocolVersion != Version {
+		return HeartbeatRequest{}, ErrHeartbeatProtocolVersion
+	}
+	if wire.Operation != OperationHeartbeat {
+		return HeartbeatRequest{}, ErrHeartbeatRequest
+	}
+	actor, err := v1.NormalizeRelayActorURL(wire.RelayActor)
+	if err != nil || actor != wire.RelayActor {
+		return HeartbeatRequest{}, ErrHeartbeatRequest
+	}
+	telemetry, err := wire.Telemetry.normalized(wire.RelayActor)
+	if err != nil {
+		return HeartbeatRequest{}, ErrHeartbeatRequest
+	}
+	return HeartbeatRequest{ProtocolVersion: wire.ProtocolVersion, Operation: wire.Operation, RelayActor: wire.RelayActor, Telemetry: telemetry}, nil
 }
 
 func DecodeUnregisterRequest(body []byte, maximumBytes int64) (IdentityRequest, error) {

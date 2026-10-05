@@ -56,7 +56,7 @@ type LifecycleV2Verifier interface {
 		[]byte,
 		int64,
 		v1.RFC9421ReplayStore,
-	) (*v2.VerifiedIdentityRequest, error)
+	) (*v2.VerifiedHeartbeatRequest, error)
 	VerifyUnregisterAndReserve(
 		*http.Request,
 		[]byte,
@@ -70,30 +70,32 @@ var _ LifecycleV2Verifier = (*v2.RFC9421Verifier)(nil)
 // LifecycleDependencies contains the already-reviewed security and storage
 // gates required by the three version 1 lifecycle routes.
 type LifecycleDependencies struct {
-	Verifier          LifecycleVerifier
-	V2Verifier        LifecycleV2Verifier
-	ReplayStore       v1.RFC9421ReplayStore
-	Repository        storage.RelayRepository
-	ProfileRepository storage.ProfileRepository
-	SourceResolver    *admission.SourceResolver
-	Limiter           *admission.Limiter
-	MaximumBodyBytes  int64
-	Now               func() time.Time
+	Verifier            LifecycleVerifier
+	V2Verifier          LifecycleV2Verifier
+	ReplayStore         v1.RFC9421ReplayStore
+	Repository          storage.RelayRepository
+	ProfileRepository   storage.ProfileRepository
+	TelemetryRepository storage.TelemetryRepository
+	SourceResolver      *admission.SourceResolver
+	Limiter             *admission.Limiter
+	MaximumBodyBytes    int64
+	Now                 func() time.Time
 }
 
 // LifecycleHandler composes authenticated lifecycle operations. Construction
 // alone does not enable routes; Config.LifecycleEnabled remains the fail-
 // closed runtime gate used by NewHandlerWithLifecycle.
 type LifecycleHandler struct {
-	verifier          LifecycleVerifier
-	v2Verifier        LifecycleV2Verifier
-	replayStore       v1.RFC9421ReplayStore
-	repository        storage.RelayRepository
-	profileRepository storage.ProfileRepository
-	sourceResolver    *admission.SourceResolver
-	limiter           *admission.Limiter
-	maximumBodyBytes  int64
-	now               func() time.Time
+	verifier            LifecycleVerifier
+	v2Verifier          LifecycleV2Verifier
+	replayStore         v1.RFC9421ReplayStore
+	repository          storage.RelayRepository
+	profileRepository   storage.ProfileRepository
+	telemetryRepository storage.TelemetryRepository
+	sourceResolver      *admission.SourceResolver
+	limiter             *admission.Limiter
+	maximumBodyBytes    int64
+	now                 func() time.Time
 }
 
 // NewLifecycleHandler validates a complete bounded dependency graph.
@@ -109,15 +111,16 @@ func NewLifecycleHandler(
 		return nil, ErrLifecycleConfiguration
 	}
 	return &LifecycleHandler{
-		verifier:          dependencies.Verifier,
-		v2Verifier:        dependencies.V2Verifier,
-		replayStore:       dependencies.ReplayStore,
-		repository:        dependencies.Repository,
-		profileRepository: dependencies.ProfileRepository,
-		sourceResolver:    dependencies.SourceResolver,
-		limiter:           dependencies.Limiter,
-		maximumBodyBytes:  dependencies.MaximumBodyBytes,
-		now:               dependencies.Now,
+		verifier:            dependencies.Verifier,
+		v2Verifier:          dependencies.V2Verifier,
+		replayStore:         dependencies.ReplayStore,
+		repository:          dependencies.Repository,
+		profileRepository:   dependencies.ProfileRepository,
+		telemetryRepository: dependencies.TelemetryRepository,
+		sourceResolver:      dependencies.SourceResolver,
+		limiter:             dependencies.Limiter,
+		maximumBodyBytes:    dependencies.MaximumBodyBytes,
+		now:                 dependencies.Now,
 	}, nil
 }
 
@@ -362,7 +365,7 @@ func (handler *LifecycleHandler) serveV2(
 		return
 	}
 
-	actor, publicBaseURL, profile, err := handler.verifyV2(request, body, operation)
+	actor, publicBaseURL, profile, telemetry, err := handler.verifyV2(request, body, operation)
 	if err != nil {
 		writeLifecycleV2Error(response, request, err)
 		return
@@ -385,6 +388,14 @@ func (handler *LifecycleHandler) serveV2(
 			},
 			acceptedAt,
 		)
+	}
+	if err == nil && telemetry != nil {
+		if handler.telemetryRepository == nil {
+			err = ErrLifecycleConfiguration
+		} else {
+			telemetry.RelayActor = actor
+			err = handler.telemetryRepository.ReplaceRelayTelemetry(request.Context(), *telemetry, acceptedAt)
+		}
 	}
 	if err != nil {
 		writeLifecycleV2Error(response, request, err)
@@ -410,43 +421,43 @@ func (handler *LifecycleHandler) verifyV2(
 	request *http.Request,
 	body []byte,
 	operation v2.Operation,
-) (string, string, storage.RelayProfile, error) {
+) (string, string, storage.RelayProfile, *storage.TelemetryIntent, error) {
 	switch operation {
 	case v2.OperationRegister:
 		verified, err := handler.v2Verifier.VerifyRegisterAndReserve(
 			request, body, handler.maximumBodyBytes, handler.replayStore,
 		)
 		if err != nil {
-			return "", "", storage.RelayProfile{}, err
+			return "", "", storage.RelayProfile{}, nil, err
 		}
 		if verified == nil || verified.Authentication == nil {
-			return "", "", storage.RelayProfile{}, ErrLifecycleConfiguration
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
 		}
-		return verified.Request.RelayActor, verified.Request.PublicBaseURL, verified.Request.Profile, nil
+		return verified.Request.RelayActor, verified.Request.PublicBaseURL, verified.Request.Profile, verified.Request.Telemetry, nil
 	case v2.OperationHeartbeat:
 		verified, err := handler.v2Verifier.VerifyHeartbeatAndReserve(
 			request, body, handler.maximumBodyBytes, handler.replayStore,
 		)
 		if err != nil {
-			return "", "", storage.RelayProfile{}, err
+			return "", "", storage.RelayProfile{}, nil, err
 		}
 		if verified == nil || verified.Authentication == nil {
-			return "", "", storage.RelayProfile{}, ErrLifecycleConfiguration
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
 		}
-		return verified.Request.RelayActor, "", storage.RelayProfile{}, nil
+		return verified.Request.RelayActor, "", storage.RelayProfile{}, verified.Request.Telemetry, nil
 	case v2.OperationUnregister:
 		verified, err := handler.v2Verifier.VerifyUnregisterAndReserve(
 			request, body, handler.maximumBodyBytes, handler.replayStore,
 		)
 		if err != nil {
-			return "", "", storage.RelayProfile{}, err
+			return "", "", storage.RelayProfile{}, nil, err
 		}
 		if verified == nil || verified.Authentication == nil {
-			return "", "", storage.RelayProfile{}, ErrLifecycleConfiguration
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
 		}
-		return verified.Request.RelayActor, "", storage.RelayProfile{}, nil
+		return verified.Request.RelayActor, "", storage.RelayProfile{}, nil, nil
 	default:
-		return "", "", storage.RelayProfile{}, ErrLifecycleConfiguration
+		return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
 	}
 }
 
@@ -507,7 +518,8 @@ func writeLifecycleV2Error(
 		errors.Is(err, v2.ErrRegisterBodyTooLarge),
 		errors.Is(err, v2.ErrHeartbeatBodyTooLarge),
 		errors.Is(err, v2.ErrUnregisterBodyTooLarge),
-		errors.Is(err, storage.ErrProfileInput):
+		errors.Is(err, storage.ErrProfileInput),
+		errors.Is(err, storage.ErrTelemetryInput):
 		writeProtocolErrorVersion(response, request, http.StatusBadRequest, v2.Version, v2.ErrorInvalidRequest)
 	default:
 		writeProtocolErrorVersion(response, request, http.StatusInternalServerError, v2.Version, v2.ErrorInternal)

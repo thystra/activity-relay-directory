@@ -29,7 +29,7 @@ mapfile -t CURRENT_MIGRATIONS < <(
 )
 
 [[ "${#RELEASED_MIGRATIONS[@]}" -eq 9 ]]
-[[ "${#CURRENT_MIGRATIONS[@]}" -eq 10 ]]
+[[ "${#CURRENT_MIGRATIONS[@]}" -eq 11 ]]
 for migration_path in "${RELEASED_MIGRATIONS[@]}"; do
     cmp -s <(git show "$BASE_TAG:$migration_path") "$migration_path" || {
         echo "released migration drift: $migration_path" >&2
@@ -41,15 +41,14 @@ EXTRA_MIGRATIONS="$(
         <(printf '%s\n' "${RELEASED_MIGRATIONS[@]}") \
         <(printf '%s\n' "${CURRENT_MIGRATIONS[@]}")
 )"
-[[ "$EXTRA_MIGRATIONS" == \
-    "internal/storage/sqlite/migrations/0010_relay_profiles.sql" ]]
-pass CASE_01_SCHEMA10_IS_ONLY_NEW_MIGRATION
+[[ "$EXTRA_MIGRATIONS" == $'internal/storage/sqlite/migrations/0010_relay_profiles.sql\ninternal/storage/sqlite/migrations/0011_relay_telemetry.sql' ]]
+pass CASE_01_SCHEMA10_AND_11_ARE_ONLY_NEW_MIGRATIONS
 pass CASE_01_MIGRATIONS_1_TO_9_BYTE_IDENTICAL
 
 echo
 echo '===== CASE 2: PROFILE STORAGE / PRECEDENCE / CLEAR ====='
 go test -count=1 ./internal/storage/sqlite \
-    -run '^(TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay|TestProfileRoundTripsAllFields|TestProfileSourcePrecedenceReplacementAndClear|TestProfileReplacementIsAtomicPrivateAndOperationallyIndependent|TestProfileRejectsAbsentIdentityAndRegressingSourceTime|TestProfileMutationUsesSharedWriteAdmission)$'
+    -run '^(TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay|TestProfileRoundTripsAllFields|TestProfileSourcePrecedenceReplacementAndClear|TestProfileReplacementIsAtomicPrivateAndOperationallyIndependent|TestProfileRejectsAbsentIdentityAndRegressingSourceTime|TestProfileMutationUsesSharedWriteAdmission|TestRelayTelemetryPersistsBoundedCountWithoutChangingLifecycle|TestRelayTelemetryRejectsInvalidOrAbsentIdentity|TestProfilePersistenceTreatsSQLMetacharactersAsData)$'
 pass CASE_02_PROFILE_STORAGE_PRECEDENCE_AND_CLEAR
 
 echo
