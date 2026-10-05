@@ -370,7 +370,7 @@ func TestRelayRepositoryRollsBackHeartbeatAndUnregisterWhenAuditInsertFails(t *t
 			relay := readTestRelay(t, database, testRelayActor)
 			if relay.lifecycleState != lifecycleRegistered ||
 				relay.updatedAtUnix != 100 || relay.lastSeenAtUnix != 100 ||
-				relay.lastHeartbeat.Valid ||
+				!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 100 ||
 				relay.unregisteredAt.Valid {
 				t.Fatalf("relay changed after %s rollback: %#v", operation, relay)
 			}

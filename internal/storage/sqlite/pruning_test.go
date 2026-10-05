@@ -197,9 +197,10 @@ func TestSoftPruneIsReversibleIdempotentAndPreservesSuspension(t *testing.T) {
 	)), v1.OutcomeUpdated)
 
 	relay = readTestRelay(t, database, testRelayActor)
+	wantReregistered := observed.Add(4 * time.Second).Unix()
 	if relay.lifecycleState != lifecycleRegistered || relay.firstRegisteredAt != 100 ||
-		relay.prunedAt.Valid || relay.unregisteredAt.Valid || relay.lastHeartbeat.Valid ||
-		relay.lastSeenAtUnix != observed.Add(4*time.Second).Unix() {
+		relay.prunedAt.Valid || relay.unregisteredAt.Valid || !relay.lastHeartbeat.Valid ||
+		relay.lastHeartbeat.Int64 != wantReregistered || relay.lastSeenAtUnix != wantReregistered {
 		t.Fatalf("re-registered pruned relay = %#v", relay)
 	}
 	if got := readTestEventKinds(t, database, testRelayActor); !equalStrings(
