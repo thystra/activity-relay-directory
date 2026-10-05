@@ -18,7 +18,7 @@ import (
 
 const (
 	humanDirectoryContentType = "text/html; charset=utf-8"
-	humanDirectoryCSPBase     = "default-src 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'none'; img-src 'none'; script-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+	humanDirectoryCSP         = "default-src 'none'; style-src 'self'; style-src-elem 'self'; style-src-attr 'none'; img-src 'none'; script-src 'none'; font-src 'none'; connect-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 	directoryStylesheetPath   = "/assets/directory.css"
 )
 
@@ -244,16 +244,16 @@ func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), erro
 	}, nil
 }
 
-func humanDirectoryCSP(bannerURL string) string {
+func humanDirectoryCSPForBanner(bannerURL string) string {
 	if bannerURL == "" {
-		return humanDirectoryCSPBase
+		return humanDirectoryCSP
 	}
 	parsed, err := url.Parse(bannerURL)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return humanDirectoryCSPBase
+		return humanDirectoryCSP
 	}
 	origin := parsed.Scheme + "://" + parsed.Host
-	return strings.Replace(humanDirectoryCSPBase, "img-src 'none'", "img-src 'self' "+origin, 1)
+	return strings.Replace(humanDirectoryCSP, "img-src 'none'", "img-src 'self' "+origin, 1)
 }
 
 func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseWriter, request *http.Request) {
@@ -344,7 +344,7 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		return
 	}
 
-	response.Header().Set("Content-Security-Policy", humanDirectoryCSP(operator.DirectoryBannerURL))
+	response.Header().Set("Content-Security-Policy", humanDirectoryCSPForBanner(operator.DirectoryBannerURL))
 	writeCacheablePublicRepresentation(response, request, humanDirectoryContentType, body)
 }
 
@@ -412,7 +412,7 @@ func writeHumanDirectoryError(
 ) {
 	response.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	response.Header().Set("Cache-Control", "no-store")
-	response.Header().Set("Content-Security-Policy", humanDirectoryCSP(operator.DirectoryBannerURL))
+	response.Header().Set("Content-Security-Policy", humanDirectoryCSP)
 	response.WriteHeader(status)
 	if request.Method != http.MethodHead {
 		_, _ = response.Write([]byte(message + "\n"))
