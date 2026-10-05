@@ -56,17 +56,17 @@ func (state PublicHeartbeatState) Valid() bool {
 	}
 }
 
-// ClassifyPublicHeartbeat applies the frozen version-1 last-seen boundaries to
-// the richer public projection. A nil last-seen value means no retained
-// authenticated lifecycle observation exists for this actor.
-func ClassifyPublicHeartbeat(lastSeenUnix *int64, observedUnix int64) (PublicHeartbeatState, error) {
+// ClassifyPublicHeartbeat applies the frozen version-1 health boundaries to
+// retained heartbeat/liveness evidence. A nil heartbeat value means no retained
+// authenticated heartbeat-equivalent lifecycle observation exists for this actor.
+func ClassifyPublicHeartbeat(lastHeartbeatUnix *int64, observedUnix int64) (PublicHeartbeatState, error) {
 	if observedUnix < 0 {
 		return "", ErrHealthTime
 	}
-	if lastSeenUnix == nil {
+	if lastHeartbeatUnix == nil {
 		return HeartbeatNotObserved, nil
 	}
-	health, err := ClassifyHealth(*lastSeenUnix, observedUnix)
+	health, err := ClassifyHealth(*lastHeartbeatUnix, observedUnix)
 	if err != nil {
 		return "", err
 	}
@@ -237,7 +237,7 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 		return ErrDirectoryProjectionData
 	}
 
-	heartbeat, err := ClassifyPublicHeartbeat(relay.LastSeenUnix, observedUnix)
+	heartbeat, err := ClassifyPublicHeartbeat(relay.LastHeartbeatUnix, observedUnix)
 	if err != nil || heartbeat != relay.HeartbeatState {
 		return ErrDirectoryProjectionData
 	}

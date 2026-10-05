@@ -340,7 +340,7 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 		},
 		Heartbeat: directoryProjectionHeartbeat{
 			State:      relay.HeartbeatState,
-			LastSeenAt: formatProjectionUnix(relay.LastSeenUnix),
+			LastSeenAt: formatProjectionUnix(relay.LastHeartbeatUnix),
 		},
 		Reachability: directoryProjectionReachability{
 			State:         relay.ActorState,

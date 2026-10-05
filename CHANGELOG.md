@@ -6,6 +6,12 @@
   Protocol v3 stores `participating_instance_count` separately from the rc3
   receiving-instance field, while public **Sites** prefers v3 telemetry and
   falls back to the v2 value during rolling upgrades.
+- Treat every successful authenticated registration as current relay-liveness
+  evidence: create, unchanged/profile-sync, and restore registrations now advance
+  the retained heartbeat timestamp. CSV/discovery/profile-only local writes do
+  not affect heartbeat evidence.
+- Drive public heartbeat health and the human **Last heartbeat** value from the
+  retained heartbeat timestamp rather than generic lifecycle `last_seen`.
 - Advertise lifecycle versions `[1,2,3]` when v3 is available and add a shared
   cross-repository signed v3 registration fixture.
 - Install the package-managed operator example as

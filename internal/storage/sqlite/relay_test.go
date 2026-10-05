@@ -30,6 +30,11 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 		},
 		time.Unix(100, 0),
 	)), v1.OutcomeCreated)
+	relay := readTestRelay(t, database, testRelayActor)
+	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 100 ||
+		relay.lastSeenAtUnix != 100 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 100 {
+		t.Fatalf("created relay liveness state = %#v", relay)
+	}
 	assertOutcome(t, transitionResultOf(repository.Heartbeat(
 		ctx,
 		storage.IdentityIntent{RelayActor: testRelayActor},
@@ -44,9 +49,9 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 		time.Unix(120, 0),
 	)), v1.OutcomeUnchanged)
 
-	relay := readTestRelay(t, database, testRelayActor)
-	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 110 ||
-		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
+	relay = readTestRelay(t, database, testRelayActor)
+	if relay.lifecycleState != lifecycleRegistered || relay.updatedAtUnix != 120 ||
+		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 120 ||
 		relay.unregisteredAt.Valid {
 		t.Fatalf("registered relay state = %#v", relay)
 	}
@@ -64,7 +69,7 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 
 	relay = readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleUnregistered || relay.updatedAtUnix != 130 ||
-		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 110 ||
+		relay.lastSeenAtUnix != 120 || !relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 120 ||
 		!relay.unregisteredAt.Valid || relay.unregisteredAt.Int64 != 130 {
 		t.Fatalf("unregistered relay state = %#v", relay)
 	}
@@ -80,7 +85,7 @@ func TestRelayRepositoryLifecycleTransitions(t *testing.T) {
 	relay = readTestRelay(t, database, testRelayActor)
 	if relay.lifecycleState != lifecycleRegistered || relay.firstRegisteredAt != 100 ||
 		relay.updatedAtUnix != 150 || relay.lastSeenAtUnix != 150 ||
-		relay.lastHeartbeat.Valid ||
+		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 150 ||
 		relay.unregisteredAt.Valid {
 		t.Fatalf("restored relay state = %#v", relay)
 	}

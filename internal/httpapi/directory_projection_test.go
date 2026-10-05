@@ -117,6 +117,20 @@ func TestDirectoryProjectionFixtureAndCacheValidator(t *testing.T) {
 	}
 }
 
+func TestPresentDirectoryProjectionHeartbeatUsesActualHeartbeatTimestamp(t *testing.T) {
+	lastSeen := int64(200)
+	lastHeartbeat := int64(100)
+	presented := presentDirectoryProjectionRelay(storage.DirectoryProjectionRelay{
+		HeartbeatState:    storage.HeartbeatStale,
+		LastSeenUnix:      &lastSeen,
+		LastHeartbeatUnix: &lastHeartbeat,
+	})
+	want := time.Unix(lastHeartbeat, 0).UTC().Format(time.RFC3339)
+	if presented.Heartbeat.LastSeenAt == nil || *presented.Heartbeat.LastSeenAt != want {
+		t.Fatalf("heartbeat last_seen_at = %v, want actual heartbeat %q", presented.Heartbeat.LastSeenAt, want)
+	}
+}
+
 func TestDirectoryProjectionHeadSuppressesBodyAndPreservesValidators(t *testing.T) {
 	repository := &publicListingRepositoryStub{directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{}}}
 	handler, err := NewPublicListingHandler(repository, func() time.Time { return time.Unix(100, 0).UTC() })

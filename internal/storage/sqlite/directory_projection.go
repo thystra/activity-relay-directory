@@ -866,7 +866,7 @@ ORDER BY seed.relay_actor`
 			relay.InboxProbeState = storage.InboxProbeState(inboxState.String)
 		}
 		var err error
-		relay.HeartbeatState, err = storage.ClassifyPublicHeartbeat(relay.LastSeenUnix, observedUnix)
+		relay.HeartbeatState, err = storage.ClassifyPublicHeartbeat(relay.LastHeartbeatUnix, observedUnix)
 		if err != nil {
 			return nil, storageFailure("classify public directory heartbeat", err)
 		}

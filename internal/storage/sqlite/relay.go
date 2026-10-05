@@ -63,7 +63,9 @@ func NewRelayRepository(
 }
 
 // Register creates, restores, or confirms a relay registration. It never
-// clears administrative suspension and restores no pre-unregister or pre-prune heartbeat.
+// clears administrative suspension. Every accepted authenticated registration
+// is current relay-liveness evidence, so it advances both last-seen and the
+// heartbeat timestamp without restoring any older pre-unregister/pre-prune value.
 func (repository *RelayRepository) Register(
 	ctx context.Context,
 	intent storage.RegisterIntent,
@@ -123,12 +125,14 @@ func (repository *RelayRepository) Register(
 			    administrative_state,
 			    first_registered_at_unix,
 			    updated_at_unix,
-			    last_seen_at_unix
-			) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			    last_seen_at_unix,
+			    last_heartbeat_at_unix
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			intent.RelayActor,
 			intent.PublicBaseURL,
 			lifecycleRegistered,
 			administrativeActive,
+			acceptedUnix,
 			acceptedUnix,
 			acceptedUnix,
 			acceptedUnix,
@@ -140,8 +144,12 @@ func (repository *RelayRepository) Register(
 		_, err = transaction.ExecContext(
 			ctx,
 			`UPDATE relays
-			 SET last_seen_at_unix = ?
+			 SET updated_at_unix = ?,
+			     last_seen_at_unix = ?,
+			     last_heartbeat_at_unix = ?
 			 WHERE relay_actor = ?`,
+			acceptedUnix,
+			acceptedUnix,
 			acceptedUnix,
 			intent.RelayActor,
 		)
@@ -156,12 +164,13 @@ func (repository *RelayRepository) Register(
 			     lifecycle_state = ?,
 			     updated_at_unix = ?,
 			     last_seen_at_unix = ?,
-			     last_heartbeat_at_unix = NULL,
+			     last_heartbeat_at_unix = ?,
 			     unregistered_at_unix = NULL,
 			     pruned_at_unix = NULL
 			 WHERE relay_actor = ?`,
 			intent.PublicBaseURL,
 			lifecycleRegistered,
+			acceptedUnix,
 			acceptedUnix,
 			acceptedUnix,
 			intent.RelayActor,

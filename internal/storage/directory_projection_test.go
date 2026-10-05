@@ -95,7 +95,7 @@ func TestDirectoryProjectionTierOneRequiresActualRecentHeartbeat(t *testing.T) {
 	observed := int64(50_000_000)
 	relay := validDirectoryProjectionRelayForTest(observed)
 
-	// A recent register advances last_seen but does not create heartbeat evidence.
+	// Generic last-seen evidence alone must not be mislabeled as heartbeat evidence.
 	relay.LastHeartbeatUnix = nil
 	relay.Tier = DirectoryTierOnline
 	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierOnline {
@@ -107,6 +107,25 @@ func TestDirectoryProjectionTierOneRequiresActualRecentHeartbeat(t *testing.T) {
 	relay.Tier = DirectoryTierHeartbeatOnline
 	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierHeartbeatOnline {
 		t.Fatalf("heartbeat boundary = (%d, %v), want Tier 1", got, err)
+	}
+}
+
+func TestDirectoryProjectionHeartbeatHealthUsesLastHeartbeatNotGenericLastSeen(t *testing.T) {
+	observed := int64(55_000_000)
+	relay := validDirectoryProjectionRelayForTest(observed)
+	recentSeen := observed - 10
+	staleHeartbeat := observed - int64(HealthyThrough/time.Second) - 1
+	relay.LastSeenUnix = &recentSeen
+	relay.LastHeartbeatUnix = &staleHeartbeat
+	relay.HeartbeatState = HeartbeatStale
+	relay.Tier = DirectoryTierOnline
+
+	if err := ValidateDirectoryProjectionRelay(relay, observed); err != nil {
+		t.Fatalf("stale actual heartbeat with fresh generic last-seen rejected: %v", err)
+	}
+	relay.HeartbeatState = HeartbeatHealthy
+	if err := ValidateDirectoryProjectionRelay(relay, observed); !errors.Is(err, ErrDirectoryProjectionData) {
+		t.Fatalf("generic last-seen mislabeled stale heartbeat as healthy: %v", err)
 	}
 }
 
