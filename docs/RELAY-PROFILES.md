@@ -281,10 +281,11 @@ actor/key binding, replay reservation, time bounds, and outcome/error vocabulary
 otherwise remain aligned with Protocol v1.
 
 `GET /v1/status` schema 4 advertises ordered `lifecycle_protocol_versions`. A
-v2-capable relay selects v2 only when version 2 is advertised; schema-2/3 status
-documents are treated as v1-only. A status transport/validation failure is not
-a downgrade signal. The identical shared signed registration fixture under
-`testdata/directory/v2/` is retained in both repositories.
+relay selects the highest lifecycle version it implements only when that version
+is explicitly advertised; schema-2/3 status documents are treated as v1-only.
+A status transport/validation failure is not a downgrade signal. Identical
+shared signed registration fixtures under `testdata/directory/v2/` and
+`testdata/directory/v3/` are retained in both repositories.
 
 An authenticated relay profile supersedes lower-priority imported CSV values
 field by field, but it never supersedes local moderation or Directory-observed
@@ -338,11 +339,15 @@ reachability, tiering, or public-eligibility rules established by earlier
 releases.
 
 
-### Receiving-site telemetry
+### Participating-site telemetry
 
-Receiving-site count is not a profile field and does not participate in
-`override > relay > csv` precedence. Protocol v2 register/heartbeat may report
-a bounded `receiving_instance_count`; ARD stores it separately with server
-receipt time. Missing telemetry leaves the previous report unchanged. It is
-public informational telemetry only and is excluded from all operational tier,
-reachability, moderation, enrollment, pruning, and eligibility decisions.
+Site telemetry is not a profile field and does not participate in
+`override > relay > csv` precedence. Protocol v3 register/heartbeat may report
+a bounded `participating_instance_count`; ARD stores it separately with server
+receipt time. Schema 11's older `receiving_instance_count` remains available for
+rolling compatibility with rc3 Protocol-v2 clients. The human Directory's
+**Sites** display prefers the v3 participating count and falls back to the older
+receiving count when no participating report exists. Missing telemetry leaves
+the previous report unchanged. It is informational only and is excluded from
+all operational tier, reachability, moderation, enrollment, pruning, and
+eligibility decisions.

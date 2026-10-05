@@ -1,37 +1,32 @@
-# Optional public operator metadata for the human Activity-Relay Directory page.
+# Optional public presentation metadata for the human Activity-Relay Directory
+# page. This example is package-managed; the live config.yml remains entirely
+# operator-owned and is never created or overwritten by package upgrades.
 #
-# Debian operators may copy this file to:
-#   /etc/activity-relay-directory/config.yml
+# To enable a commented setting, delete only the leading #. The indentation
+# after # is already the indentation required by YAML.
 #
-# Container operators may mount a file and set DIRECTORY_CONFIG_PATH to its
-# absolute path. Empty values are not rendered. FEDIVERSE-OPERATOR-ID and
+# DIRECTORY-TITLE replaces the default "Activity-Relay Directory" page and
+# header title. DIRECTORY-BANNER-URL is an optional absolute HTTPS image URL;
+# when configured, the page CSP permits images only from that exact HTTPS
+# origin (plus self). Empty values are not rendered.
+#DIRECTORY-TITLE: "Community Relay Directory"
+#DIRECTORY-BANNER-URL: "https://directory.example.org/assets/banner.jpg"
+
+# Optional public operator metadata. FEDIVERSE-OPERATOR-ID and
 # FEDIVERSE-OPERATOR-URL form one logical contact object. If only one is set,
-# no partial Fediverse link is published and the human page identifies the
-# missing key. Malformed Nice-to-have values are likewise suppressed and shown
-# as operator-facing configuration diagnostics without stopping the core
-# service. The Fediverse URL is explicit because profile URL shapes differ
-# between applications.
-#
-# OPERATOR-EMAIL uses a deliberately loose syntax check: local text, @, a
-# dotted domain, and a nonempty suffix. There is no fixed TLD allowlist.
-# Structural YAML/file errors remain fatal because the file was not parsed
-# successfully.
-#
-# This file is presentation-only. Runtime policy remains in the existing
-# DIRECTORY_* process environment, and DIRECTORY_ADMIN_EMAIL is never made
-# public implicitly.
+# no partial Fediverse link is published and an operator-facing diagnostic is
+# shown instead. Malformed nice-to-have values are suppressed without stopping
+# the core service. Structural YAML/file errors remain fatal.
+#OPERATOR-WEBSITE: "https://example.org/"
+#OPERATOR-EMAIL: "operator@example.org"
+#FEDIVERSE-OPERATOR-ID: "@operator@social.example"
+#FEDIVERSE-OPERATOR-URL: "https://social.example/@operator"
 
-OPERATOR-WEBSITE: ""
-OPERATOR-EMAIL: ""
-FEDIVERSE-OPERATOR-ID: ""
-FEDIVERSE-OPERATOR-URL: ""
-
-# Optional public support methods for the human Directory page. This block is
-# absent by default in the UI. Each entry needs a title and exactly one of an
-# absolute HTTPS url or a plain-text value. No HTML, Markdown, embeds, scripts,
-# pixels, or third-party content are accepted.
-# SUPPORT:
-#   - title: "Liberapay"
-#     url: "https://liberapay.com/example/"
-#   - title: "Bitcoin"
-#     value: "bc1qexample"
+# Optional public support methods. Each entry needs a title and exactly one of
+# an absolute HTTPS url or a plain-text value. No HTML, Markdown, embeds,
+# scripts, pixels, or third-party content are accepted.
+#SUPPORT:
+#  - title: "Liberapay"
+#    url: "https://liberapay.com/example/"
+#  - title: "Bitcoin"
+#    value: "bc1qexample"

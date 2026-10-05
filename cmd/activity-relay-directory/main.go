@@ -22,6 +22,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/httpapi"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
+	v3 "github.com/thystra/activity-relay-directory/internal/protocol/v3"
 	"github.com/thystra/activity-relay-directory/internal/pruning"
 	"github.com/thystra/activity-relay-directory/internal/reachability"
 	storageContract "github.com/thystra/activity-relay-directory/internal/storage"
@@ -391,6 +392,10 @@ func initializeLifecycle(
 	if err != nil {
 		return nil, err
 	}
+	v3Verifier, err := v3.NewRFC9421Verifier(verifier)
+	if err != nil {
+		return nil, err
+	}
 	replayStore, err := storage.NewRFC9421ReplayStore(database, writeAdmission)
 	if err != nil {
 		return nil, err
@@ -402,6 +407,7 @@ func initializeLifecycle(
 	handler, err := httpapi.NewLifecycleHandler(httpapi.LifecycleDependencies{
 		Verifier:            verifier,
 		V2Verifier:          v2Verifier,
+		V3Verifier:          v3Verifier,
 		ReplayStore:         replayStore,
 		Repository:          repository,
 		ProfileRepository:   repository,

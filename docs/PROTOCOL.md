@@ -4,16 +4,18 @@
 
 Lifecycle Protocol v1 remains the compatibility baseline defined here and in
 `testdata/directory/v1/`. Protocol v2 adds authenticated descriptive profile
-synchronization without changing v1 message shapes or outcomes. Both lifecycle
-versions remain disabled together by default. See `docs/HANDLERS.md` for
+synchronization without changing v1 message shapes or outcomes. Protocol v3
+retains that profile contract and adds bounded participating-instance telemetry.
+All lifecycle versions remain disabled together by default. See `docs/HANDLERS.md` for
 activation, ordering, status mapping, and operational bounds.
 
 `GET /v1/status` schema version 4 reports `lifecycle_enabled` (the requested
 process configuration), `lifecycle_available` (the complete graph actually
 constructed), `enrollment_open` (the current durable first-registration
 policy), and `lifecycle_protocol_versions`. The version list is ordered, uses
-integer protocol versions, always includes v1, and includes v2 only when the
-complete v2 verifier/profile graph is available. These fields are independent
+integer protocol versions, always includes v1, includes v2 when the complete v2
+verifier/profile graph is available, and includes v3 only when the complete v3
+verifier/profile/telemetry graph is available. These fields are independent
 of the separately versioned public relay-listing schema. Failure to read the
 durable policy makes the status request fail closed without database detail.
 
@@ -36,7 +38,7 @@ or unresolved `--add-dead-relays` candidate provenance.
 
 ## Versioning and encoding
 
-Every request and response contains the integer `protocol_version`. Both
+Every request and response contains the integer `protocol_version`. All
 lifecycle versions use UTF-8 JSON with the strict media type
 `application/json`. Implementations reject unknown fields, duplicate member
 names, trailing JSON values, unsupported versions, and bodies above the
@@ -44,17 +46,17 @@ configured size limit.
 
 The signed operations and endpoints are:
 
-| Operation | Protocol v1 | Protocol v2 | Purpose |
-|---|---|---|---|
-| `register` | `POST /v1/relays/register` | `POST /v2/relays/register` | Create, restore, or confirm a relay entry; v2 also replaces the relay-owned descriptive profile. |
-| `heartbeat` | `POST /v1/relays/heartbeat` | `POST /v2/relays/heartbeat` | Record current liveness. |
-| `unregister` | `POST /v1/relays/unregister` | `POST /v2/relays/unregister` | Remove an active listing. |
+| Operation | Protocol v1 | Protocol v2 | Protocol v3 | Purpose |
+|---|---|---|---|---|
+| `register` | `POST /v1/relays/register` | `POST /v2/relays/register` | `POST /v3/relays/register` | Create, restore, or confirm a relay entry; v2/v3 also replace the relay-owned descriptive profile, and v3 may report participating-instance telemetry. |
+| `heartbeat` | `POST /v1/relays/heartbeat` | `POST /v2/relays/heartbeat` | `POST /v3/relays/heartbeat` | Record current liveness; v3 may also refresh participating-instance telemetry. |
+| `unregister` | `POST /v1/relays/unregister` | `POST /v2/relays/unregister` | `POST /v3/relays/unregister` | Remove an active listing. |
 
 The request body repeats the operation name. A mismatch between the target
 path and body operation is an `invalid_request` error. Protocol v1 clients keep
-using the v1 paths unchanged. A v2-capable client selects v2 only after a valid
-status document advertises version 2; schema-2/3 status documents imply v1-only
-compatibility. A failed or malformed status request is not permission to
+using the v1 paths unchanged. A capable client selects the highest lifecycle version it implements only after
+a valid status document explicitly advertises that version; schema-2/3 status
+documents imply v1-only compatibility. A failed or malformed status request is not permission to
 silently downgrade.
 
 ## Relay identity
@@ -63,7 +65,7 @@ silently downgrade.
 directory identity. Register also carries `public_base_url`, the public origin
 operators expect people and clients to visit.
 
-Both lifecycle versions use the same canonical URL syntax:
+All lifecycle versions use the same canonical URL syntax:
 
 - HTTPS with no credentials, query, or fragment;
 - a lower-case fully qualified ASCII DNS name or canonical IP literal;
@@ -87,13 +89,14 @@ membership lists, user identities, or a site-level relationship graph.
 
 ## Authentication envelope
 
-Both lifecycle versions use the same reviewed RFC 9421 HTTP Message Signature
+All lifecycle versions use the same reviewed RFC 9421 HTTP Message Signature
 profile and RFC 9530 `Content-Digest` over the exact JSON bytes. Enabled
 handlers invoke the complete verifier and durable replay path. The versions are
 cryptographically separated by the required signature tag: v1 requires
 `tag="activity-relay-directory-v1"`; v2 requires
-`tag="activity-relay-directory-v2"`. A valid v1 envelope therefore cannot be
-reinterpreted as a v2 request, or vice versa.
+`tag="activity-relay-directory-v2"`; and v3 requires
+`tag="activity-relay-directory-v3"`. A signature for one lifecycle version
+cannot be reinterpreted as another.
 
 Each version accepts exactly one paired `Signature-Input` and `Signature`
 dictionary member. The label is chosen by the client, while the signature must
@@ -122,7 +125,7 @@ minutes after `created`. Key IDs are bounded to 2048 bytes and nonces to 256
 bytes. Those values remain HTTP signature metadata rather than duplicate JSON
 fields.
 
-Both lifecycle versions require the `sha-256` member of the RFC 9530 Structured Fields
+All lifecycle versions require the `sha-256` member of the RFC 9530 Structured Fields
 dictionary. Its value is a 32-byte Byte Sequence containing SHA-256 over the
 exact message content bytes, before any JSON decoding or reserialization.
 Additional digest algorithms may be present and are ignored by this profile.
@@ -237,10 +240,12 @@ eligibility/tiering. The server uses one acceptance time for the lifecycle and
 profile portions of a v2 register. A storage failure is returned as a protocol
 error so a client can safely retry registration to converge.
 
-Protocol v2 unregister remains identity-only. Heartbeat may carry only the optional bounded `telemetry` object described below; supplying profile or
-registration fields to either operation is invalid; heartbeat never refreshes
-or mutates descriptive profile data, and unregister does not erase private
-profile history.
+Protocol v2 heartbeat and unregister are identity-only. Supplying profile,
+telemetry, or registration fields to either operation is invalid; heartbeat
+never refreshes or mutates descriptive profile data, and unregister does not
+erase private profile history. Protocol v3 retains the same complete register
+profile and identity-only unregister shape while allowing the bounded telemetry
+object described below on register and heartbeat.
 
 ## Heartbeat request contract
 
@@ -331,7 +336,7 @@ Successful responses use a closed, operation-specific outcome vocabulary:
 it does not replace the actor identity.
 
 Errors use a stable code and a bounded human-readable message. Clients branch
-on the code, never the message. Both lifecycle versions use the same closed error codes:
+on the code, never the message. All lifecycle versions use the same closed error codes:
 
 - `invalid_request`
 - `unsupported_protocol_version`
@@ -377,7 +382,8 @@ public response fields; no moderation HTTP target is defined in this document.
 
 Files under `testdata/directory/v1/` remain the normative Protocol v1 examples.
 Files under `testdata/directory/v2/` freeze the Protocol v2 profile-sync wire
-contract. Tests decode with strict unknown/duplicate-field rejection, require
+contract. Files under `testdata/directory/v3/` freeze the Protocol v3 profile
+plus participating-telemetry wire contract. Tests decode with strict unknown/duplicate-field rejection, require
 canonical identity, and check digest/signature material against the fixture's
 exact body bytes.
 
@@ -392,23 +398,29 @@ key; it contains no private key. An identical copy is retained in the
 Activity-Relay repository. Both repositories must verify the exact shared
 fixture before the v2 path is activated or released.
 
+`testdata/directory/v3/activity-relay-register.valid.json` is the corresponding
+shared v3 vector. It retains the complete profile, uses the v3 endpoint/tag, and
+contains `participating_instance_count` telemetry. Both repositories retain the
+same bytes.
 
-## Protocol v2 registration status and telemetry (1.3 RC3)
+## Protocol v3 registration status and participating telemetry (1.3 RC4)
 
 `profile.participation_mode` is a controlled relay self-report. Its canonical
 non-empty values are exactly `open`, `restricted`, and `closed`; the empty
 string means the relay makes no assertion. Other remote values are invalid.
 
-Protocol v2 register and heartbeat may contain one optional object:
+Protocol v3 register and heartbeat may contain one optional object:
 
 ```json
-"telemetry": { "receiving_instance_count": 12 }
+"telemetry": { "participating_instance_count": 12 }
 ```
 
 The object, when present, is complete and contains exactly one integer in the
 range 0 through 10,000,000. Absence means unknown/no update; zero is an
 explicitly reported zero. Unregister does not accept telemetry. ARD records the
-Directory acceptance time rather than trusting a client timestamp. Telemetry is
+Directory acceptance time rather than trusting a client timestamp. Protocol v2
+remains compatible with rc3 senders that report `receiving_instance_count`, but
+rc4 Activity-Relay clients do not send telemetry on v2. Both telemetry forms are
 self-reported informational data and cannot influence reachability, heartbeat
 classification, tier, moderation, enrollment, pruning, or public eligibility.
 

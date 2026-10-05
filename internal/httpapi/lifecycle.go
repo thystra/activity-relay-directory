@@ -11,6 +11,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/admission"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
+	v3 "github.com/thystra/activity-relay-directory/internal/protocol/v3"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -67,11 +68,21 @@ type LifecycleV2Verifier interface {
 
 var _ LifecycleV2Verifier = (*v2.RFC9421Verifier)(nil)
 
+// LifecycleV3Verifier is the authenticated version 3 request boundary.
+type LifecycleV3Verifier interface {
+	VerifyRegisterAndReserve(*http.Request, []byte, int64, v1.RFC9421ReplayStore) (*v3.VerifiedRegisterRequest, error)
+	VerifyHeartbeatAndReserve(*http.Request, []byte, int64, v1.RFC9421ReplayStore) (*v3.VerifiedHeartbeatRequest, error)
+	VerifyUnregisterAndReserve(*http.Request, []byte, int64, v1.RFC9421ReplayStore) (*v3.VerifiedIdentityRequest, error)
+}
+
+var _ LifecycleV3Verifier = (*v3.RFC9421Verifier)(nil)
+
 // LifecycleDependencies contains the already-reviewed security and storage
 // gates required by the three version 1 lifecycle routes.
 type LifecycleDependencies struct {
 	Verifier            LifecycleVerifier
 	V2Verifier          LifecycleV2Verifier
+	V3Verifier          LifecycleV3Verifier
 	ReplayStore         v1.RFC9421ReplayStore
 	Repository          storage.RelayRepository
 	ProfileRepository   storage.ProfileRepository
@@ -88,6 +99,7 @@ type LifecycleDependencies struct {
 type LifecycleHandler struct {
 	verifier            LifecycleVerifier
 	v2Verifier          LifecycleV2Verifier
+	v3Verifier          LifecycleV3Verifier
 	replayStore         v1.RFC9421ReplayStore
 	repository          storage.RelayRepository
 	profileRepository   storage.ProfileRepository
@@ -107,12 +119,14 @@ func NewLifecycleHandler(
 		dependencies.Limiter == nil || dependencies.Now == nil ||
 		dependencies.MaximumBodyBytes <= 0 ||
 		dependencies.MaximumBodyBytes > v1.MaximumRegisterBodyBytes ||
-		(dependencies.V2Verifier == nil) != (dependencies.ProfileRepository == nil) {
+		(dependencies.V2Verifier == nil) != (dependencies.ProfileRepository == nil) ||
+		(dependencies.V3Verifier != nil && (dependencies.ProfileRepository == nil || dependencies.TelemetryRepository == nil)) {
 		return nil, ErrLifecycleConfiguration
 	}
 	return &LifecycleHandler{
 		verifier:            dependencies.Verifier,
 		v2Verifier:          dependencies.V2Verifier,
+		v3Verifier:          dependencies.V3Verifier,
 		replayStore:         dependencies.ReplayStore,
 		repository:          dependencies.Repository,
 		profileRepository:   dependencies.ProfileRepository,
@@ -461,6 +475,143 @@ func (handler *LifecycleHandler) verifyV2(
 	}
 }
 
+func (handler *LifecycleHandler) supportsV3() bool {
+	return handler != nil && handler.v3Verifier != nil && handler.profileRepository != nil && handler.telemetryRepository != nil
+}
+
+func (handler *LifecycleHandler) serveV3(
+	response http.ResponseWriter,
+	request *http.Request,
+	operation v3.Operation,
+) {
+	if request.Method != http.MethodPost {
+		response.Header().Set("Allow", http.MethodPost)
+		writeProtocolErrorVersion(response, request, http.StatusMethodNotAllowed, v3.Version, v3.ErrorInvalidRequest)
+		return
+	}
+	if !handler.supportsV3() {
+		writeProtocolErrorVersion(response, request, http.StatusServiceUnavailable, v3.Version, v3.ErrorLifecycleUnavailable)
+		return
+	}
+
+	source, err := handler.sourceResolver.Source(request)
+	if err != nil {
+		writeProtocolErrorVersion(response, request, http.StatusBadRequest, v3.Version, v3.ErrorInvalidRequest)
+		return
+	}
+	permit, admissionResult := handler.limiter.AdmitSource(request.Context(), operation, source)
+	if !admissionResult.Allowed() {
+		writeAdmissionErrorVersion(response, request, admissionResult, v3.Version)
+		return
+	}
+	defer permit.Release()
+
+	body, err := readBoundedBody(request, handler.maximumBodyBytes)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, errLifecycleBodyTooLarge) {
+			status = http.StatusRequestEntityTooLarge
+		}
+		writeProtocolErrorVersion(response, request, status, v3.Version, v3.ErrorInvalidRequest)
+		return
+	}
+
+	actor, publicBaseURL, profile, telemetry, err := handler.verifyV3(request, body, operation)
+	if err != nil {
+		writeLifecycleV3Error(response, request, err)
+		return
+	}
+	actorAdmission := permit.AdmitActor(request.Context(), operation, actor)
+	if !actorAdmission.Allowed() {
+		writeAdmissionErrorVersion(response, request, actorAdmission, v3.Version)
+		return
+	}
+
+	acceptedAt := handler.now()
+	outcome, err := handler.persist(request.Context(), operation, actor, publicBaseURL, acceptedAt)
+	if err == nil && operation == v3.OperationRegister {
+		_, err = handler.profileRepository.ReplaceProfileSource(
+			request.Context(),
+			storage.ProfileSourceIntent{
+				RelayActor: actor,
+				Source:     storage.ProfileSource{Kind: storage.ProfileSourceRelay},
+				Profile:    profile,
+			},
+			acceptedAt,
+		)
+	}
+	if err == nil && telemetry != nil {
+		if handler.telemetryRepository == nil {
+			err = ErrLifecycleConfiguration
+		} else {
+			telemetry.RelayActor = actor
+			err = handler.telemetryRepository.ReplaceRelayParticipatingTelemetry(request.Context(), *telemetry, acceptedAt)
+		}
+	}
+	if err != nil {
+		writeLifecycleV3Error(response, request, err)
+		return
+	}
+	if !outcome.ValidFor(operation) {
+		writeProtocolErrorVersion(response, request, http.StatusInternalServerError, v3.Version, v3.ErrorInternal)
+		return
+	}
+	status := http.StatusOK
+	if outcome == v3.OutcomeCreated {
+		status = http.StatusCreated
+	}
+	writeJSON(response, request, status, v3.OperationResponse{
+		ProtocolVersion: v3.Version,
+		Operation:       operation,
+		Outcome:         outcome,
+		RelayActor:      actor,
+	})
+}
+
+func (handler *LifecycleHandler) verifyV3(
+	request *http.Request,
+	body []byte,
+	operation v3.Operation,
+) (string, string, storage.RelayProfile, *storage.ParticipatingTelemetryIntent, error) {
+	switch operation {
+	case v3.OperationRegister:
+		verified, err := handler.v3Verifier.VerifyRegisterAndReserve(
+			request, body, handler.maximumBodyBytes, handler.replayStore,
+		)
+		if err != nil {
+			return "", "", storage.RelayProfile{}, nil, err
+		}
+		if verified == nil || verified.Authentication == nil {
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
+		}
+		return verified.Request.RelayActor, verified.Request.PublicBaseURL, verified.Request.Profile, verified.Request.Telemetry, nil
+	case v3.OperationHeartbeat:
+		verified, err := handler.v3Verifier.VerifyHeartbeatAndReserve(
+			request, body, handler.maximumBodyBytes, handler.replayStore,
+		)
+		if err != nil {
+			return "", "", storage.RelayProfile{}, nil, err
+		}
+		if verified == nil || verified.Authentication == nil {
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
+		}
+		return verified.Request.RelayActor, "", storage.RelayProfile{}, verified.Request.Telemetry, nil
+	case v3.OperationUnregister:
+		verified, err := handler.v3Verifier.VerifyUnregisterAndReserve(
+			request, body, handler.maximumBodyBytes, handler.replayStore,
+		)
+		if err != nil {
+			return "", "", storage.RelayProfile{}, nil, err
+		}
+		if verified == nil || verified.Authentication == nil {
+			return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
+		}
+		return verified.Request.RelayActor, "", storage.RelayProfile{}, nil, nil
+	default:
+		return "", "", storage.RelayProfile{}, nil, ErrLifecycleConfiguration
+	}
+}
+
 var errLifecycleBodyTooLarge = errors.New("lifecycle request body is too large")
 
 func readBoundedBody(request *http.Request, maximum int64) ([]byte, error) {
@@ -523,6 +674,51 @@ func writeLifecycleV2Error(
 		writeProtocolErrorVersion(response, request, http.StatusBadRequest, v2.Version, v2.ErrorInvalidRequest)
 	default:
 		writeProtocolErrorVersion(response, request, http.StatusInternalServerError, v2.Version, v2.ErrorInternal)
+	}
+}
+
+func writeLifecycleV3Error(
+	response http.ResponseWriter,
+	request *http.Request,
+	err error,
+) {
+	switch {
+	case errors.Is(err, v3.ErrRegisterProtocolVersion),
+		errors.Is(err, v3.ErrHeartbeatProtocolVersion),
+		errors.Is(err, v3.ErrUnregisterProtocolVersion):
+		writeProtocolErrorVersion(response, request, http.StatusBadRequest, v3.Version, v3.ErrorUnsupportedProtocolVersion)
+	case errors.Is(err, v1.ErrRFC9421Replay):
+		writeProtocolErrorVersion(response, request, http.StatusConflict, v3.Version, v3.ErrorReplayDetected)
+	case errors.Is(err, v1.ErrRFC9421Malformed),
+		errors.Is(err, v1.ErrRFC9421Policy),
+		errors.Is(err, v1.ErrRFC9421Time),
+		errors.Is(err, v1.ErrRFC9421Digest),
+		errors.Is(err, v1.ErrRFC9421Key),
+		errors.Is(err, v1.ErrRFC9421Crypto),
+		errors.Is(err, v1.ErrRFC9421ActorBinding):
+		writeProtocolErrorVersion(response, request, http.StatusUnauthorized, v3.Version, v3.ErrorAuthenticationFailed)
+	case errors.Is(err, storage.ErrRelaySuspended):
+		writeProtocolErrorVersion(response, request, http.StatusForbidden, v3.Version, v3.ErrorRelaySuspended)
+	case errors.Is(err, storage.ErrEnrollmentClosed):
+		writeProtocolErrorVersion(response, request, http.StatusForbidden, v3.Version, v3.ErrorEnrollmentClosed)
+	case errors.Is(err, storage.ErrRelayAbsent):
+		writeProtocolErrorVersion(response, request, http.StatusConflict, v3.Version, v3.ErrorRelayNotRegistered)
+	case errors.Is(err, storage.ErrWriteAdmissionHard):
+		writeProtocolErrorVersion(response, request, http.StatusServiceUnavailable, v3.Version, v3.ErrorLifecycleUnavailable)
+	case errors.Is(err, v3.ErrRegisterRequest),
+		errors.Is(err, v3.ErrHeartbeatRequest),
+		errors.Is(err, v3.ErrUnregisterRequest),
+		errors.Is(err, v3.ErrRegisterTarget),
+		errors.Is(err, v3.ErrHeartbeatTarget),
+		errors.Is(err, v3.ErrUnregisterTarget),
+		errors.Is(err, v3.ErrRegisterBodyTooLarge),
+		errors.Is(err, v3.ErrHeartbeatBodyTooLarge),
+		errors.Is(err, v3.ErrUnregisterBodyTooLarge),
+		errors.Is(err, storage.ErrProfileInput),
+		errors.Is(err, storage.ErrTelemetryInput):
+		writeProtocolErrorVersion(response, request, http.StatusBadRequest, v3.Version, v3.ErrorInvalidRequest)
+	default:
+		writeProtocolErrorVersion(response, request, http.StatusInternalServerError, v3.Version, v3.ErrorInternal)
 	}
 }
 

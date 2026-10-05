@@ -289,11 +289,11 @@ Relevant references:
 
 The public `GET /` page may display operator-owned contact information from the optional
 YAML file `/etc/activity-relay-directory/config.yml`. The Debian package owns the
-empty parent directory and installs an example at
-`/usr/share/doc/activity-relay-directory/examples/config.yml.example`; it does
-not install an active `config.yml`. The stock container image follows the same
-model: it creates the empty default parent and includes the example under
-`/usr/share/doc/activity-relay-directory/examples/`, while the base Compose file
+empty parent directory and installs the package-managed example at
+`/etc/activity-relay-directory/config.yml.example`; it does not install an
+active `config.yml`. The stock container image follows the same model and places
+the example at the same `/etc/activity-relay-directory/config.yml.example`
+path, while the base Compose file
 forwards `DIRECTORY_CONFIG_PATH` without binding any host file. Set
 `DIRECTORY_CONFIG_PATH` to a clean absolute path to use another file, such as a
 read-only container mount. When the default path is absent, or all supported
@@ -302,6 +302,8 @@ values are empty, no operator-contact label or placeholder is rendered.
 Supported keys are:
 
 ```yaml
+DIRECTORY-TITLE: "Community Relay Directory"
+DIRECTORY-BANNER-URL: "https://directory.example.org/banner.jpg"
 OPERATOR-WEBSITE: "https://operator.example/"
 OPERATOR-EMAIL: "operator@example.org"
 FEDIVERSE-OPERATOR-ID: "@operator@social.example"

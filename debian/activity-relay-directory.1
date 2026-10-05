@@ -34,8 +34,10 @@ Package-managed runtime environment.
 .B /etc/activity-relay-directory/config.yml
 Optional operator-owned public contact metadata; absent by default.
 .TP
-.B /usr/share/doc/activity-relay-directory/examples/config.yml.example
-Packaged operator-metadata example.
+.B /etc/activity-relay-directory/config.yml.example
+Package-managed presentation/operator-metadata example. Delete only the leading
+.B #
+from a commented setting to enable it; the live config.yml remains operator-owned.
 .TP
 .B /var/lib/activity-relay-directory/directory.sqlite
 Default SQLite database path. Ordinary package removal preserves this state

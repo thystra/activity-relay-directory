@@ -16,13 +16,17 @@ import (
 )
 
 const (
-	defaultOperatorConfigPath  = "/etc/activity-relay-directory/config.yml"
-	maximumOperatorConfigBytes = 64 * 1024
-	maximumSupportEntries      = 8
-	maximumSupportTitleBytes   = 80
-	maximumSupportValueBytes   = 512
-	maximumSupportURLBytes     = 2048
+	defaultOperatorConfigPath      = "/etc/activity-relay-directory/config.yml"
+	maximumOperatorConfigBytes     = 64 * 1024
+	maximumSupportEntries          = 8
+	maximumSupportTitleBytes       = 80
+	maximumSupportValueBytes       = 512
+	maximumSupportURLBytes         = 2048
+	maximumDirectoryTitleBytes     = 120
+	maximumDirectoryBannerURLBytes = 2048
 
+	directoryTitleMalformedDiagnostic  = "DIRECTORY-TITLE is malformed in config.yml."
+	directoryBannerMalformedDiagnostic = "DIRECTORY-BANNER-URL is malformed in config.yml."
 	operatorWebsiteMalformedDiagnostic = "OPERATOR-WEBSITE is malformed in config.yml."
 	operatorEmailMalformedDiagnostic   = "OPERATOR-EMAIL is malformed in config.yml."
 	fediverseIDMalformedDiagnostic     = "FEDIVERSE-OPERATOR-ID is malformed in config.yml."
@@ -42,12 +46,14 @@ var (
 // Diagnostics describe non-blocking presentation-value problems without
 // publishing the malformed or incomplete value itself.
 type OperatorMetadata struct {
-	Website      string
-	Email        string
-	FediverseID  string
-	FediverseURL string
-	Support      []SupportEntry
-	Diagnostics  []string
+	DirectoryTitle     string
+	DirectoryBannerURL string
+	Website            string
+	Email              string
+	FediverseID        string
+	FediverseURL       string
+	Support            []SupportEntry
+	Diagnostics        []string
 }
 
 // SupportEntry is one optional public support method. Exactly one of URL and
@@ -60,11 +66,13 @@ type SupportEntry struct {
 }
 
 type operatorConfigFile struct {
-	Website      string               `yaml:"OPERATOR-WEBSITE"`
-	Email        string               `yaml:"OPERATOR-EMAIL"`
-	FediverseID  string               `yaml:"FEDIVERSE-OPERATOR-ID"`
-	FediverseURL string               `yaml:"FEDIVERSE-OPERATOR-URL"`
-	Support      []supportConfigEntry `yaml:"SUPPORT"`
+	DirectoryTitle     string               `yaml:"DIRECTORY-TITLE"`
+	DirectoryBannerURL string               `yaml:"DIRECTORY-BANNER-URL"`
+	Website            string               `yaml:"OPERATOR-WEBSITE"`
+	Email              string               `yaml:"OPERATOR-EMAIL"`
+	FediverseID        string               `yaml:"FEDIVERSE-OPERATOR-ID"`
+	FediverseURL       string               `yaml:"FEDIVERSE-OPERATOR-URL"`
+	Support            []supportConfigEntry `yaml:"SUPPORT"`
 }
 
 type supportConfigEntry struct {
@@ -128,11 +136,13 @@ func loadOperatorMetadataFile(path string, explicit bool) (OperatorMetadata, err
 	}
 
 	return sanitizeOperatorMetadata(operatorConfigFile{
-		Website:      strings.TrimSpace(decoded.Website),
-		Email:        strings.TrimSpace(decoded.Email),
-		FediverseID:  strings.TrimSpace(decoded.FediverseID),
-		FediverseURL: strings.TrimSpace(decoded.FediverseURL),
-		Support:      decoded.Support,
+		DirectoryTitle:     strings.TrimSpace(decoded.DirectoryTitle),
+		DirectoryBannerURL: strings.TrimSpace(decoded.DirectoryBannerURL),
+		Website:            strings.TrimSpace(decoded.Website),
+		Email:              strings.TrimSpace(decoded.Email),
+		FediverseID:        strings.TrimSpace(decoded.FediverseID),
+		FediverseURL:       strings.TrimSpace(decoded.FediverseURL),
+		Support:            decoded.Support,
 	}), nil
 }
 
@@ -142,6 +152,21 @@ func loadOperatorMetadataFile(path string, explicit bool) (OperatorMetadata, err
 // logical objects cannot fail silently.
 func sanitizeOperatorMetadata(raw operatorConfigFile) OperatorMetadata {
 	metadata := OperatorMetadata{}
+
+	if raw.DirectoryTitle != "" {
+		if len(raw.DirectoryTitle) > maximumDirectoryTitleBytes || containsOperatorControl(raw.DirectoryTitle) {
+			metadata.Diagnostics = append(metadata.Diagnostics, directoryTitleMalformedDiagnostic)
+		} else {
+			metadata.DirectoryTitle = raw.DirectoryTitle
+		}
+	}
+	if raw.DirectoryBannerURL != "" {
+		if len(raw.DirectoryBannerURL) > maximumDirectoryBannerURLBytes || containsOperatorControl(raw.DirectoryBannerURL) || validatePublicHTTPSURL("DIRECTORY-BANNER-URL", raw.DirectoryBannerURL) != nil {
+			metadata.Diagnostics = append(metadata.Diagnostics, directoryBannerMalformedDiagnostic)
+		} else {
+			metadata.DirectoryBannerURL = raw.DirectoryBannerURL
+		}
+	}
 
 	if raw.Website != "" {
 		if containsOperatorControl(raw.Website) || validatePublicHTTPSURL("OPERATOR-WEBSITE", raw.Website) != nil {
@@ -250,7 +275,7 @@ func (metadata OperatorMetadata) HasLinks() bool {
 }
 
 func (metadata OperatorMetadata) Empty() bool {
-	return !metadata.HasLinks() && len(metadata.Diagnostics) == 0
+	return metadata.DirectoryTitle == "" && metadata.DirectoryBannerURL == "" && !metadata.HasLinks() && len(metadata.Diagnostics) == 0
 }
 
 func validatePublicHTTPSURL(name, value string) error {

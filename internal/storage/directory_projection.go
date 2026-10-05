@@ -120,11 +120,13 @@ type DirectoryProjectionQuery struct {
 // Registered and Discovered are internal eligibility facts only; HTTP
 // serializers must never expose either value or any discovery provenance.
 type DirectoryProjectionRelay struct {
-	RelayActor             string
-	PublicBaseURL          string
-	Profile                RelayProfile
-	ReceivingInstanceCount *int
-	TelemetryReportedUnix  *int64
+	RelayActor                 string
+	PublicBaseURL              string
+	Profile                    RelayProfile
+	ReceivingInstanceCount     *int
+	TelemetryReportedUnix      *int64
+	ParticipatingInstanceCount *int
+	ParticipatingReportedUnix  *int64
 
 	LifecycleKnown bool
 	Registered     bool
@@ -221,13 +223,17 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 	if err != nil || !equalRelayProfile(relay.Profile, normalizedProfile) {
 		return ErrDirectoryProjectionData
 	}
-	if (relay.ReceivingInstanceCount == nil) != (relay.TelemetryReportedUnix == nil) {
+	if (relay.ReceivingInstanceCount == nil) != (relay.TelemetryReportedUnix == nil) ||
+		(relay.ParticipatingInstanceCount == nil) != (relay.ParticipatingReportedUnix == nil) {
 		return ErrDirectoryProjectionData
 	}
 	if relay.ReceivingInstanceCount != nil && (*relay.ReceivingInstanceCount < 0 || *relay.ReceivingInstanceCount > MaximumReceivingInstanceCount) {
 		return ErrDirectoryProjectionData
 	}
-	if !validObservedTime(relay.TelemetryReportedUnix, observedUnix) {
+	if relay.ParticipatingInstanceCount != nil && (*relay.ParticipatingInstanceCount < 0 || *relay.ParticipatingInstanceCount > MaximumParticipatingInstanceCount) {
+		return ErrDirectoryProjectionData
+	}
+	if !validObservedTime(relay.TelemetryReportedUnix, observedUnix) || !validObservedTime(relay.ParticipatingReportedUnix, observedUnix) {
 		return ErrDirectoryProjectionData
 	}
 

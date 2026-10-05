@@ -54,7 +54,7 @@ COPY --from=build \
 
 COPY --chown=0:0 --chmod=0644 LICENCE /usr/share/licenses/activity-relay-directory/LICENCE
 
-COPY --chown=0:0 --chmod=0644 config.yml.example /usr/share/doc/activity-relay-directory/examples/config.yml.example
+COPY --chown=0:0 --chmod=0644 config.yml.example /etc/activity-relay-directory/config.yml.example
 
 USER directory:directory
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0-rc4 - 2026-10-05
+
+- Add lifecycle Protocol v3 and schema 12 participating-instance telemetry.
+  Protocol v3 stores `participating_instance_count` separately from the rc3
+  receiving-instance field, while public **Sites** prefers v3 telemetry and
+  falls back to the v2 value during rolling upgrades.
+- Advertise lifecycle versions `[1,2,3]` when v3 is available and add a shared
+  cross-repository signed v3 registration fixture.
+- Install the package-managed operator example as
+  `/etc/activity-relay-directory/config.yml.example` without creating or
+  overwriting the operator-owned `config.yml`. Disabled YAML settings omit the
+  space after `#`, so enabling one requires deleting only that character.
+- Add bounded `DIRECTORY-TITLE` and HTTPS `DIRECTORY-BANNER-URL` presentation
+  settings with a correspondingly bounded image CSP.
+- Refine public presentation: remove the row-level heartbeat glyph while keeping
+  the `♥ Heartbeat` heading and use distinct Open/Restricted/Closed/Not reported
+  registration badge states.
+- Improve CSV import preflight with an explicit processing notice, read-only
+  field-level profile-change preview, confirmation text covering profile
+  changes, and concise human `profile_changes=N|none` results while retaining
+  detailed JSON mutation counters.
+
 ## 1.3.0-rc3 - 2026-10-04
 
 - Add schema 11 bounded relay telemetry storing a self-reported
