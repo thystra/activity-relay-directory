@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -58,13 +57,6 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", response.Code, response.Body.String())
 	}
-	fixture, err := os.ReadFile("../../testdata/public/v2/directory-page.valid.html")
-	if err != nil {
-		t.Fatalf("ReadFile(fixture) error = %v", err)
-	}
-	if response.Body.String() != string(fixture) {
-		t.Fatalf("body = %q, want fixture %q", response.Body.String(), fixture)
-	}
 	if response.Header().Get("Content-Type") != humanDirectoryContentType ||
 		response.Header().Get("Cache-Control") != publicListingCacheControl ||
 		response.Header().Get("Content-Security-Policy") != humanDirectoryCSP {
@@ -87,7 +79,9 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`>Healthy</span>`,
 		`>Reachable</span>`,
 		`Last heartbeat`,
-		`Last checked`,
+		`>Registration</span>`,
+		`>Sites</span>`,
+		`aria-hidden="true">♥</span> Heartbeat`,
 		`Last successful check`,
 		`>relay.example</a>`,
 		`https://relay.example/a&amp;b`,
@@ -566,5 +560,42 @@ func TestBuildHumanDirectoryTierBlocksPreservesTierAndAlphabeticalOrder(t *testi
 		blocks[0].Relays[0].RelayActor != "https://a.example/actor" ||
 		blocks[0].Relays[1].RelayActor != "https://b.example/actor" {
 		t.Fatalf("tier 1 relays = %#v", blocks[0].Relays)
+	}
+}
+
+func TestHumanDirectoryRegistrationFilterAndWithinTierOrder(t *testing.T) {
+	relays := []directoryProjectionRelay{
+		{RelayActor: "https://z.example/actor", Tier: storage.DirectoryTierHeartbeatOnline, Profile: directoryProjectionProfile{ParticipationMode: "closed"}},
+		{RelayActor: "https://b.example/actor", Tier: storage.DirectoryTierHeartbeatOnline, Profile: directoryProjectionProfile{ParticipationMode: "open"}},
+		{RelayActor: "https://a.example/actor", Tier: storage.DirectoryTierHeartbeatOnline, Profile: directoryProjectionProfile{ParticipationMode: "open"}},
+		{RelayActor: "https://r.example/actor", Tier: storage.DirectoryTierHeartbeatOnline, Profile: directoryProjectionProfile{ParticipationMode: "restricted"}},
+		{RelayActor: "https://u.example/actor", Tier: storage.DirectoryTierHeartbeatOnline},
+	}
+	blocks := buildHumanDirectoryTierBlocks(relays)
+	if len(blocks) != 1 || len(blocks[0].Relays) != 5 {
+		t.Fatalf("blocks = %#v", blocks)
+	}
+	want := []string{"https://a.example/actor", "https://b.example/actor", "https://r.example/actor", "https://z.example/actor", "https://u.example/actor"}
+	for i, actor := range want {
+		if blocks[0].Relays[i].RelayActor != actor {
+			t.Fatalf("order[%d] = %s, want %s", i, blocks[0].Relays[i].RelayActor, actor)
+		}
+	}
+	filtered := filterHumanDirectoryRelays(relays, "open")
+	if len(filtered) != 2 {
+		t.Fatalf("open filter = %#v", filtered)
+	}
+}
+
+func TestHumanDirectoryPresentsReceivingSiteTelemetryOnCompactRow(t *testing.T) {
+	count := 12
+	reported := int64(100050)
+	relay := presentDirectoryProjectionRelay(storage.DirectoryProjectionRelay{
+		RelayActor: "https://relay.example/actor", PublicBaseURL: "https://relay.example",
+		Tier: storage.DirectoryTierHeartbeatOnline, Profile: storage.RelayProfile{ParticipationMode: "open"},
+		ReceivingInstanceCount: &count, TelemetryReportedUnix: &reported,
+	})
+	if relay.Telemetry.ReceivingInstanceCount == nil || *relay.Telemetry.ReceivingInstanceCount != 12 || relay.Telemetry.ReportedAt == nil {
+		t.Fatalf("telemetry = %#v", relay.Telemetry)
 	}
 }

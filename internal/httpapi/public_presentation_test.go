@@ -125,7 +125,7 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 		`Tier 2 — Online, no current heartbeat`,
 		`Tier 3 — Offline / Unreachable`,
 		`Tier 4 — Graveyard`,
-		`alphabetical by hostname inside each tier`,
+		`Inside each tier, open relays are shown first, then restricted, closed, and unreported relays.`,
 	} {
 		if !strings.Contains(humanDirectoryTemplateSource, required) {
 			t.Fatalf("directory template missing visible evidence label %q", required)

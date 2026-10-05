@@ -11,7 +11,8 @@ func TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay(t *testing.T
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 10 || migrations[9].version != 10 || migrations[9].name != "relay_profiles" {
+	if len(migrations) != 11 || migrations[9].version != 10 || migrations[9].name != "relay_profiles" ||
+		migrations[10].version != 11 || migrations[10].name != "relay_telemetry" {
 		t.Fatalf("profile migration identity = %#v", migrations)
 	}
 	if _, err := database.Exec(migrationTableSQL); err != nil {
@@ -58,9 +59,9 @@ func TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay(t *testing.T
 	if relay.lifecycleState != lifecycleRegistered || relay.administrativeState != administrativeActive ||
 		relay.updatedAtUnix != 105 || relay.lastSeenAtUnix != 105 ||
 		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 105 {
-		t.Fatalf("schema-10 migration changed relay state: %#v", relay)
+		t.Fatalf("schema-11 migration changed relay state: %#v", relay)
 	}
-	for _, table := range []string{"relay_profile_values", "relay_profile_events"} {
+	for _, table := range []string{"relay_profile_values", "relay_profile_events", "relay_telemetry"} {
 		assertTableExists(t, database, table)
 		var count int
 		if err := database.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {

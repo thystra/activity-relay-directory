@@ -15,7 +15,7 @@ identities of servers, followers, users, or communities connected to a relay.
 - optional authenticated register, heartbeat, and unregister support for relays;
 - local commands to add or import relays that do not send directory heartbeats;
 - background reachability checks and retry of unavailable relays;
-- JSON APIs at `/v1/relays` and `/v2/relays`;
+- JSON APIs at `/v1/relays` and `/v2/relays`, including bounded self-reported receiving-site telemetry when available;
 - plain-text relay lists suitable for reuse in discovery imports;
 - local moderation, pruning, retention, storage, and audit commands; and
 - SQLite persistence designed for one active directory process on one host.
@@ -27,8 +27,11 @@ and automatic pruning are enabled independently.
 ## Directory tiers
 
 The public directory groups relays by operational status rather than popularity.
-Relays are sorted alphabetically by normalized hostname inside each tier.
-Heartbeat frequency and check recency do not improve a relay's position.
+Within each tier, relays that self-report registration as open are shown first,
+then restricted, closed, and unreported status, with normalized hostname as the
+stable tie-breaker. Registration status is descriptive and never changes a
+relay's operational tier. Heartbeat frequency and check recency do not improve a
+relay's tier.
 
 | Tier | Meaning |
 | --- | --- |

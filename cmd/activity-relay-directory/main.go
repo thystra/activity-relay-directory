@@ -400,15 +400,16 @@ func initializeLifecycle(
 		return nil, err
 	}
 	handler, err := httpapi.NewLifecycleHandler(httpapi.LifecycleDependencies{
-		Verifier:          verifier,
-		V2Verifier:        v2Verifier,
-		ReplayStore:       replayStore,
-		Repository:        repository,
-		ProfileRepository: repository,
-		SourceResolver:    sourceResolver,
-		Limiter:           limiter,
-		MaximumBodyBytes:  cfg.MaxRequestBodyBytes,
-		Now:               time.Now,
+		Verifier:            verifier,
+		V2Verifier:          v2Verifier,
+		ReplayStore:         replayStore,
+		Repository:          repository,
+		ProfileRepository:   repository,
+		TelemetryRepository: repository,
+		SourceResolver:      sourceResolver,
+		Limiter:             limiter,
+		MaximumBodyBytes:    cfg.MaxRequestBodyBytes,
+		Now:                 time.Now,
 	})
 	if err != nil {
 		return nil, err

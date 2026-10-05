@@ -237,7 +237,7 @@ eligibility/tiering. The server uses one acceptance time for the lifecycle and
 profile portions of a v2 register. A storage failure is returned as a protocol
 error so a client can safely retry registration to converge.
 
-Protocol v2 heartbeat and unregister remain identity-only. Supplying profile or
+Protocol v2 unregister remains identity-only. Heartbeat may carry only the optional bounded `telemetry` object described below; supplying profile or
 registration fields to either operation is invalid; heartbeat never refreshes
 or mutates descriptive profile data, and unregister does not erase private
 profile history.
@@ -391,3 +391,29 @@ target, RFC 9530 digest, RFC 9421 signature with the v2 tag, and public test
 key; it contains no private key. An identical copy is retained in the
 Activity-Relay repository. Both repositories must verify the exact shared
 fixture before the v2 path is activated or released.
+
+
+## Protocol v2 registration status and telemetry (1.3 RC3)
+
+`profile.participation_mode` is a controlled relay self-report. Its canonical
+non-empty values are exactly `open`, `restricted`, and `closed`; the empty
+string means the relay makes no assertion. Other remote values are invalid.
+
+Protocol v2 register and heartbeat may contain one optional object:
+
+```json
+"telemetry": { "receiving_instance_count": 12 }
+```
+
+The object, when present, is complete and contains exactly one integer in the
+range 0 through 10,000,000. Absence means unknown/no update; zero is an
+explicitly reported zero. Unregister does not accept telemetry. ARD records the
+Directory acceptance time rather than trusting a client timestamp. Telemetry is
+self-reported informational data and cannot influence reachability, heartbeat
+classification, tier, moderation, enrollment, pruning, or public eligibility.
+
+All remote lifecycle bodies are untrusted. ARD bounds request bodies, rejects
+unknown and duplicate JSON member names (including nested members), validates
+canonical identities and closed vocabularies before mutation, and persists
+remote strings only through parameterized SQL. Error responses use bounded
+closed messages and do not echo attacker-controlled request content.

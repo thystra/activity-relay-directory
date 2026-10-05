@@ -55,9 +55,18 @@ type RegisterRequest struct {
 	RelayActor      string
 	PublicBaseURL   string
 	Profile         storage.RelayProfile
+	Telemetry       *storage.TelemetryIntent
 }
 
-// IdentityRequest is shared by version 2 heartbeat and unregister operations.
+// HeartbeatRequest may carry bounded self-reported operational telemetry.
+type HeartbeatRequest struct {
+	ProtocolVersion int
+	Operation       Operation
+	RelayActor      string
+	Telemetry       *storage.TelemetryIntent
+}
+
+// IdentityRequest is used by version 2 unregister operations.
 type IdentityRequest struct {
 	ProtocolVersion int       `json:"protocol_version"`
 	Operation       Operation `json:"operation"`

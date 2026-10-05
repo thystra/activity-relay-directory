@@ -170,6 +170,26 @@ a:focus-visible {
   margin: -0.25rem 0 1.25rem;
 }
 
+.registration-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.85rem;
+}
+
+.registration-filters .active {
+  font-weight: 800;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.registration-open { font-weight: 800; }
+.registration-restricted { font-weight: 800; }
+.registration-closed, .registration-unknown { opacity: 0.8; }
+.heartbeat-symbol { font-size: 1rem; line-height: 1; }
+.relay-sites { font-variant-numeric: tabular-nums; }
+
 .tier-guide {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -234,10 +254,10 @@ a:focus-visible {
   display: grid;
   grid-template-columns:
     minmax(13rem, 2fr)
-    minmax(7rem, 0.78fr)
+    minmax(7.5rem, 0.8fr)
+    minmax(4rem, 0.45fr)
     minmax(8rem, 0.9fr)
-    minmax(10rem, 1.08fr)
-    minmax(10rem, 1.08fr);
+    minmax(8rem, 0.9fr);
   gap: 0.9rem;
   align-items: center;
 }

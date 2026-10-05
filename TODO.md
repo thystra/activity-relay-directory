@@ -8,6 +8,20 @@ reviewed path to the 1.0.0 stable release. Future work remains separately
 reviewed and does not silently alter the version 1 protocol or default-off
 operator controls.
 
+## 1.3 RC3 hardening completed
+
+- Add bounded self-reported receiving-site telemetry on lifecycle Protocol v2
+  register/heartbeat, persisted separately from operational and profile state.
+- Restrict remote Protocol v2 registration status to `open`, `restricted`, or
+  `closed`; reject malformed remote assertions before durable mutation.
+- Publish `/v2/relays` schema 5 telemetry and expose Sites plus registration
+  filtering/sorting in the human Directory without allowing profile/telemetry
+  data to affect operational tiers.
+- Treat lifecycle clients as hostile inputs: strict bounded decoding, duplicate
+  and unknown JSON rejection, parameterized SQL, escaped templates, bounded
+  local command execution without a shell, and regression tests for injection
+  payloads.
+
 ## Fixed boundaries
 
 Every tranche must preserve these project invariants:

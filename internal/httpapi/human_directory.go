@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,25 +38,30 @@ type humanDirectoryTierBlock struct {
 }
 
 type humanDirectoryPage struct {
-	Listing                directoryProjectionResponse
-	Summary                storage.DirectorySummary
-	TierBlocks             []humanDirectoryTierBlock
-	PreviousURL            string
-	NextURL                string
-	ActiveDownloadURL      string
-	AllDownloadURL         string
-	UnavailableDownloadURL string
-	Stylesheet             string
-	Version                string
-	HasOperator            bool
-	HasOperatorLinks       bool
-	OperatorWebsite        string
-	OperatorEmail          string
-	OperatorEmailURL       string
-	FediverseID            string
-	FediverseURL           string
-	OperatorDiagnostics    []string
-	SupportEntries         []config.SupportEntry
+	Listing                   directoryProjectionResponse
+	Summary                   storage.DirectorySummary
+	TierBlocks                []humanDirectoryTierBlock
+	PreviousURL               string
+	NextURL                   string
+	ActiveDownloadURL         string
+	AllDownloadURL            string
+	UnavailableDownloadURL    string
+	Stylesheet                string
+	Version                   string
+	HasOperator               bool
+	HasOperatorLinks          bool
+	OperatorWebsite           string
+	OperatorEmail             string
+	OperatorEmailURL          string
+	FediverseID               string
+	FediverseURL              string
+	OperatorDiagnostics       []string
+	SupportEntries            []config.SupportEntry
+	RegistrationFilter        string
+	AllRegistrationURL        string
+	OpenRegistrationURL       string
+	RestrictedRegistrationURL string
+	ClosedRegistrationURL     string
 }
 
 func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
@@ -101,11 +107,66 @@ func buildHumanDirectoryTierBlocks(relays []directoryProjectionRelay) []humanDir
 				block.Relays = append(block.Relays, relay)
 			}
 		}
+		sort.SliceStable(block.Relays, func(i, j int) bool {
+			left, right := participationRank(block.Relays[i].Profile.ParticipationMode), participationRank(block.Relays[j].Profile.ParticipationMode)
+			if left != right {
+				return left < right
+			}
+			return block.Relays[i].RelayActor < block.Relays[j].RelayActor
+		})
 		if len(block.Relays) != 0 {
 			blocks = append(blocks, block)
 		}
 	}
 	return blocks
+}
+
+func participationRank(value string) int {
+	switch value {
+	case "open":
+		return 0
+	case "restricted":
+		return 1
+	case "closed":
+		return 2
+	default:
+		return 3
+	}
+}
+
+func participationClass(value string) string {
+	switch value {
+	case "open", "restricted", "closed":
+		return value
+	default:
+		return "unknown"
+	}
+}
+
+func participationLabel(value string) string {
+	switch value {
+	case "open":
+		return "Open"
+	case "restricted":
+		return "Restricted"
+	case "closed":
+		return "Closed"
+	default:
+		return "Not reported"
+	}
+}
+
+func filterHumanDirectoryRelays(relays []directoryProjectionRelay, registration string) []directoryProjectionRelay {
+	if registration == "" {
+		return relays
+	}
+	filtered := make([]directoryProjectionRelay, 0, len(relays))
+	for _, relay := range relays {
+		if relay.Profile.ParticipationMode == registration {
+			filtered = append(filtered, relay)
+		}
+	}
+	return filtered
 }
 
 func humanRelayLabel(raw string) string {
@@ -162,10 +223,12 @@ func humanReachabilityLabel(state storage.ReachabilityState) string {
 
 func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), error) {
 	parsed, err := template.New("directory.html").Funcs(template.FuncMap{
-		"relayLabel":        humanRelayLabel,
-		"humanTime":         humanDirectoryTime,
-		"heartbeatLabel":    humanHeartbeatLabel,
-		"reachabilityLabel": humanReachabilityLabel,
+		"relayLabel":         humanRelayLabel,
+		"humanTime":          humanDirectoryTime,
+		"heartbeatLabel":     humanHeartbeatLabel,
+		"reachabilityLabel":  humanReachabilityLabel,
+		"participationLabel": participationLabel,
+		"participationClass": participationClass,
 	}).Parse(humanDirectoryTemplateSource)
 	if err != nil {
 		return nil, err
@@ -209,6 +272,9 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		return
 	}
 
+	registrationFilter := request.URL.Query().Get("registration")
+	listing.Relays = filterHumanDirectoryRelays(listing.Relays, registrationFilter)
+
 	summary, failure := handler.loadHumanDirectorySummary(request.Context(), listing.observedAt)
 	if failure != nil {
 		if failure.retryAfter != "" {
@@ -218,8 +284,8 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		return
 	}
 
-	previousURL := humanDirectoryPaginationURL("before", listing.Pagination.PreviousCursor, listing.Pagination.Limit)
-	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit)
+	previousURL := humanDirectoryPaginationURL("before", listing.Pagination.PreviousCursor, listing.Pagination.Limit, registrationFilter)
+	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit, registrationFilter)
 
 	operator := handler.operator
 	operatorEmailURL := ""
@@ -228,25 +294,30 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 	}
 
 	body, err := handler.renderHumanDirectory(humanDirectoryPage{
-		Listing:                listing,
-		Summary:                summary,
-		TierBlocks:             buildHumanDirectoryTierBlocks(listing.Relays),
-		PreviousURL:            previousURL,
-		NextURL:                nextURL,
-		ActiveDownloadURL:      directoryActiveDownloadPath,
-		AllDownloadURL:         directoryAllDownloadPath,
-		UnavailableDownloadURL: directoryUnavailableDownloadPath,
-		Stylesheet:             directoryStylesheetPath,
-		Version:                version,
-		HasOperator:            !operator.Empty(),
-		HasOperatorLinks:       operator.HasLinks(),
-		OperatorWebsite:        operator.Website,
-		OperatorEmail:          operator.Email,
-		OperatorEmailURL:       operatorEmailURL,
-		FediverseID:            operator.FediverseID,
-		FediverseURL:           operator.FediverseURL,
-		OperatorDiagnostics:    operator.Diagnostics,
-		SupportEntries:         operator.Support,
+		Listing:                   listing,
+		Summary:                   summary,
+		TierBlocks:                buildHumanDirectoryTierBlocks(listing.Relays),
+		PreviousURL:               previousURL,
+		NextURL:                   nextURL,
+		ActiveDownloadURL:         directoryActiveDownloadPath,
+		AllDownloadURL:            directoryAllDownloadPath,
+		UnavailableDownloadURL:    directoryUnavailableDownloadPath,
+		Stylesheet:                directoryStylesheetPath,
+		Version:                   version,
+		HasOperator:               !operator.Empty(),
+		HasOperatorLinks:          operator.HasLinks(),
+		OperatorWebsite:           operator.Website,
+		OperatorEmail:             operator.Email,
+		OperatorEmailURL:          operatorEmailURL,
+		FediverseID:               operator.FediverseID,
+		FediverseURL:              operator.FediverseURL,
+		OperatorDiagnostics:       operator.Diagnostics,
+		SupportEntries:            operator.Support,
+		RegistrationFilter:        registrationFilter,
+		AllRegistrationURL:        "/#relay-list",
+		OpenRegistrationURL:       "/?registration=open#relay-list",
+		RestrictedRegistrationURL: "/?registration=restricted#relay-list",
+		ClosedRegistrationURL:     "/?registration=closed#relay-list",
 	})
 	if err != nil {
 		writeHumanDirectoryError(response, request, http.StatusServiceUnavailable, "directory temporarily unavailable")
@@ -286,13 +357,16 @@ func (handler *PublicListingHandler) loadHumanDirectorySummary(
 	return summary, nil
 }
 
-func humanDirectoryPaginationURL(parameter, cursor string, limit int) string {
+func humanDirectoryPaginationURL(parameter, cursor string, limit int, registration string) string {
 	if cursor == "" {
 		return ""
 	}
 	values := url.Values{}
 	values.Set("limit", strconv.Itoa(limit))
 	values.Set(parameter, cursor)
+	if registration != "" {
+		values.Set("registration", registration)
+	}
 	return "/?" + values.Encode() + "#relay-list"
 }
 

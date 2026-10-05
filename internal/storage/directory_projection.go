@@ -120,9 +120,11 @@ type DirectoryProjectionQuery struct {
 // Registered and Discovered are internal eligibility facts only; HTTP
 // serializers must never expose either value or any discovery provenance.
 type DirectoryProjectionRelay struct {
-	RelayActor    string
-	PublicBaseURL string
-	Profile       RelayProfile
+	RelayActor             string
+	PublicBaseURL          string
+	Profile                RelayProfile
+	ReceivingInstanceCount *int
+	TelemetryReportedUnix  *int64
 
 	LifecycleKnown bool
 	Registered     bool
@@ -217,6 +219,15 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 	}
 	normalizedProfile, err := NormalizeRelayProfile(relay.Profile)
 	if err != nil || !equalRelayProfile(relay.Profile, normalizedProfile) {
+		return ErrDirectoryProjectionData
+	}
+	if (relay.ReceivingInstanceCount == nil) != (relay.TelemetryReportedUnix == nil) {
+		return ErrDirectoryProjectionData
+	}
+	if relay.ReceivingInstanceCount != nil && (*relay.ReceivingInstanceCount < 0 || *relay.ReceivingInstanceCount > MaximumReceivingInstanceCount) {
+		return ErrDirectoryProjectionData
+	}
+	if !validObservedTime(relay.TelemetryReportedUnix, observedUnix) {
 		return ErrDirectoryProjectionData
 	}
 

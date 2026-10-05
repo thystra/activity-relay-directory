@@ -1,3 +1,16 @@
+activity-relay-directory (1.3.0~rc3-1) unstable; urgency=medium
+
+  * Prepare the third Activity-Relay Directory 1.3 release candidate.
+  * Add schema 11 bounded receiving-instance telemetry and /v2/relays schema 5.
+  * Show Sites and registration badges on the compact Directory row; move
+    detailed timestamps into expanded relay detail and add registration filters.
+  * Enforce the open/restricted/closed Protocol v2 registration-status
+    vocabulary.
+  * Add hostile-input, SQL-parameterization, shell-boundary, and rendering
+    regression coverage.
+
+ -- Alan Johnson <alan@argentwolf.org>  Sun, 04 Oct 2026 16:30:00 -0400
+
 activity-relay-directory (1.3.0~rc2-1) unstable; urgency=medium
 
   * Prepare the second Activity-Relay Directory 1.3 release candidate.

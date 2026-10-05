@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.0-rc3 - 2026-10-04
+
+- Add schema 11 bounded relay telemetry storing a self-reported
+  `receiving_instance_count` and Directory receipt time without changing tier,
+  reachability, moderation, enrollment, pruning, or eligibility.
+- Publish telemetry through `/v2/relays` schema 5 and show **Sites** directly on
+  the human Directory row. Move detailed heartbeat/check timestamps into the
+  expanded relay details.
+- Add registration-status badges, filtering, and within-tier ordering
+  `open` -> `restricted` -> `closed` -> unreported.
+- Restrict Protocol v2 relay `participation_mode` to the closed vocabulary
+  `open`, `restricted`, `closed` (or empty/unasserted); malformed remote input is
+  rejected before lifecycle/profile/telemetry mutation.
+- Harden hostile-client handling with bounded telemetry, strict JSON/duplicate
+  member rejection, parameterized telemetry persistence, SQL-metacharacter
+  regression coverage, escaped public rendering, and no-shell administrator
+  notification tests.
+
 ## 1.3.0-rc2 - 2026-10-04
 
 - Reorganize the human relay profile into `Relay information` and `Relay focus`,

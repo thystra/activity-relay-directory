@@ -159,7 +159,7 @@ separate v2 command-result schema for CSV profile mutation summaries. Public
 `/downloads/*.txt` routes remain host-only.
 
 Public relay profiles must be projected only as the normalized effective
-descriptive values. `/v2/relays` schema 4 and the human `/` page must consume the
+descriptive values. `/v2/relays` schema 5 and the human `/` page must consume the
 same `DirectoryProjectionRelay.Profile`; do not add an HTTP-side provenance or
 profile lookup. Keep source kind/label/URL, precedence, pending assertions, and
 history private. Empty API profiles retain the fixed twelve-field schema shape;
@@ -173,7 +173,7 @@ shapes, and `activity-relay-directory-v1` signature tag unchanged. V2 uses
 separate `/v2/relays/*` routes and the `activity-relay-directory-v2` tag. Only
 v2 register carries descriptive profile data, and it must carry the complete
 twelve-field normalized profile so empty values clear the relay-owned source;
-v2 heartbeat and unregister remain identity-only. `/v1/status` capability
+v2 unregister remains identity-only; v2 heartbeat may additionally carry the bounded receiving-instance telemetry object. `/v1/status` capability
 advertisement and the shared signed v2 fixture must stay synchronized with the
 Activity-Relay client. Profile synchronization remains descriptive and cannot
 change any operational eligibility, moderation, reachability, pruning, or tier

@@ -24,6 +24,11 @@ type VerifiedRegisterRequest struct {
 	Authentication *v1.RFC9421Verification
 }
 
+type VerifiedHeartbeatRequest struct {
+	Request        HeartbeatRequest
+	Authentication *v1.RFC9421Verification
+}
+
 type VerifiedIdentityRequest struct {
 	Request        IdentityRequest
 	Authentication *v1.RFC9421Verification
@@ -54,7 +59,7 @@ func (verifier *RFC9421Verifier) VerifyHeartbeatAndReserve(
 	body []byte,
 	maximumBytes int64,
 	store v1.RFC9421ReplayStore,
-) (*VerifiedIdentityRequest, error) {
+) (*VerifiedHeartbeatRequest, error) {
 	decoded, err := DecodeHeartbeatRequest(body, maximumBytes)
 	if err != nil {
 		return nil, err
@@ -66,7 +71,7 @@ func (verifier *RFC9421Verifier) VerifyHeartbeatAndReserve(
 	if err != nil {
 		return nil, err
 	}
-	return &VerifiedIdentityRequest{Request: decoded, Authentication: authentication}, nil
+	return &VerifiedHeartbeatRequest{Request: decoded, Authentication: authentication}, nil
 }
 
 func (verifier *RFC9421Verifier) VerifyUnregisterAndReserve(

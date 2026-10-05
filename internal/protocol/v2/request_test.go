@@ -51,22 +51,42 @@ func TestDecodeRegisterRequestRejectsNestedDuplicateName(t *testing.T) {
 	}
 }
 
-func TestDecodeHeartbeatAndUnregisterRemainIdentityOnly(t *testing.T) {
-	for name, test := range map[string]struct {
-		body   []byte
-		decode func([]byte, int64) (IdentityRequest, error)
-	}{
-		"heartbeat":  {[]byte(`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor"}`), DecodeHeartbeatRequest},
-		"unregister": {[]byte(`{"protocol_version":2,"operation":"unregister","relay_actor":"https://relay.example/actor"}`), DecodeUnregisterRequest},
+func TestDecodeRegisterRequestRejectsUnknownParticipationMode(t *testing.T) {
+	body := []byte(`{"protocol_version":2,"operation":"register","relay_actor":"https://relay.example/actor","public_base_url":"https://relay.example","profile":{"participation_mode":"unrestricted","availability":"","relay_type":"","languages":[],"countries":[],"regions":[],"topics":[],"contact_fediverse":"","contact_email":"","contact_url":"","participation_url":"","notes":""}}`)
+	if _, err := DecodeRegisterRequest(body, MaximumRegisterBodyBytes); !errors.Is(err, ErrRegisterRequest) {
+		t.Fatalf("DecodeRegisterRequest() error = %v", err)
+	}
+}
+
+func TestDecodeV2TelemetryIsOptionalBoundedAndHeartbeatOnly(t *testing.T) {
+	heartbeat, err := DecodeHeartbeatRequest([]byte(`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor","telemetry":{"receiving_instance_count":12}}`), MaximumHeartbeatBodyBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if heartbeat.Telemetry == nil || heartbeat.Telemetry.ReceivingInstanceCount != 12 {
+		t.Fatalf("heartbeat telemetry = %#v", heartbeat.Telemetry)
+	}
+	for _, body := range []string{
+		`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor","telemetry":{"receiving_instance_count":-1}}`,
+		`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor","telemetry":{"receiving_instance_count":10000001}}`,
+		`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor","telemetry":{}}`,
 	} {
-		t.Run(name, func(t *testing.T) {
-			request, err := test.decode(test.body, MaximumRegisterBodyBytes)
-			if err != nil {
-				t.Fatalf("decode() error = %v", err)
-			}
-			if request.RelayActor != "https://relay.example/actor" {
-				t.Fatalf("relay_actor = %q", request.RelayActor)
-			}
-		})
+		if _, err := DecodeHeartbeatRequest([]byte(body), MaximumHeartbeatBodyBytes); !errors.Is(err, ErrHeartbeatRequest) {
+			t.Fatalf("DecodeHeartbeatRequest(%s) error = %v", body, err)
+		}
+	}
+	if _, err := DecodeUnregisterRequest([]byte(`{"protocol_version":2,"operation":"unregister","relay_actor":"https://relay.example/actor","telemetry":{"receiving_instance_count":12}}`), MaximumUnregisterBodyBytes); !errors.Is(err, ErrUnregisterRequest) {
+		t.Fatalf("unregister telemetry error = %v", err)
+	}
+}
+
+func TestDecodeHeartbeatAndUnregisterIdentity(t *testing.T) {
+	heartbeat, err := DecodeHeartbeatRequest([]byte(`{"protocol_version":2,"operation":"heartbeat","relay_actor":"https://relay.example/actor"}`), MaximumHeartbeatBodyBytes)
+	if err != nil || heartbeat.RelayActor != "https://relay.example/actor" || heartbeat.Telemetry != nil {
+		t.Fatalf("heartbeat = %#v, %v", heartbeat, err)
+	}
+	unregister, err := DecodeUnregisterRequest([]byte(`{"protocol_version":2,"operation":"unregister","relay_actor":"https://relay.example/actor"}`), MaximumUnregisterBodyBytes)
+	if err != nil || unregister.RelayActor != "https://relay.example/actor" {
+		t.Fatalf("unregister = %#v, %v", unregister, err)
 	}
 }

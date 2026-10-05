@@ -685,11 +685,14 @@ SELECT seed.relay_actor,
        observation.inbox_declared_at_unix,
        observation.inbox_probe_state,
        observation.inbox_last_checked_at_unix,
-       observation.rfc9421_verified_at_unix
+       observation.rfc9421_verified_at_unix,
+       telemetry.receiving_instance_count,
+       telemetry.reported_at_unix
 FROM seed
 LEFT JOIN relays AS relay ON relay.relay_actor = seed.relay_actor
 LEFT JOIN relay_discoveries AS discovery ON discovery.relay_actor = seed.relay_actor
 LEFT JOIN relay_observations AS observation ON observation.relay_actor = seed.relay_actor
+LEFT JOIN relay_telemetry AS telemetry ON telemetry.relay_actor = seed.relay_actor
 ORDER BY seed.relay_actor`
 
 	rows, err := repository.database.QueryContext(ctx, statement, arguments...)
@@ -719,6 +722,8 @@ ORDER BY seed.relay_actor`
 			inboxState          sql.NullString
 			inboxLastChecked    sql.NullInt64
 			rfc9421Verified     sql.NullInt64
+			receivingCount      sql.NullInt64
+			telemetryReported   sql.NullInt64
 		)
 		if err := rows.Scan(
 			&actor,
@@ -739,6 +744,8 @@ ORDER BY seed.relay_actor`
 			&inboxState,
 			&inboxLastChecked,
 			&rfc9421Verified,
+			&receivingCount,
+			&telemetryReported,
 		); err != nil {
 			return nil, storageFailure("decode public directory details", err)
 		}
@@ -799,22 +806,31 @@ ORDER BY seed.relay_actor`
 		if !ok {
 			return nil, storageFailure("validate public directory details", errors.New("public identity has no first-known time"))
 		}
+		if receivingCount.Valid != telemetryReported.Valid ||
+			(receivingCount.Valid && (receivingCount.Int64 < 0 || receivingCount.Int64 > storage.MaximumReceivingInstanceCount)) {
+			return nil, storageFailure("validate public directory telemetry", errors.New("invalid retained telemetry"))
+		}
 		relay := &storage.DirectoryProjectionRelay{
-			RelayActor:           actor,
-			Profile:              profiles[actor],
-			LifecycleKnown:       lifecycleKnown,
-			Registered:           registered,
-			Discovered:           discovered,
-			FirstKnownUnix:       firstKnown,
-			LastSeenUnix:         nullableInt64Pointer(lastSeen),
-			LastHeartbeatUnix:    nullableInt64Pointer(lastHeartbeat),
-			ActorState:           storage.ReachabilityUnknown,
-			ActorLastCheckedUnix: nullableInt64Pointer(actorLastChecked),
-			ActorLastSuccessUnix: nullableInt64Pointer(actorLastSuccess),
-			InboxDeclaredUnix:    nullableInt64Pointer(inboxDeclared),
-			InboxProbeState:      storage.InboxNotChecked,
-			InboxLastCheckedUnix: nullableInt64Pointer(inboxLastChecked),
-			RFC9421VerifiedUnix:  nullableInt64Pointer(rfc9421Verified),
+			RelayActor:            actor,
+			Profile:               profiles[actor],
+			TelemetryReportedUnix: nullableInt64Pointer(telemetryReported),
+			LifecycleKnown:        lifecycleKnown,
+			Registered:            registered,
+			Discovered:            discovered,
+			FirstKnownUnix:        firstKnown,
+			LastSeenUnix:          nullableInt64Pointer(lastSeen),
+			LastHeartbeatUnix:     nullableInt64Pointer(lastHeartbeat),
+			ActorState:            storage.ReachabilityUnknown,
+			ActorLastCheckedUnix:  nullableInt64Pointer(actorLastChecked),
+			ActorLastSuccessUnix:  nullableInt64Pointer(actorLastSuccess),
+			InboxDeclaredUnix:     nullableInt64Pointer(inboxDeclared),
+			InboxProbeState:       storage.InboxNotChecked,
+			InboxLastCheckedUnix:  nullableInt64Pointer(inboxLastChecked),
+			RFC9421VerifiedUnix:   nullableInt64Pointer(rfc9421Verified),
+		}
+		if receivingCount.Valid {
+			count := int(receivingCount.Int64)
+			relay.ReceivingInstanceCount = &count
 		}
 		if lifecycleKnown {
 			if !relayBase.Valid {
