@@ -27,6 +27,9 @@
   field-level profile-change preview, confirmation text covering profile
   changes, and concise human `profile_changes=N|none` results while retaining
   detailed JSON mutation counters.
+- Allow CSV profile replacement for an exact already-known active lifecycle or
+  discovery identity even when its current actor probe fails; unknown candidates
+  still require the normal validation or explicit dead-candidate retention path.
 
 ## 1.3.0-rc3 - 2026-10-04
 

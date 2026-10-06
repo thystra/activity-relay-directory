@@ -155,8 +155,9 @@ type RetainedCandidate struct {
 }
 
 type FailedCandidate struct {
-	Line int
-	Code string
+	Line       int
+	RelayActor string
+	Code       string
 }
 
 type Plan struct {
@@ -458,7 +459,9 @@ func prepareCandidatesWithPolicy(
 				})
 				continue
 			}
-			plan.Failed = append(plan.Failed, FailedCandidate{Line: prepared.line, Code: prepared.code})
+			plan.Failed = append(plan.Failed, FailedCandidate{
+				Line: prepared.line, RelayActor: prepared.actorURL, Code: prepared.code,
+			})
 			continue
 		}
 		if prepared.ready.RelayActor == "" {
@@ -567,8 +570,55 @@ func ClassifyKnown(
 			Source:     source,
 		})
 	}
+	failed := plan.Failed
+	if normalizeInputFormat(request.InputFormat) == InputCSV {
+		failed = make([]FailedCandidate, 0, len(plan.Failed))
+		for _, candidate := range plan.Failed {
+			if candidate.RelayActor == "" {
+				failed = append(failed, candidate)
+				continue
+			}
+
+			identity := storage.IdentityIntent{RelayActor: candidate.RelayActor}
+			discovery, found, err := repository.GetDiscovery(ctx, identity)
+			if err != nil {
+				return Plan{}, errors.Join(ErrPreparation, err)
+			}
+			discoveryActive := found && discovery.State == storage.DiscoveryActive
+
+			lifecycleActive := false
+			lifecycle, err := repository.ModerationState(ctx, candidate.RelayActor)
+			switch {
+			case err == nil:
+				lifecycleActive = lifecycle.LifecycleState == storage.LifecycleRegistered
+			case errors.Is(err, storage.ErrRelayAbsent):
+			default:
+				return Plan{}, errors.Join(ErrPreparation, err)
+			}
+
+			if !discoveryActive && !lifecycleActive {
+				failed = append(failed, candidate)
+				continue
+			}
+
+			source := AlreadyKnownDiscovery
+			switch {
+			case lifecycleActive && discoveryActive:
+				source = AlreadyKnownLifecycleDiscovery
+			case lifecycleActive:
+				source = AlreadyKnownLifecycle
+			}
+			plan.AlreadyKnown = append(plan.AlreadyKnown, AlreadyKnownCandidate{
+				Line:       candidate.Line,
+				RelayActor: candidate.RelayActor,
+				Source:     source,
+			})
+		}
+	}
+
 	plan.Ready = ready
 	plan.Retained = retained
+	plan.Failed = failed
 	return plan, nil
 }
 

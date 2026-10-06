@@ -86,6 +86,17 @@ overrides:
 override > relay > csv
 ```
 
+For the public registration badge and filters, CSV `participation_mode` values
+are currently case-sensitive. Use the exact lowercase values `open`,
+`restricted`, or `closed` (or leave the field empty); for example, `Open` is
+not equivalent to `open`.
+
+An exact relay actor that is already retained as an active lifecycle or
+discovery identity may receive CSV profile updates even when its current actor
+probe is unreachable or otherwise fails. That profile write does not make the
+relay reachable, refresh a heartbeat, or change its operational tier. Unknown
+candidates still require the normal actor-validation path.
+
 CSV/profile writes never refresh lifecycle heartbeat evidence. See
 [`RELAY-PROFILES.md`](RELAY-PROFILES.md) for columns, provenance, validation,
 and spreadsheet-safety rules.

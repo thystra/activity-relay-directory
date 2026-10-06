@@ -152,6 +152,70 @@ func TestPrepareDeduplicatesCanonicalActorsAndProbesInbox(t *testing.T) {
 	}
 }
 
+func TestPrepareFailedProbeRetainsCanonicalActorForKnownCSVClassification(t *testing.T) {
+	plan, err := prepareCandidates(context.Background(), []Candidate{{
+		Line: 65, URL: "relay.example",
+	}}, &fakeProber{})
+	if err != nil {
+		t.Fatalf("prepareCandidates() error = %v", err)
+	}
+	if len(plan.Failed) != 1 || plan.Failed[0].Line != 65 ||
+		plan.Failed[0].RelayActor != "https://relay.example/actor" ||
+		plan.Failed[0].Code != "actor_unreachable" {
+		t.Fatalf("failed plan = %#v", plan.Failed)
+	}
+}
+
+func TestClassifyKnownCSVPromotesFailedActiveIdentity(t *testing.T) {
+	plan := Plan{
+		CandidateCount: 2,
+		Failed: []FailedCandidate{
+			{Line: 2, RelayActor: "https://known.example/actor", Code: "actor_unreachable"},
+			{Line: 3, RelayActor: "https://unknown.example/actor", Code: "actor_unreachable"},
+		},
+	}
+	repository := &fakeKnownRepository{
+		lifecycle: map[string]storage.ModerationState{
+			"https://known.example/actor": {
+				RelayActor:     "https://known.example/actor",
+				LifecycleState: storage.LifecycleRegistered,
+			},
+		},
+	}
+
+	classified, err := ClassifyKnown(
+		context.Background(),
+		Request{Action: ActionImport, InputFormat: InputCSV},
+		plan,
+		repository,
+	)
+	if err != nil {
+		t.Fatalf("ClassifyKnown(CSV) error = %v", err)
+	}
+	if len(classified.AlreadyKnown) != 1 ||
+		classified.AlreadyKnown[0].RelayActor != "https://known.example/actor" ||
+		classified.AlreadyKnown[0].Source != AlreadyKnownLifecycle {
+		t.Fatalf("AlreadyKnown = %#v", classified.AlreadyKnown)
+	}
+	if len(classified.Failed) != 1 ||
+		classified.Failed[0].RelayActor != "https://unknown.example/actor" {
+		t.Fatalf("Failed = %#v", classified.Failed)
+	}
+
+	lineClassified, err := ClassifyKnown(
+		context.Background(),
+		Request{Action: ActionImport, InputFormat: InputLines},
+		plan,
+		repository,
+	)
+	if err != nil {
+		t.Fatalf("ClassifyKnown(lines) error = %v", err)
+	}
+	if len(lineClassified.AlreadyKnown) != 0 || len(lineClassified.Failed) != 2 {
+		t.Fatalf("line import classification = %#v", lineClassified)
+	}
+}
+
 func TestClassifyKnownImportSeparatesActiveStateFromHistory(t *testing.T) {
 	plan := Plan{
 		CandidateCount: 4,

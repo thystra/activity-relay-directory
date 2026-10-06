@@ -100,10 +100,14 @@ All text rejects control characters. Presence of a profile URL never authorizes
 network retrieval; it is descriptive data only. Current scalar/list values are
 stored as bounded canonical JSON with a 4096-byte storage ceiling.
 
-`participation_mode` is descriptive profile metadata. For authenticated Protocol v2 relay self-report its non-empty values are restricted to `open`, `restricted`, or `closed`. It must not be inferred
-from Activity-Relay's broad address-distribution/fan-out settings and must not
-claim hashtag filtering or another routing policy unless that behavior is
-actually implemented and explicitly declared by the relay/operator.
+`participation_mode` is descriptive profile metadata. For authenticated
+Protocol v2 relay self-report its non-empty values are restricted to `open`,
+`restricted`, or `closed`. The CSV-facing registration badge/filter semantics
+are currently case-sensitive as well: operators should use those exact
+lowercase values (or empty); `Open` is not equivalent to `open`. It must not be
+inferred from Activity-Relay's broad address-distribution/fan-out settings and
+must not claim hashtag filtering or another routing policy unless that behavior
+is actually implemented and explicitly declared by the relay/operator.
 
 ## Source precedence
 
@@ -212,9 +216,13 @@ summary does not silently extend the existing v1 command schema.
 
 For an already-known verified relay, a CSV row may update or clear that CSV
 source's current profile assertions without creating another discovery row. A
-newly verified discovery receives its CSV profile only after actor validation and
-identity persistence succeed. With `--add-dead-relays`, an unreachable or
-incompatible candidate may still be retained privately, but schema 10 does not
+current actor-probe failure does not block that profile update when the exact
+canonical actor is already retained as an active lifecycle or discovery
+identity; the failed probe does not create positive reachability evidence and
+the profile write cannot refresh heartbeat/reachability or change tier. A newly
+verified discovery receives its CSV profile only after actor validation and identity
+persistence succeed. With `--add-dead-relays`, an unreachable or incompatible
+unknown candidate may still be retained privately, but schema 10 does not
 attach current profile assertions to an unresolved candidate identity; the CSV
 profile must be reapplied after that candidate becomes verified.
 

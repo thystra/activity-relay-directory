@@ -100,11 +100,16 @@ within the fixed concurrency limit, report ready/duplicate/failed candidates,
 and require explicit confirmation or `--yes` before durable mutation. The
 interactive `IMPORT <count>` value is the reviewed mutation count: normal line
 imports count new/retained discovery writes, while CSV imports also count
-already-known verified relays whose CSV profile source will be replaced.
-Successfully validated entries may still be applied when other candidates
-failed; the command returns a nonzero operational exit in that case so callers
-can distinguish partial from complete success. Existing line imports retain the
-`activity-relay-directory.discovery-admin.v1` JSON result schema; CSV imports
+already-known verified relays whose CSV profile source will be replaced. For
+CSV only, an exact actor already retained as an active lifecycle or discovery
+identity remains eligible for that profile replacement when the contemporaneous
+actor probe fails; the failed probe does not become positive reachability or
+heartbeat evidence. Unknown candidates retain the normal validation/retention
+requirements. Successfully validated entries may still be applied when other
+candidates failed; the command returns a nonzero operational exit in that case
+so callers can distinguish partial from complete success. Existing line imports
+retain the `activity-relay-directory.discovery-admin.v1` JSON result schema; CSV
+imports
 use `activity-relay-directory.discovery-admin.v2` to carry an optional bounded
 profile-mutation summary. A file disappearing or dropping an entry later never
 removes a relay automatically.
