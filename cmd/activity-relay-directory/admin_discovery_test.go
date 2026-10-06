@@ -238,7 +238,7 @@ func TestAdminDiscoveryCSVImportPersistsProfileAndExportsSpreadsheetSafeCSV(t *t
 		func() time.Time { return time.Unix(200, 0).UTC() },
 		func() (discoverycommand.Prober, error) { return prober, nil },
 	)
-	if code != discoverycommand.ExitSuccess || !strings.Contains(stdout.String(), "profile_created=") {
+	if code != discoverycommand.ExitSuccess || !strings.Contains(stdout.String(), "profile_changes=2") {
 		t.Fatalf("CSV discovery import = (%d, %q, %q)", code, stdout.String(), stderr.String())
 	}
 

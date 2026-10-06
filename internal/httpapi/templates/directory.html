@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="A public directory of participating ActivityPub relay instances.">
-  <title>Activity-Relay Directory</title>
+  <title>{{.DirectoryTitle}}</title>
   <link rel="stylesheet" href="{{.Stylesheet}}">
 </head>
 <body>
@@ -13,11 +13,12 @@
 
   <header class="site-header">
     <div class="shell header-row">
-      <a class="site-name" href="/">Activity-Relay Directory</a>
+      <a class="site-name" href="/">{{.DirectoryTitle}}</a>
     </div>
   </header>
 
-  <main id="directory" class="shell" tabindex="-1">
+  {{if .DirectoryBannerURL}}  <div class="directory-banner shell"><img src="{{.DirectoryBannerURL}}" alt=""></div>
+{{end}}  <main id="directory" class="shell" tabindex="-1">
     <section class="hero" aria-labelledby="page-title">
       <p class="eyebrow">ActivityPub infrastructure</p>
       <h1 id="page-title">Public relay directory</h1>
@@ -119,12 +120,12 @@
                     <span class="signal-badge registration-{{participationClass .Profile.ParticipationMode}}">{{participationLabel .Profile.ParticipationMode}}</span>
                   </span>
                   <span class="relay-cell relay-sites">
-                    <span class="cell-label">Subscribed sites</span>
-                    {{if .Telemetry.ReceivingInstanceCount}}{{.Telemetry.ReceivingInstanceCount}}{{else}}<span class="muted">—</span>{{end}}
+                    <span class="cell-label">Participating sites</span>
+                    {{if .Telemetry.SitesCount}}{{.Telemetry.SitesCount}}{{else}}<span class="muted">—</span>{{end}}
                   </span>
                   <span class="relay-cell relay-heartbeat">
                     <span class="cell-label">Heartbeat</span>
-                    <span aria-hidden="true" class="heartbeat-symbol">♥</span> <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
+                    <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
                   </span>
                   <span class="relay-cell relay-reachability">
                     <span class="cell-label">Reachability</span>
@@ -150,8 +151,8 @@
                       <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
                     </div>
                     <div>
-                      <dt>Subscribed sites reported</dt>
-                      <dd>{{if .Telemetry.ReceivingInstanceCount}}{{.Telemetry.ReceivingInstanceCount}}{{else}}Not reported{{end}}{{if .Telemetry.ReportedAt}} · <time datetime="{{.Telemetry.ReportedAt}}">{{humanTime .Telemetry.ReportedAt}}</time>{{end}}</dd>
+                      <dt>Participating sites reported</dt>
+                      <dd>{{if .Telemetry.SitesCount}}{{.Telemetry.SitesCount}}{{else}}Not reported{{end}}{{if .Telemetry.SitesReportedAt}} · <time datetime="{{.Telemetry.SitesReportedAt}}">{{humanTime .Telemetry.SitesReportedAt}}</time>{{end}}</dd>
                     </div>
                   </dl>{{if not .Profile.Empty}}
                   <div class="relay-profile">

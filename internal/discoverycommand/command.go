@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -106,6 +107,12 @@ type KnownStateRepository interface {
 	storage.ModerationReadRepository
 }
 
+// CSVProfilePreviewRepository exposes the retained CSV assertion set for
+// read-only import preview.
+type CSVProfilePreviewRepository interface {
+	ProfileSourceProfile(context.Context, string, storage.ProfileSourceKind) (storage.RelayProfile, error)
+}
+
 type Candidate struct {
 	Line int
 	URL  string
@@ -160,6 +167,7 @@ type Plan struct {
 	Duplicates     []DuplicateCandidate
 	Failed         []FailedCandidate
 	CSVRows        map[int]CSVProfileRow
+	ProfileChanges map[string][]storage.ProfileField
 }
 
 type probeWork struct {
@@ -564,6 +572,75 @@ func ClassifyKnown(
 	return plan, nil
 }
 
+func PreviewCSVProfileChanges(
+	ctx context.Context,
+	request Request,
+	plan Plan,
+	repository CSVProfilePreviewRepository,
+) (Plan, error) {
+	if normalizeInputFormat(request.InputFormat) != InputCSV || request.Action != ActionImport {
+		return plan, nil
+	}
+	if ctx == nil || repository == nil {
+		return Plan{}, ErrPreparation
+	}
+	if plan.ProfileChanges == nil {
+		plan.ProfileChanges = make(map[string][]storage.ProfileField)
+	}
+	actors := make(map[int]string, len(plan.Ready)+len(plan.AlreadyKnown))
+	for _, candidate := range plan.Ready {
+		actors[candidate.Line] = candidate.RelayActor
+	}
+	for _, candidate := range plan.AlreadyKnown {
+		actors[candidate.Line] = candidate.RelayActor
+	}
+	for line, actor := range actors {
+		row, ok := plan.CSVRows[line]
+		if !ok {
+			return Plan{}, ErrPreparation
+		}
+		current, err := repository.ProfileSourceProfile(ctx, actor, storage.ProfileSourceCSV)
+		if err != nil {
+			return Plan{}, errors.Join(ErrPreparation, err)
+		}
+		fields := changedProfileFields(current, row.Profile)
+		if len(fields) > 0 {
+			plan.ProfileChanges[actor] = fields
+		}
+	}
+	return plan, nil
+}
+
+func changedProfileFields(before, after storage.RelayProfile) []storage.ProfileField {
+	changed := make([]storage.ProfileField, 0, len(storage.ProfileFields()))
+	add := func(field storage.ProfileField, differs bool) {
+		if differs {
+			changed = append(changed, field)
+		}
+	}
+	add(storage.ProfileFieldParticipationMode, before.ParticipationMode != after.ParticipationMode)
+	add(storage.ProfileFieldAvailability, before.Availability != after.Availability)
+	add(storage.ProfileFieldRelayType, before.RelayType != after.RelayType)
+	add(storage.ProfileFieldLanguages, !slices.Equal(before.Languages, after.Languages))
+	add(storage.ProfileFieldCountries, !slices.Equal(before.Countries, after.Countries))
+	add(storage.ProfileFieldRegions, !slices.Equal(before.Regions, after.Regions))
+	add(storage.ProfileFieldTopics, !slices.Equal(before.Topics, after.Topics))
+	add(storage.ProfileFieldContactFediverse, before.ContactFediverse != after.ContactFediverse)
+	add(storage.ProfileFieldContactEmail, before.ContactEmail != after.ContactEmail)
+	add(storage.ProfileFieldContactURL, before.ContactURL != after.ContactURL)
+	add(storage.ProfileFieldParticipationURL, before.ParticipationURL != after.ParticipationURL)
+	add(storage.ProfileFieldNotes, before.Notes != after.Notes)
+	return changed
+}
+
+func profileChangeCount(plan Plan) int {
+	count := 0
+	for _, fields := range plan.ProfileChanges {
+		count += len(fields)
+	}
+	return count
+}
+
 func probeCandidate(ctx context.Context, item probeWork, prober Prober) probeResult {
 	actor, err := prober.ProbeActor(ctx, item.actorURL)
 	if err != nil {
@@ -700,6 +777,26 @@ func RenderPlan(output io.Writer, request Request, plan Plan) error {
 			return err
 		}
 	}
+	if normalizeInputFormat(request.InputFormat) == InputCSV {
+		actors := make([]string, 0, len(plan.ProfileChanges))
+		for actor := range plan.ProfileChanges {
+			actors = append(actors, actor)
+		}
+		slices.Sort(actors)
+		if _, err := fmt.Fprintf(output, "profile_changes=%d affected_actors=%d\n", profileChangeCount(plan), len(actors)); err != nil {
+			return err
+		}
+		for _, actor := range actors {
+			fields := plan.ProfileChanges[actor]
+			names := make([]string, len(fields))
+			for i, field := range fields {
+				names[i] = string(field)
+			}
+			if _, err := fmt.Fprintf(output, "profile_change actor=%s fields=%s\n", actor, strings.Join(names, ",")); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -729,13 +826,21 @@ func Confirm(request Request, plan Plan, input io.Reader, errorOutput io.Writer)
 	case ActionImport:
 		mutationCount := len(plan.Ready) + len(plan.Retained)
 		if normalizeInputFormat(request.InputFormat) == InputCSV {
-			mutationCount += len(plan.AlreadyKnown)
+			for _, known := range plan.AlreadyKnown {
+				if len(plan.ProfileChanges[known.RelayActor]) > 0 {
+					mutationCount++
+				}
+			}
 		}
 		if mutationCount == 0 {
-			return ErrConfirmation
+			return nil
 		}
 		expected = "IMPORT " + strconv.Itoa(mutationCount)
-		prompt = "confirmation required: type " + expected + " to apply relay discoveries: "
+		if normalizeInputFormat(request.InputFormat) == InputCSV {
+			prompt = "confirmation required: type " + expected + " to apply relay discoveries and profile changes: "
+		} else {
+			prompt = "confirmation required: type " + expected + " to apply relay discoveries: "
+		}
 	default:
 		return ErrConfirmation
 	}
@@ -1010,9 +1115,8 @@ func renderResults(
 			if result.Status == "already_known" {
 				if result.Profile != nil {
 					if _, err := fmt.Fprintf(standardOutput,
-						"line=%d status=already_known actor=%s profile_created=%d profile_updated=%d profile_cleared=%d profile_unchanged=%d\n",
-						result.Line, printableOptional(result.RelayActor), result.Profile.Created,
-						result.Profile.Updated, result.Profile.Cleared, result.Profile.Unchanged); err != nil {
+						"line=%d status=already_known actor=%s profile_changes=%s\n",
+						result.Line, printableOptional(result.RelayActor), printableProfileChanges(result.Profile)); err != nil {
 						return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 					}
 					continue
@@ -1034,10 +1138,10 @@ func renderResults(
 			}
 			if result.Profile != nil {
 				if _, err := fmt.Fprintf(standardOutput,
-					"line=%d status=%s outcome=%s actor=%s inbox=%s inbox_probe=%s profile_created=%d profile_updated=%d profile_cleared=%d profile_unchanged=%d\n",
+					"line=%d status=%s outcome=%s actor=%s inbox=%s inbox_probe=%s profile_changes=%s\n",
 					result.Line, result.Status, result.Outcome, printableOptional(result.RelayActor),
 					printableOptional(result.InboxURL), printableInboxState(result.InboxProbeState),
-					result.Profile.Created, result.Profile.Updated, result.Profile.Cleared, result.Profile.Unchanged); err != nil {
+					printableProfileChanges(result.Profile)); err != nil {
 					return writeFailure(errorOutput, ExitOperational, "discovery output failed")
 				}
 				continue
@@ -1054,6 +1158,17 @@ func renderResults(
 		return ExitOperational
 	}
 	return ExitSuccess
+}
+
+func printableProfileChanges(profile *profileMutationResult) string {
+	if profile == nil {
+		return "none"
+	}
+	count := profile.Created + profile.Updated + profile.Cleared
+	if count == 0 {
+		return "none"
+	}
+	return strconv.Itoa(count)
 }
 
 func classifyStorageError(output io.Writer, err error, operation string) int {

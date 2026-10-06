@@ -48,6 +48,8 @@ type humanDirectoryPage struct {
 	UnavailableDownloadURL    string
 	Stylesheet                string
 	Version                   string
+	DirectoryTitle            string
+	DirectoryBannerURL        string
 	HasOperator               bool
 	HasOperatorLinks          bool
 	OperatorWebsite           string
@@ -242,6 +244,18 @@ func newHumanDirectoryRenderer() (func(humanDirectoryPage) ([]byte, error), erro
 	}, nil
 }
 
+func humanDirectoryCSPForBanner(bannerURL string) string {
+	if bannerURL == "" {
+		return humanDirectoryCSP
+	}
+	parsed, err := url.Parse(bannerURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return humanDirectoryCSP
+	}
+	origin := parsed.Scheme + "://" + parsed.Host
+	return strings.Replace(humanDirectoryCSP, "img-src 'none'", "img-src 'self' "+origin, 1)
+}
+
 func (handler *PublicListingHandler) serveHumanDirectory(response http.ResponseWriter, request *http.Request) {
 	handler.serveHumanDirectoryWithVersion(response, request, "")
 }
@@ -288,6 +302,10 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 	nextURL := humanDirectoryPaginationURL("cursor", listing.Pagination.NextCursor, listing.Pagination.Limit, registrationFilter)
 
 	operator := handler.operator
+	directoryTitle := operator.DirectoryTitle
+	if directoryTitle == "" {
+		directoryTitle = "Activity-Relay Directory"
+	}
 	operatorEmailURL := ""
 	if operator.Email != "" {
 		operatorEmailURL = (&url.URL{Scheme: "mailto", Opaque: operator.Email}).String()
@@ -304,6 +322,8 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		UnavailableDownloadURL:    directoryUnavailableDownloadPath,
 		Stylesheet:                directoryStylesheetPath,
 		Version:                   version,
+		DirectoryTitle:            directoryTitle,
+		DirectoryBannerURL:        operator.DirectoryBannerURL,
 		HasOperator:               !operator.Empty(),
 		HasOperatorLinks:          operator.HasLinks(),
 		OperatorWebsite:           operator.Website,
@@ -324,7 +344,7 @@ func (handler *PublicListingHandler) serveHumanDirectoryWithVersion(
 		return
 	}
 
-	response.Header().Set("Content-Security-Policy", humanDirectoryCSP)
+	response.Header().Set("Content-Security-Policy", humanDirectoryCSPForBanner(operator.DirectoryBannerURL))
 	writeCacheablePublicRepresentation(response, request, humanDirectoryContentType, body)
 }
 

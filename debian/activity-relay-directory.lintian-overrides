@@ -16,3 +16,9 @@ activity-relay-directory binary: copyright-without-copyright-notice
 # that should not be exposed to unprivileged local users. debian/rules runs the
 # normal dh_fixperms pass first, then narrowly restores this one file to 0640.
 activity-relay-directory binary: non-standard-file-perm 0640 != 0644 [etc/default/activity-relay-directory]
+
+# config.yml.example is intentionally package-managed reference material under
+# /etc, not an operator-owned conffile. Keeping it out of DEBIAN/conffiles
+# ensures package upgrades refresh the example while the live config.yml remains
+# entirely operator-owned and is never shipped by the package.
+activity-relay-directory binary: file-in-etc-not-marked-as-conffile [etc/activity-relay-directory/config.yml.example]

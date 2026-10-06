@@ -168,7 +168,7 @@ func TestExecuteCSVAppliesProfilesToReadyAndAlreadyKnownRelays(t *testing.T) {
 		repository.profileWrites[0].RelayActor != "https://known.example/actor" ||
 		repository.profileWrites[1].RelayActor != "https://new.example/actor" ||
 		repository.profileWrites[1].Source.SourceURL != "https://source.example/list" ||
-		!strings.Contains(stdout.String(), "profile_created=1") {
+		!strings.Contains(stdout.String(), "profile_changes=1") {
 		t.Fatalf("Execute(CSV) = %d; repo=%#v stdout=%q stderr=%q",
 			code, repository, stdout.String(), stderr.String())
 	}

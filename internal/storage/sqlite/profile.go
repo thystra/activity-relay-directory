@@ -489,3 +489,45 @@ func decodeProfileField(profile *storage.RelayProfile, field storage.ProfileFiel
 	}
 	return nil
 }
+
+// ProfileSourceProfile returns the currently retained assertion set for one
+// source kind without resolving higher-priority sources. It is used by local
+// administrative preflight so CSV imports can show a read-only field delta
+// before operator confirmation.
+func (repository *RelayRepository) ProfileSourceProfile(
+	ctx context.Context,
+	relayActor string,
+	kind storage.ProfileSourceKind,
+) (storage.RelayProfile, error) {
+	if repository == nil || repository.database == nil || ctx == nil ||
+		!storage.ValidProfileRelayActor(relayActor) || !kind.Valid() {
+		return storage.RelayProfile{}, storage.ErrProfileInput
+	}
+	rows, err := repository.database.QueryContext(ctx,
+		`SELECT field_name, value_json
+		 FROM relay_profile_values
+		 WHERE relay_actor = ? AND source_kind = ?
+		 ORDER BY field_name`, relayActor, string(kind))
+	if err != nil {
+		return storage.RelayProfile{}, storageFailure("read profile source preview", err)
+	}
+	defer rows.Close()
+	var profile storage.RelayProfile
+	for rows.Next() {
+		var fieldRaw, valueJSON string
+		if err := rows.Scan(&fieldRaw, &valueJSON); err != nil {
+			return storage.RelayProfile{}, storageFailure("decode profile source preview", err)
+		}
+		field := storage.ProfileField(fieldRaw)
+		if !field.Valid() {
+			return storage.RelayProfile{}, storageFailure("validate profile source preview", errors.New("invalid stored profile field"))
+		}
+		if err := decodeProfileField(&profile, field, valueJSON); err != nil {
+			return storage.RelayProfile{}, storageFailure("decode profile source preview value", err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return storage.RelayProfile{}, storageFailure("iterate profile source preview", err)
+	}
+	return storage.NormalizeRelayProfile(profile)
+}

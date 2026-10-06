@@ -41,10 +41,17 @@ override_dh_auto_install:
 	  debian/activity-relay-directory/etc/default/activity-relay-directory
 	install -D -m 0644 \
 	  config.yml.example \
-	  debian/activity-relay-directory/usr/share/doc/activity-relay-directory/examples/config.yml.example
+	  debian/activity-relay-directory/etc/activity-relay-directory/config.yml.example
 
 override_dh_installsystemd:
 	dh_installsystemd --no-enable --no-start --no-stop-on-upgrade
+
+override_dh_installdeb:
+	dh_installdeb
+	# The example is package-managed reference material, not an operator-owned
+	# conffile. Keep /etc/default/activity-relay-directory as the sole conffile.
+	sed -i '\|^/etc/activity-relay-directory/config.yml.example$$|d' \
+	  debian/activity-relay-directory/DEBIAN/conffiles
 
 override_dh_fixperms:
 	dh_fixperms

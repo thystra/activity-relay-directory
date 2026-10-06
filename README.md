@@ -332,8 +332,10 @@ accepted as an alias.
 ## Optional operator contact
 
 The human directory can show operator-owned contact links without exposing
-private administrator-alert settings. Copy `config.yml.example` to the normal
-operator configuration location and set any values you want to publish:
+private administrator-alert settings. The package/container example is `/etc/activity-relay-directory/config.yml.example`.
+Copy it to the operator-owned `/etc/activity-relay-directory/config.yml` and set
+any values you want to publish. Commented settings in the example are written as
+`#KEY...`, so deleting only `#` enables the YAML line:
 
 ```yaml
 OPERATOR-WEBSITE: "https://operator.example/"

@@ -57,6 +57,8 @@ Directory page.
 
 | Key / logical object | Category | Valid behavior | Missing behavior | Malformed / partial behavior |
 | --- | --- | --- | --- | --- |
+| `DIRECTORY-TITLE` | Nice-to-have | replace the default human Directory title with a control-character-free value of at most 120 bytes | render `Activity-Relay Directory` | suppress the value and show a malformed-value diagnostic |
+| `DIRECTORY-BANNER-URL` | Nice-to-have | render the bounded absolute HTTPS image URL and admit only its exact HTTPS origin through the page image CSP | render no banner and keep `img-src 'none'` | suppress the value and show a malformed-value diagnostic |
 | `OPERATOR-WEBSITE` | Nice-to-have | render `Operator website` as the exact absolute HTTPS URL | suppress the website link | suppress the value and show `OPERATOR-WEBSITE is malformed in config.yml.` |
 | `OPERATOR-EMAIL` | Nice-to-have | render the exact address through `mailto:` | suppress the email link | suppress the value and show `OPERATOR-EMAIL is malformed in config.yml.` |
 | `FEDIVERSE-OPERATOR-ID` + `FEDIVERSE-OPERATOR-URL` | Nice-to-have multi-key object | when both are valid, render the exact `@user@host` linked to the explicit absolute HTTPS profile URL | when both are absent, suppress Fediverse presentation with no diagnostic | ID missing: `Please configure FEDIVERSE-OPERATOR-ID in config.yml.`; URL missing: `Please configure FEDIVERSE-OPERATOR-URL in config.yml.`; malformed supplied members get their own `... is malformed in config.yml.` diagnostic; no partial Fediverse link is rendered |

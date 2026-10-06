@@ -195,6 +195,9 @@ func runDiscoveryAdminWithProberFactory(
 			fmt.Fprintln(stderr, "discovery resolver initialization failed")
 			return discoverycommand.ExitOperational
 		}
+		if request.Action == discoverycommand.ActionImport && request.InputFormat == discoverycommand.InputCSV {
+			fmt.Fprintln(stderr, "Processing list. Please be patient, this may take a moment...")
+		}
 		plan, err = discoverycommand.Prepare(prepareCtx, request, prober)
 		if err != nil {
 			cancelPrepare()
@@ -232,6 +235,11 @@ func runDiscoveryAdminWithProberFactory(
 				plan,
 				knownRepository,
 			)
+			if classifyErr == nil && request.InputFormat == discoverycommand.InputCSV {
+				classified, classifyErr = discoverycommand.PreviewCSVProfileChanges(
+					prepareCtx, request, classified, knownRepository,
+				)
+			}
 			closeErr := knownDatabase.Close()
 			if classifyErr != nil || closeErr != nil {
 				cancelPrepare()

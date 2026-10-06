@@ -250,6 +250,8 @@ func (profile directoryProjectionProfile) Empty() bool {
 type directoryProjectionTelemetry struct {
 	ReceivingInstanceCount *int    `json:"receiving_instance_count"`
 	ReportedAt             *string `json:"reported_at"`
+	SitesCount             *int    `json:"-"`
+	SitesReportedAt        *string `json:"-"`
 }
 
 type directoryProjectionHeartbeat struct {
@@ -319,6 +321,12 @@ type directoryProjectionErrorBody struct {
 }
 
 func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) directoryProjectionRelay {
+	sitesCount := relay.ReceivingInstanceCount
+	sitesReportedUnix := relay.TelemetryReportedUnix
+	if relay.ParticipatingInstanceCount != nil {
+		sitesCount = relay.ParticipatingInstanceCount
+		sitesReportedUnix = relay.ParticipatingReportedUnix
+	}
 	presented := directoryProjectionRelay{
 		RelayActor:    relay.RelayActor,
 		PublicBaseURL: relay.PublicBaseURL,
@@ -327,10 +335,12 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 		Telemetry: directoryProjectionTelemetry{
 			ReceivingInstanceCount: relay.ReceivingInstanceCount,
 			ReportedAt:             formatProjectionUnix(relay.TelemetryReportedUnix),
+			SitesCount:             sitesCount,
+			SitesReportedAt:        formatProjectionUnix(sitesReportedUnix),
 		},
 		Heartbeat: directoryProjectionHeartbeat{
 			State:      relay.HeartbeatState,
-			LastSeenAt: formatProjectionUnix(relay.LastSeenUnix),
+			LastSeenAt: formatProjectionUnix(relay.LastHeartbeatUnix),
 		},
 		Reachability: directoryProjectionReachability{
 			State:         relay.ActorState,

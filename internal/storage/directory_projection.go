@@ -56,17 +56,17 @@ func (state PublicHeartbeatState) Valid() bool {
 	}
 }
 
-// ClassifyPublicHeartbeat applies the frozen version-1 last-seen boundaries to
-// the richer public projection. A nil last-seen value means no retained
-// authenticated lifecycle observation exists for this actor.
-func ClassifyPublicHeartbeat(lastSeenUnix *int64, observedUnix int64) (PublicHeartbeatState, error) {
+// ClassifyPublicHeartbeat applies the frozen version-1 health boundaries to
+// retained heartbeat/liveness evidence. A nil heartbeat value means no retained
+// authenticated heartbeat-equivalent lifecycle observation exists for this actor.
+func ClassifyPublicHeartbeat(lastHeartbeatUnix *int64, observedUnix int64) (PublicHeartbeatState, error) {
 	if observedUnix < 0 {
 		return "", ErrHealthTime
 	}
-	if lastSeenUnix == nil {
+	if lastHeartbeatUnix == nil {
 		return HeartbeatNotObserved, nil
 	}
-	health, err := ClassifyHealth(*lastSeenUnix, observedUnix)
+	health, err := ClassifyHealth(*lastHeartbeatUnix, observedUnix)
 	if err != nil {
 		return "", err
 	}
@@ -120,11 +120,13 @@ type DirectoryProjectionQuery struct {
 // Registered and Discovered are internal eligibility facts only; HTTP
 // serializers must never expose either value or any discovery provenance.
 type DirectoryProjectionRelay struct {
-	RelayActor             string
-	PublicBaseURL          string
-	Profile                RelayProfile
-	ReceivingInstanceCount *int
-	TelemetryReportedUnix  *int64
+	RelayActor                 string
+	PublicBaseURL              string
+	Profile                    RelayProfile
+	ReceivingInstanceCount     *int
+	TelemetryReportedUnix      *int64
+	ParticipatingInstanceCount *int
+	ParticipatingReportedUnix  *int64
 
 	LifecycleKnown bool
 	Registered     bool
@@ -221,17 +223,21 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 	if err != nil || !equalRelayProfile(relay.Profile, normalizedProfile) {
 		return ErrDirectoryProjectionData
 	}
-	if (relay.ReceivingInstanceCount == nil) != (relay.TelemetryReportedUnix == nil) {
+	if (relay.ReceivingInstanceCount == nil) != (relay.TelemetryReportedUnix == nil) ||
+		(relay.ParticipatingInstanceCount == nil) != (relay.ParticipatingReportedUnix == nil) {
 		return ErrDirectoryProjectionData
 	}
 	if relay.ReceivingInstanceCount != nil && (*relay.ReceivingInstanceCount < 0 || *relay.ReceivingInstanceCount > MaximumReceivingInstanceCount) {
 		return ErrDirectoryProjectionData
 	}
-	if !validObservedTime(relay.TelemetryReportedUnix, observedUnix) {
+	if relay.ParticipatingInstanceCount != nil && (*relay.ParticipatingInstanceCount < 0 || *relay.ParticipatingInstanceCount > MaximumParticipatingInstanceCount) {
+		return ErrDirectoryProjectionData
+	}
+	if !validObservedTime(relay.TelemetryReportedUnix, observedUnix) || !validObservedTime(relay.ParticipatingReportedUnix, observedUnix) {
 		return ErrDirectoryProjectionData
 	}
 
-	heartbeat, err := ClassifyPublicHeartbeat(relay.LastSeenUnix, observedUnix)
+	heartbeat, err := ClassifyPublicHeartbeat(relay.LastHeartbeatUnix, observedUnix)
 	if err != nil || heartbeat != relay.HeartbeatState {
 		return ErrDirectoryProjectionData
 	}

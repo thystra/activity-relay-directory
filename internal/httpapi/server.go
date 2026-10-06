@@ -10,6 +10,7 @@ import (
 	"github.com/thystra/activity-relay-directory/internal/directoryexport"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	v2 "github.com/thystra/activity-relay-directory/internal/protocol/v2"
+	v3 "github.com/thystra/activity-relay-directory/internal/protocol/v3"
 )
 
 const (
@@ -117,6 +118,9 @@ func NewHandlerWithRuntime(
 		if lifecycle != nil && lifecycle.supportsV2() {
 			protocolVersions = append(protocolVersions, v2.Version)
 		}
+		if lifecycle != nil && lifecycle.supportsV3() {
+			protocolVersions = append(protocolVersions, v3.Version)
+		}
 		writeJSON(response, request, http.StatusOK, map[string]any{
 			"schema_version":              statusSchemaVersion,
 			"lifecycle_protocol_versions": protocolVersions,
@@ -152,6 +156,15 @@ func NewHandlerWithRuntime(
 	registerLifecycleV2Route(v2.RegisterEndpointPath, v2.OperationRegister)
 	registerLifecycleV2Route(v2.HeartbeatEndpointPath, v2.OperationHeartbeat)
 	registerLifecycleV2Route(v2.UnregisterEndpointPath, v2.OperationUnregister)
+
+	registerLifecycleV3Route := func(path string, operation v3.Operation) {
+		mux.HandleFunc(path, func(response http.ResponseWriter, request *http.Request) {
+			active.serveV3(response, request, operation)
+		})
+	}
+	registerLifecycleV3Route(v3.RegisterEndpointPath, v3.OperationRegister)
+	registerLifecycleV3Route(v3.HeartbeatEndpointPath, v3.OperationHeartbeat)
+	registerLifecycleV3Route(v3.UnregisterEndpointPath, v3.OperationUnregister)
 
 	if cfg.PublicListingEnabled {
 		mux.HandleFunc("/v1/relays", func(response http.ResponseWriter, request *http.Request) {

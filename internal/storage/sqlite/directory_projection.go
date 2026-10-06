@@ -687,7 +687,9 @@ SELECT seed.relay_actor,
        observation.inbox_last_checked_at_unix,
        observation.rfc9421_verified_at_unix,
        telemetry.receiving_instance_count,
-       telemetry.reported_at_unix
+       telemetry.reported_at_unix,
+       telemetry.participating_instance_count,
+       telemetry.participating_reported_at_unix
 FROM seed
 LEFT JOIN relays AS relay ON relay.relay_actor = seed.relay_actor
 LEFT JOIN relay_discoveries AS discovery ON discovery.relay_actor = seed.relay_actor
@@ -704,26 +706,28 @@ ORDER BY seed.relay_actor`
 	result := make(map[string]*storage.DirectoryProjectionRelay, len(actors))
 	for rows.Next() {
 		var (
-			actor               string
-			relayBase           sql.NullString
-			relayLifecycle      sql.NullString
-			relayAdministrative sql.NullString
-			firstRegistered     sql.NullInt64
-			lastSeen            sql.NullInt64
-			lastHeartbeat       sql.NullInt64
-			discoveryBase       sql.NullString
-			discoveryState      sql.NullString
-			firstDiscovered     sql.NullInt64
-			actorState          sql.NullString
-			actorLastChecked    sql.NullInt64
-			actorLastSuccess    sql.NullInt64
-			inboxURL            sql.NullString
-			inboxDeclared       sql.NullInt64
-			inboxState          sql.NullString
-			inboxLastChecked    sql.NullInt64
-			rfc9421Verified     sql.NullInt64
-			receivingCount      sql.NullInt64
-			telemetryReported   sql.NullInt64
+			actor                 string
+			relayBase             sql.NullString
+			relayLifecycle        sql.NullString
+			relayAdministrative   sql.NullString
+			firstRegistered       sql.NullInt64
+			lastSeen              sql.NullInt64
+			lastHeartbeat         sql.NullInt64
+			discoveryBase         sql.NullString
+			discoveryState        sql.NullString
+			firstDiscovered       sql.NullInt64
+			actorState            sql.NullString
+			actorLastChecked      sql.NullInt64
+			actorLastSuccess      sql.NullInt64
+			inboxURL              sql.NullString
+			inboxDeclared         sql.NullInt64
+			inboxState            sql.NullString
+			inboxLastChecked      sql.NullInt64
+			rfc9421Verified       sql.NullInt64
+			receivingCount        sql.NullInt64
+			telemetryReported     sql.NullInt64
+			participatingCount    sql.NullInt64
+			participatingReported sql.NullInt64
 		)
 		if err := rows.Scan(
 			&actor,
@@ -746,6 +750,8 @@ ORDER BY seed.relay_actor`
 			&rfc9421Verified,
 			&receivingCount,
 			&telemetryReported,
+			&participatingCount,
+			&participatingReported,
 		); err != nil {
 			return nil, storageFailure("decode public directory details", err)
 		}
@@ -807,30 +813,37 @@ ORDER BY seed.relay_actor`
 			return nil, storageFailure("validate public directory details", errors.New("public identity has no first-known time"))
 		}
 		if receivingCount.Valid != telemetryReported.Valid ||
-			(receivingCount.Valid && (receivingCount.Int64 < 0 || receivingCount.Int64 > storage.MaximumReceivingInstanceCount)) {
+			participatingCount.Valid != participatingReported.Valid ||
+			(receivingCount.Valid && (receivingCount.Int64 < 0 || receivingCount.Int64 > storage.MaximumReceivingInstanceCount)) ||
+			(participatingCount.Valid && (participatingCount.Int64 < 0 || participatingCount.Int64 > storage.MaximumParticipatingInstanceCount)) {
 			return nil, storageFailure("validate public directory telemetry", errors.New("invalid retained telemetry"))
 		}
 		relay := &storage.DirectoryProjectionRelay{
-			RelayActor:            actor,
-			Profile:               profiles[actor],
-			TelemetryReportedUnix: nullableInt64Pointer(telemetryReported),
-			LifecycleKnown:        lifecycleKnown,
-			Registered:            registered,
-			Discovered:            discovered,
-			FirstKnownUnix:        firstKnown,
-			LastSeenUnix:          nullableInt64Pointer(lastSeen),
-			LastHeartbeatUnix:     nullableInt64Pointer(lastHeartbeat),
-			ActorState:            storage.ReachabilityUnknown,
-			ActorLastCheckedUnix:  nullableInt64Pointer(actorLastChecked),
-			ActorLastSuccessUnix:  nullableInt64Pointer(actorLastSuccess),
-			InboxDeclaredUnix:     nullableInt64Pointer(inboxDeclared),
-			InboxProbeState:       storage.InboxNotChecked,
-			InboxLastCheckedUnix:  nullableInt64Pointer(inboxLastChecked),
-			RFC9421VerifiedUnix:   nullableInt64Pointer(rfc9421Verified),
+			RelayActor:                actor,
+			Profile:                   profiles[actor],
+			TelemetryReportedUnix:     nullableInt64Pointer(telemetryReported),
+			ParticipatingReportedUnix: nullableInt64Pointer(participatingReported),
+			LifecycleKnown:            lifecycleKnown,
+			Registered:                registered,
+			Discovered:                discovered,
+			FirstKnownUnix:            firstKnown,
+			LastSeenUnix:              nullableInt64Pointer(lastSeen),
+			LastHeartbeatUnix:         nullableInt64Pointer(lastHeartbeat),
+			ActorState:                storage.ReachabilityUnknown,
+			ActorLastCheckedUnix:      nullableInt64Pointer(actorLastChecked),
+			ActorLastSuccessUnix:      nullableInt64Pointer(actorLastSuccess),
+			InboxDeclaredUnix:         nullableInt64Pointer(inboxDeclared),
+			InboxProbeState:           storage.InboxNotChecked,
+			InboxLastCheckedUnix:      nullableInt64Pointer(inboxLastChecked),
+			RFC9421VerifiedUnix:       nullableInt64Pointer(rfc9421Verified),
 		}
 		if receivingCount.Valid {
 			count := int(receivingCount.Int64)
 			relay.ReceivingInstanceCount = &count
+		}
+		if participatingCount.Valid {
+			count := int(participatingCount.Int64)
+			relay.ParticipatingInstanceCount = &count
 		}
 		if lifecycleKnown {
 			if !relayBase.Valid {
@@ -853,7 +866,7 @@ ORDER BY seed.relay_actor`
 			relay.InboxProbeState = storage.InboxProbeState(inboxState.String)
 		}
 		var err error
-		relay.HeartbeatState, err = storage.ClassifyPublicHeartbeat(relay.LastSeenUnix, observedUnix)
+		relay.HeartbeatState, err = storage.ClassifyPublicHeartbeat(relay.LastHeartbeatUnix, observedUnix)
 		if err != nil {
 			return nil, storageFailure("classify public directory heartbeat", err)
 		}
