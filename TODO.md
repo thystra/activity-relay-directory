@@ -8,6 +8,17 @@ reviewed path to the 1.0.0 stable release. Future work remains separately
 reviewed and does not silently alter the version 1 protocol or default-off
 operator controls.
 
+## 1.3 stable release
+
+`v1.3.0` promotes the accepted 1.3.0-rc4 line after cross-repository Protocol
+v2/v3 testing, production liveness recovery, populated CSV/profile operation,
+and known-offline-relay metadata validation. Stable promotion changes release
+identity and packaging metadata only; it does not alter the accepted RC4 runtime.
+
+Database schema 12, lifecycle Protocols 1/2/3, `/v1/relays` compatibility, the
+four public operational tiers, and the profile/telemetry privacy boundaries are
+retained unchanged.
+
 ## 1.3 RC3 hardening completed
 
 - Add bounded self-reported receiving-site telemetry on lifecycle Protocol v2
@@ -877,13 +888,16 @@ Repositories: Directory and Activity-Relay.
 
 ### Tranche 29: 1.3 acceptance and release gate
 
-Repositories: Directory and Activity-Relay where Protocol v2 is exercised.
+Completed (2026-10-06). Repositories: Directory and Activity-Relay where
+Protocol v2/v3 is exercised.
 
-Acceptance covers schema-9 to schema-10 migration, unchanged historical
+Acceptance covers schema-9 through schema-12 migration, unchanged historical
 migrations, source precedence/clear behavior, CSV formula-injection protection
 and round-trip, public privacy, `/v1/relays` and Protocol v1 compatibility,
-profile/tier independence, and real cross-repository Protocol v2 registration,
-heartbeat, fallback, and reconciliation.
+profile/tier independence, real cross-repository Protocol v2/v3 registration,
+heartbeat, fallback, profile reconciliation, participating-site telemetry,
+startup liveness recovery, and metadata updates for already-known unavailable
+relays without fabricating reachability.
 
 ## Public-facing funding/support surface
 

@@ -1,3 +1,22 @@
+activity-relay-directory (1.3.0-1) stable; urgency=medium
+
+  * Promote the accepted 1.3.0-rc4 behavior to stable without runtime changes.
+  * Add source-scoped relay profiles with bounded CSV import/export and fixed
+    per-field override > relay > csv precedence.
+  * Add lifecycle Protocol v2 profile synchronization and Protocol v3 bounded
+    participating-instance telemetry while preserving Protocol v1 compatibility.
+  * Treat successful authenticated registration as current liveness evidence and
+    use the retained heartbeat timestamp for public heartbeat freshness.
+  * Publish /v2/relays schema 5 profile/telemetry presentation and registration
+    filtering without allowing descriptive metadata to affect operational tiers.
+  * Allow CSV metadata updates for exact already-known identities even while a
+    current actor probe fails; unknown candidates retain the normal validation
+    boundary.
+  * Publish the concise operator documentation layout, package-managed
+    config.yml.example reference, and deterministic canonical artifact carrier.
+
+ -- Alan Johnson <alan@argentwolf.org>  Tue, 06 Oct 2026 11:55:00 -0400
+
 activity-relay-directory (1.3.0~rc4-1) unstable; urgency=medium
 
   * Prepare the fourth Activity-Relay Directory 1.3 release candidate.

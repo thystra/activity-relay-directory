@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.0 - 2026-10-06
+
+- Promote the accepted `1.3.0-rc4` behavior to stable `1.3.0` without runtime
+  behavior changes.
+- Add source-scoped descriptive relay profiles with per-field
+  `override > relay > csv` precedence, bounded CSV import/export, and private
+  append-only profile history.
+- Add lifecycle Protocol v2 profile synchronization and Protocol v3 bounded
+  participating-instance telemetry while preserving Protocol v1 compatibility.
+- Treat every successful authenticated registration as current liveness evidence
+  and drive public heartbeat freshness from the retained heartbeat timestamp.
+- Extend `/v2/relays` to schema 5 with reviewed profile/telemetry projection,
+  registration badges/filtering, and the existing four operational tiers.
+- Allow CSV metadata replacement for exact already-known lifecycle/discovery
+  identities even when their current actor probe fails; unknown candidates still
+  require normal validation or explicit dead-candidate retention.
+- Promote the package-managed `config.yml.example`, Directory title/banner and
+  support presentation, concise operator documentation layout, and deterministic
+  canonical artifact carrier.
+
 ## 1.3.0-rc4 - 2026-10-05
 
 - Add lifecycle Protocol v3 and schema 12 participating-instance telemetry.
