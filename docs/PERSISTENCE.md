@@ -127,18 +127,20 @@ the current enrollment setting. Register has these outcomes:
 
 - a never-registered canonical actor becomes `created` and administratively
   active;
-- an already registered actor with identical metadata is `unchanged`, leaving
-  its state-change timestamp untouched while refreshing `last_seen_at_unix`
-  and recording the accepted intent; and
+- an already registered actor with identical metadata is `unchanged`, refreshing
+  `last_seen_at_unix`, the retained heartbeat/liveness time, and the state update
+  time while recording the accepted intent; and
 - a retained unregistered or pruned actor becomes `updated`, preserving its
-  original registration timestamp while clearing the prior lifecycle timestamp
-  and old-heartbeat recency.
+  original registration timestamp while replacing obsolete lifecycle/heartbeat
+  recency with the new authenticated registration acceptance time.
 
-Administrative suspension blocks register without clearing suspension.
-Heartbeat requires a registered, administratively active relay and records the
-server acceptance time as `last_seen_at_unix`, last heartbeat, and state update
-time. New and restored registrations also set last seen to their acceptance
-time. Unregister leaves the last accepted register-or-heartbeat time retained.
+Administrative suspension blocks register without clearing suspension. Every
+successful authenticated registration is current liveness evidence: create,
+unchanged/profile-sync, and restore outcomes record the server acceptance time
+as both `last_seen_at_unix` and the retained heartbeat/liveness timestamp. An
+explicit heartbeat requires a registered, administratively active relay and
+updates the same liveness fields plus state update time. Unregister leaves the
+last accepted register-or-heartbeat time retained.
 
 Unregister is idempotent. A registered relay becomes `removed`; an unknown or
 already unregistered relay is `absent`. Repeated authenticated absent intents
@@ -211,9 +213,9 @@ another event.
 
 Suspension is independent and remains stored on a pruned relay. A suspended
 pruned relay cannot register until an operator restores it. Re-registration then
-returns it to `registered`, clears `pruned_at_unix` and obsolete heartbeat
-recency, and preserves first registration plus all lifecycle and moderation
-audit rows.
+returns it to `registered`, clears `pruned_at_unix`, records the new authenticated
+registration as current heartbeat/liveness evidence, and preserves first
+registration plus all lifecycle and moderation audit rows.
 
 The process scheduler is disabled unless
 `DIRECTORY_SOFT_PRUNING_ENABLED=true`. Its interval defaults to `24h`, must be at

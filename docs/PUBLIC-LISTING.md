@@ -51,13 +51,13 @@ observation time so stable data does not change health classification or the
 ## `/v2/relays` public projection
 
 `/v2/relays` is the richer public projection introduced in 1.1 and extended in
-1.2 and 1.3. The response schema is now version 4. Each relay object contains only
+1.2 and 1.3. The response schema is now version 5. Each relay object contains only
 reviewed public evidence:
 
 - canonical `relay_actor` and `public_base_url`;
 - numeric operational `tier` (`1` through `4`);
-- `heartbeat.state` plus authenticated `last_seen_at`, or `not_observed` and
-  `null` when no retained authenticated Directory observation exists;
+- `heartbeat.state` plus the retained authenticated liveness/heartbeat time in
+  `last_seen_at`, or `not_observed` and `null` when no such evidence exists;
 - independent actor `reachability.state`, `last_checked_at`, and
   `last_success_at`;
 - the validated actor-declared inbox, declaration time, non-mutating inbox probe
@@ -65,8 +65,9 @@ reviewed public evidence:
 - RFC 9421 `verified|not verified` plus the positive-evidence timestamp when
   verified.
 
-Schema 4 also includes one `profile` object containing the effective reviewed
-descriptive relay profile: `participation_mode`, `availability`, `relay_type`,
+The projection retains the schema-4 `profile` object containing the effective
+reviewed descriptive relay profile: `participation_mode`, `availability`,
+`relay_type`,
 `languages`, `countries`, `regions`, `topics`, `contact_fediverse`,
 `contact_email`, `contact_url`, `participation_url`, and `notes`. Missing scalar
 values are empty strings and missing multi-value fields are empty arrays. The
@@ -84,9 +85,11 @@ an identity. Otherwise the richer projection retains known verified identities
 through temporary and long-term outages and assigns one of four operational,
 non-prestige tiers:
 
-1. **Tier 1 — Heartbeat + Online.** The relay has an actual accepted heartbeat
-   within the fixed 36-hour healthy window and a successful actor check within
-   the fixed six-hour reachability freshness window.
+1. **Tier 1 — Heartbeat + Online.** The relay has current authenticated
+   liveness evidence within the fixed 36-hour healthy window and a successful
+   actor check within the fixed six-hour reachability freshness window. An
+   accepted heartbeat or successful authenticated registration refreshes this
+   liveness evidence.
 2. **Tier 2 — Online, no current heartbeat.** The actor is currently reachable,
    but there is no current accepted heartbeat. This includes discovered relays
    and lifecycle relays whose heartbeat is absent or stale.
