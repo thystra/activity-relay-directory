@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1-rc1 - 2026-10-08 (release candidate)
+
+- Add schema 14 durable actor-failure retry streak with escalating hourly
+  eligibility and a reset on recovery; make persisted next-check authoritative.
+- Treat healthy authenticated heartbeat as independent positive liveness when
+  actor retrieval fails: Tier 2 and online summary include heartbeat-only relays.
+- Preserve actor failure diagnostics and the existing seven-day long-offline
+  recovery cadence; no changes to lifecycle protocol signatures.
+
 ## 1.3.1 - 2026-10-07
 
 - Add stage/code/HTTP-status reachability diagnostics for DNS, connection,

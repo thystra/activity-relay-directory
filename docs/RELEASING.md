@@ -1,3 +1,14 @@
+### ARD 1.3.1-rc1 source acceptance
+
+For the retry/liveness release candidate, run
+`./scripts/acceptance-1.3.1-rc1.sh` before dispatching canonical build with
+version `1.3.1-rc1`. The released `v1.3.0` migrations 1–12 must remain
+byte-identical; schemas 13 and 14 are the only additions. Source acceptance
+validates retry sequence, schema 13 upgrade to 14, heartbeat-only Tier 2,
+summary consistency and safety-preserving actor diagnostics. A future stable
+`1.3.1` requires a separately reviewed stable-promotion commit and its own
+canonical artifact build.
+
 # Releasing
 
 
