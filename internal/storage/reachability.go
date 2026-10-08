@@ -23,6 +23,11 @@ const (
 	// graveyard presentation without requiring operator intervention.
 	ReachabilityUnreachableRetry = 7 * 24 * time.Hour
 
+	// Failure rechecks run no more frequently than the hourly worker. Only
+	// actor failures escalate; a validated actor resets the sequence.
+	ReachabilityFailureRetryMinimum  = time.Hour
+	MaximumReachabilityFailureStreak = 4
+
 	// MaximumReachabilityCandidatePage bounds each private candidate read.
 	MaximumReachabilityCandidatePage = 24
 
@@ -63,9 +68,10 @@ func (cursor ReachabilityCandidateCursor) Valid() bool {
 
 // ReachabilityCandidateQuery requests one bounded page against one captured
 // server observation time. Normally an actor is due when it has never been
-// checked or its last check is older than ReachabilityFreshness. A relay that
-// is currently unreachable and has not been seen online for at least seven
-// days is retried at ReachabilityUnreachableRetry instead.
+// checked or its last check is older than ReachabilityFreshness. New actor
+// failures are retried at 1, 2, 4, then 6 hours; a relay with no positive
+// online evidence for at least seven days is retried weekly instead. The
+// persisted next-check deadline is authoritative when present.
 type ReachabilityCandidateQuery struct {
 	After      ReachabilityCandidateCursor
 	Limit      int

@@ -87,16 +87,14 @@ through temporary and long-term outages and assigns one of four operational,
 non-prestige tiers:
 
 1. **Tier 1 — Heartbeat + Online.** The relay has current authenticated
-   liveness evidence within the fixed 36-hour healthy window and a successful
-   actor check within the fixed six-hour reachability freshness window. An
-   accepted heartbeat or successful authenticated registration refreshes this
-   liveness evidence.
-2. **Tier 2 — Online, no current heartbeat.** The actor is currently reachable,
-   but there is no current accepted heartbeat. This includes discovered relays
-   and lifecycle relays whose heartbeat is absent or stale.
-3. **Tier 3 — Offline / Unreachable.** The relay is known to the Directory but
-   does not have a current successful actor check and has been seen online
-   within the last 30 days.
+   liveness evidence within the fixed 36-hour healthy window **and** a
+   successful actor check within the fixed six-hour freshness window.
+2. **Tier 2 — Online, one liveness signal.** The relay has either a healthy
+   authenticated heartbeat **or** a recent successful actor check, but not
+   both. A heartbeat-active relay whose actor endpoint fails remains online
+   here, with the failed actor probe clearly identified in its details.
+3. **Tier 3 — Offline / Unreachable.** Neither of those two independent
+   signals is current, but the relay has been seen online within 30 days.
 4. **Tier 4 — Graveyard.** The relay has not been seen online for at least 30
    days. It remains retained and is still checked periodically so recovery can
    move it back to Tier 1 or Tier 2.

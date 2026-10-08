@@ -51,8 +51,9 @@ func (repository *RelayRepository) ReachabilityCandidates(
 		return storage.ReachabilityCandidatePage{}, storage.ErrReachabilityReadInput
 	}
 	cutoffUnix := observedUnix - int64(storage.ReachabilityFreshness/time.Second)
+	minimumCutoffUnix := observedUnix - int64(storage.ReachabilityFailureRetryMinimum/time.Second)
 	longOfflineCutoffUnix := observedUnix - int64(storage.ReachabilityUnreachableRetry/time.Second)
-	if query.After.HasLastChecked && query.After.LastCheckedUnix >= cutoffUnix {
+	if query.After.HasLastChecked && query.After.LastCheckedUnix > minimumCutoffUnix {
 		return storage.ReachabilityCandidatePage{}, storage.ErrReachabilityReadInput
 	}
 
@@ -62,6 +63,7 @@ func (repository *RelayRepository) ReachabilityCandidates(
 		administrativeActive,
 		discoveryActive,
 		administrativeSuspended,
+		observedUnix, // persisted next eligible time, authoritative after schema 13
 		string(storage.ReachabilityUnreachable),
 		longOfflineCutoffUnix,
 		longOfflineCutoffUnix,
@@ -105,9 +107,16 @@ func (repository *RelayRepository) ReachabilityCandidates(
 	  ON discovery.relay_actor = eligible.relay_actor
 	LEFT JOIN relay_observations AS observation
 	  ON observation.relay_actor = eligible.relay_actor
+	LEFT JOIN relay_probe_diagnostics AS diagnostic
+	  ON diagnostic.relay_actor = eligible.relay_actor
 	WHERE (
 		observation.actor_last_checked_at_unix IS NULL
-		OR observation.actor_last_checked_at_unix < CASE
+		OR (diagnostic.next_check_at_unix IS NOT NULL
+		    AND diagnostic.updated_at_unix = observation.actor_last_checked_at_unix
+		    AND diagnostic.next_check_at_unix <= ?)
+		OR ((diagnostic.next_check_at_unix IS NULL
+		    OR diagnostic.updated_at_unix != observation.actor_last_checked_at_unix)
+		    AND observation.actor_last_checked_at_unix < CASE
 			WHEN observation.actor_state = ?
 			 AND MAX(
 			       COALESCE(relay.last_seen_at_unix, -1),
@@ -116,7 +125,7 @@ func (repository *RelayRepository) ReachabilityCandidates(
 			     ) <= ?
 			THEN ?
 			ELSE ?
-		END
+		END)
 	)`+whereAfter+`
 	ORDER BY (observation.actor_last_checked_at_unix IS NOT NULL) ASC,
 	         observation.actor_last_checked_at_unix ASC,
@@ -148,7 +157,7 @@ func (repository *RelayRepository) ReachabilityCandidates(
 			)
 		}
 		if checked.Valid {
-			if checked.Int64 < 0 || checked.Int64 >= cutoffUnix {
+			if checked.Int64 < 0 || checked.Int64 > minimumCutoffUnix {
 				return storage.ReachabilityCandidatePage{}, storageFailure(
 					"validate reachability candidate",
 					errors.New("invalid retained reachability time"),
@@ -279,12 +288,36 @@ func (repository *RelayRepository) RecordReachabilityObservation(
 		return "", storage.ErrReachabilityWriteInput
 	}
 
-	// Diagnostic evidence does not participate in tier classification, or touch
-	// lifecycle/heartbeat columns. Actor failures retain prior inbox evidence.
+	// Diagnostic evidence does not touch authenticated lifecycle/heartbeat
+	// columns. Actor failures retain prior inbox evidence. A persisted retry
+	// streak survives restarts and is reset only by a successful actor probe.
 	nextCheckUnix := observedUnix + int64(storage.ReachabilityFreshness/time.Second)
+	actorFailureStreak := 0
 	if intent.ActorState == storage.ReachabilityUnreachable {
+		var previousStreak int
+		err := transaction.QueryRowContext(ctx, `SELECT actor_failure_streak
+			FROM relay_probe_diagnostics WHERE relay_actor = ?`, intent.RelayActor).Scan(&previousStreak)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", storageFailure("read actor retry streak", err)
+		}
+		if err == nil {
+			actorFailureStreak = previousStreak
+		}
+		if actorFailureStreak < storage.MaximumReachabilityFailureStreak {
+			actorFailureStreak++
+		}
+		retry := storage.ReachabilityFreshness
+		switch actorFailureStreak {
+		case 1:
+			retry = storage.ReachabilityFailureRetryMinimum
+		case 2:
+			retry = 2 * time.Hour
+		case 3:
+			retry = 4 * time.Hour
+		}
+		nextCheckUnix = observedUnix + int64(retry/time.Second)
 		var lastKnownOnline int64
-		err := transaction.QueryRowContext(ctx, `SELECT MAX(
+		err = transaction.QueryRowContext(ctx, `SELECT MAX(
             COALESCE((SELECT last_seen_at_unix FROM relays WHERE relay_actor = ?), -1),
             COALESCE((SELECT first_discovered_at_unix FROM relay_discoveries WHERE relay_actor = ?), -1),
             ?)`, intent.RelayActor, intent.RelayActor, func() int64 {
@@ -302,8 +335,9 @@ func (repository *RelayRepository) RecordReachabilityObservation(
 	}
 	if _, err := transaction.ExecContext(ctx, `INSERT INTO relay_probe_diagnostics (
         relay_actor, actor_stage, actor_code, actor_http_status,
-        inbox_stage, inbox_code, inbox_http_status, next_check_at_unix, updated_at_unix
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        inbox_stage, inbox_code, inbox_http_status, next_check_at_unix, updated_at_unix,
+        actor_failure_streak
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(relay_actor) DO UPDATE SET
         actor_stage = excluded.actor_stage,
         actor_code = excluded.actor_code,
@@ -312,11 +346,12 @@ func (repository *RelayRepository) RecordReachabilityObservation(
         inbox_code = CASE WHEN ? = 'reachable' THEN excluded.inbox_code ELSE relay_probe_diagnostics.inbox_code END,
         inbox_http_status = CASE WHEN ? = 'reachable' THEN excluded.inbox_http_status ELSE relay_probe_diagnostics.inbox_http_status END,
         next_check_at_unix = excluded.next_check_at_unix,
+        actor_failure_streak = excluded.actor_failure_streak,
         updated_at_unix = excluded.updated_at_unix`,
 		intent.RelayActor,
 		intent.ActorDiagnostic.Stage, intent.ActorDiagnostic.Code, intent.ActorDiagnostic.HTTPStatus,
 		intent.InboxDiagnostic.Stage, intent.InboxDiagnostic.Code, intent.InboxDiagnostic.HTTPStatus,
-		nextCheckUnix, observedUnix,
+		nextCheckUnix, observedUnix, actorFailureStreak,
 		string(intent.ActorState), string(intent.ActorState), string(intent.ActorState),
 	); err != nil {
 		return "", storageFailure("write reachability diagnostics", err)

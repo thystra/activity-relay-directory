@@ -34,8 +34,8 @@ not affect tier placement.
 | Tier | Meaning |
 | --- | --- |
 | **Tier 1 — Heartbeat + Online** | Current authenticated relay liveness plus a recent successful reachability check. |
-| **Tier 2 — Online, no current heartbeat** | The relay is reachable, but current authenticated liveness evidence is absent. |
-| **Tier 3 — Offline / Unreachable** | The relay is currently unavailable but has been seen online within the last 30 days. |
+| **Tier 2 — Online, one liveness signal** | A current authenticated heartbeat OR a recent successful actor check, but not both. |
+| **Tier 3 — Offline / Unreachable** | Neither current authenticated liveness nor a recent successful actor check; seen online within the last 30 days. |
 | **Tier 4 — Graveyard** | The relay has not been seen online for at least 30 days and remains retained for recovery/history. |
 
 Recovered relays move back to Tier 1 or Tier 2 automatically.

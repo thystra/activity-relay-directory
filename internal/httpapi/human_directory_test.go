@@ -233,7 +233,7 @@ func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
 	}
 	for state, want := range map[storage.ReachabilityState]string{
 		storage.ReachabilityReachable:   "Reachable",
-		storage.ReachabilityUnreachable: "Unreachable",
+		storage.ReachabilityUnreachable: "Actor unreachable",
 		storage.ReachabilityUnknown:     "Not checked",
 	} {
 		if got := humanReachabilityLabel(state); got != want {
@@ -597,5 +597,40 @@ func TestHumanDirectoryPresentsReceivingSiteTelemetryOnCompactRow(t *testing.T) 
 	})
 	if relay.Telemetry.ReceivingInstanceCount == nil || *relay.Telemetry.ReceivingInstanceCount != 12 || relay.Telemetry.ReportedAt == nil {
 		t.Fatalf("telemetry = %#v", relay.Telemetry)
+	}
+}
+
+func TestHumanDirectoryHeartbeatAliveWithFailedActorProbe(t *testing.T) {
+	now := time.Unix(10_000_000, 0).UTC()
+	actor := "https://heartbeat-alive.example/actor"
+	relay := directoryProjectionRelayForTest(now, actor, storage.DirectoryTierOnline)
+	relay.Discovered = false
+	relay.LifecycleKnown = true
+	relay.Registered = true
+	relay.FirstKnownUnix = now.Add(-2 * time.Hour).Unix()
+	lastHeartbeat := now.Add(-time.Hour).Unix()
+	relay.LastHeartbeatUnix = &lastHeartbeat
+	relay.LastSeenUnix = &lastHeartbeat
+	relay.HeartbeatState = storage.HeartbeatHealthy
+	relay.ActorState = storage.ReachabilityUnreachable
+	relay.ActorLastSuccessUnix = nil
+	repo := &publicListingRepositoryStub{
+		summary:       storage.DirectorySummary{KnownRelays: 1, OnlineRelays: 1},
+		directoryPage: storage.DirectoryProjectionPage{Relays: []storage.DirectoryProjectionRelay{relay}},
+	}
+	handler, err := NewPublicListingHandler(repo, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.serveHumanDirectory(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("unexpected status=%d body=%q", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, want := range []string{"Tier 2 — Online, one liveness signal", "Actor unreachable", "1 is currently online", "0 are offline"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("missing %q in output", want)
+		}
 	}
 }

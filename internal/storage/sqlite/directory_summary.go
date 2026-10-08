@@ -24,6 +24,7 @@ func (repository *RelayRepository) ReadDirectorySummary(
 		return storage.DirectorySummary{}, storage.ErrDirectoryProjectionInput
 	}
 	freshCutoff := observedUnix - int64(storage.ReachabilityFreshness/time.Second)
+	heartbeatCutoff := observedUnix - int64(storage.HealthyThrough/time.Second)
 
 	var known, online, pending int64
 	err := repository.database.QueryRowContext(ctx, `WITH public_relays(relay_actor) AS (
@@ -45,15 +46,18 @@ func (repository *RelayRepository) ReadDirectorySummary(
 		SELECT
 			COUNT(*) AS known_relays,
 			COALESCE(SUM(CASE
-				WHEN observation.actor_state = ?
+				WHEN (observation.actor_state = ?
 				 AND observation.actor_last_checked_at_unix IS NOT NULL
 				 AND observation.actor_last_success_at_unix IS NOT NULL
 				 AND observation.actor_last_checked_at_unix = observation.actor_last_success_at_unix
-				 AND observation.actor_last_success_at_unix BETWEEN ? AND ?
+				 AND observation.actor_last_success_at_unix BETWEEN ? AND ?)
+				 OR (relay.lifecycle_state = ? AND relay.last_heartbeat_at_unix BETWEEN ? AND ?)
 				THEN 1 ELSE 0 END), 0) AS online_relays
 		FROM public_relays AS public
 		LEFT JOIN relay_observations AS observation
 		  ON observation.relay_actor = public.relay_actor
+		LEFT JOIN relays AS relay
+		  ON relay.relay_actor = public.relay_actor
 	), candidate_summary AS (
 		SELECT COUNT(*) AS pending_verification
 		FROM relay_discovery_candidates AS candidate
@@ -75,6 +79,9 @@ func (repository *RelayRepository) ReadDirectorySummary(
 		string(storage.AdministrativeSuspended),
 		string(storage.ReachabilityReachable),
 		freshCutoff,
+		observedUnix,
+		string(storage.LifecycleRegistered),
+		heartbeatCutoff,
 		observedUnix,
 		string(storage.DiscoveryCandidateUnreachable),
 		string(storage.DiscoveryCandidateIncompatible),

@@ -252,7 +252,7 @@ func validatePage(
 		}
 		return nil
 	}
-	cutoff := observedAt.UTC().Unix() - int64(storage.ReachabilityFreshness/time.Second)
+	cutoff := observedAt.UTC().Unix() - int64(storage.ReachabilityFailureRetryMinimum/time.Second)
 	previous := after
 	for _, candidate := range page.Candidates {
 		canonical, err := v1.NormalizeRelayActorURL(candidate.RelayActor)
@@ -263,7 +263,7 @@ func validatePage(
 		if !cursorAfter(cursor, previous) {
 			return ErrConfiguration
 		}
-		if candidate.ActorLastCheckedUnix != nil && *candidate.ActorLastCheckedUnix >= cutoff {
+		if candidate.ActorLastCheckedUnix != nil && *candidate.ActorLastCheckedUnix > cutoff {
 			return ErrConfiguration
 		}
 		previous = cursor

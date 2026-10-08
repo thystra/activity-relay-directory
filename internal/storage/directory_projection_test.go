@@ -63,6 +63,9 @@ func TestClassifyDirectoryTierUsesHeartbeatReachabilityAndGraveyardAge(t *testin
 
 	tierThree := tierOne
 	tierThree.ActorState = ReachabilityUnreachable
+	staleForTierThree := observed - int64(HealthyThrough/time.Second) - 1
+	tierThree.LastHeartbeatUnix = &staleForTierThree
+	tierThree.HeartbeatState = HeartbeatStale
 	checked := observed - 1
 	lastSuccess := observed - int64(30*24*time.Hour/time.Second)
 	tierThree.ActorLastCheckedUnix = &checked
@@ -88,6 +91,30 @@ func TestClassifyDirectoryTierUsesHeartbeatReachabilityAndGraveyardAge(t *testin
 	}
 	if err := ValidateDirectoryProjectionRelay(tierFour, observed); err != nil {
 		t.Fatalf("Tier 4 rejected: %v", err)
+	}
+}
+
+func TestCurrentHeartbeatKeepsFailedActorOutOfOfflineTier(t *testing.T) {
+	observed := int64(55_000_000)
+	relay := validDirectoryProjectionRelayForTest(observed)
+	relay.ActorState = ReachabilityUnreachable
+	checked := observed - 1
+	success := observed - 12*3600
+	relay.ActorLastCheckedUnix = &checked
+	relay.ActorLastSuccessUnix = &success
+	relay.Tier = DirectoryTierOnline
+	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierOnline {
+		t.Fatalf("healthy heartbeat, actor failure classified as (%d, %v), want Tier 2", got, err)
+	}
+	if err := ValidateDirectoryProjectionRelay(relay, observed); err != nil {
+		t.Fatalf("healthy heartbeat actor failure rejected: %v", err)
+	}
+	stale := observed - int64(HealthyThrough/time.Second) - 1
+	relay.LastHeartbeatUnix = &stale
+	relay.HeartbeatState = HeartbeatStale
+	relay.Tier = DirectoryTierUnavailable
+	if got, err := ClassifyDirectoryTier(relay, observed); err != nil || got != DirectoryTierUnavailable {
+		t.Fatalf("stale heartbeat, actor failure classified as (%d, %v), want Tier 3", got, err)
 	}
 }
 
