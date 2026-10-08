@@ -1,3 +1,15 @@
+activity-relay-directory (1.3.1~rc1-1) unstable; urgency=medium
+
+  * Add schema 14 bounded actor-failure retry streak and 1h/2h/4h/6h
+    eligibility following successive failures; restore normal cadence on
+    successful actor resolution and retain weekly long-offline checks.
+  * Make persisted next-eligible probe time authoritative for worker selection.
+  * Treat current authenticated heartbeat as independent positive liveness;
+    Tier 2 now includes heartbeat-active relays with failed actor probes.
+  * Keep actor diagnostics separate from authenticated heartbeat evidence.
+
+ -- Alan Johnson <alan@argentwolf.org>  Thu, 08 Oct 2026 06:14:00 -0400
+
 activity-relay-directory (1.3.1-1) stable; urgency=medium
 
   * Add bounded DNS, connect, TLS, redirect, actor, and inbox diagnostics
