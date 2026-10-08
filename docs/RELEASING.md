@@ -1,6 +1,16 @@
 # Releasing
 
 
+### ARD 1.3.1 source acceptance
+
+For 1.3.1, run `./scripts/acceptance-1.3.1.sh` before dispatching a
+canonical build. This release-specific gate compares migration files 0001–0012
+byte-for-byte with the released `v1.3.0` tag, requires schema 13 as the sole
+new migration, and exercises structured diagnostic, retry, redaction,
+persistence, and public-API compatibility regressions. Fetch the authoritative
+`v1.3.0` tag first if it is not present locally. The historical 1.2 and 1.3.0
+acceptance scripts retain their original baseline and expected migration count.
+
 ### Source acceptance prerequisite
 
 Before producing canonical 1.2 release bytes or validating release packages,

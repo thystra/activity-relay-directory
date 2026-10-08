@@ -159,7 +159,7 @@ separate v2 command-result schema for CSV profile mutation summaries. Public
 `/downloads/*.txt` routes remain host-only.
 
 Public relay profiles must be projected only as the normalized effective
-descriptive values. `/v2/relays` schema 5 and the human `/` page must consume the
+descriptive values. `/v2/relays` schema 6 and the human `/` page must consume the
 same `DirectoryProjectionRelay.Profile`; do not add an HTTP-side provenance or
 profile lookup. Keep source kind/label/URL, precedence, pending assertions, and
 history private. Empty API profiles retain the fixed twelve-field schema shape;
