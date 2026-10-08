@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 )
 
 const (
@@ -84,10 +86,12 @@ type ReachabilityCandidatePage struct {
 // A reachable actor with a declared inbox must include the bounded inbox
 // diagnostic. An unreachable actor preserves prior inbox evidence.
 type ReachabilityObservationIntent struct {
-	RelayActor string
-	ActorState ReachabilityState
-	InboxURL   string
-	InboxState InboxProbeState
+	RelayActor      string
+	ActorState      ReachabilityState
+	InboxURL        string
+	InboxState      InboxProbeState
+	ActorDiagnostic actorresolver.ProbeDiagnostic
+	InboxDiagnostic actorresolver.ProbeDiagnostic
 }
 
 type ReachabilityWriteOutcome string

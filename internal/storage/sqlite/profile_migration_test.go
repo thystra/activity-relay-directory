@@ -11,10 +11,11 @@ func TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay(t *testing.T
 	if err != nil {
 		t.Fatalf("loadMigrations() error = %v", err)
 	}
-	if len(migrations) != 12 || migrations[9].version != 10 || migrations[9].name != "relay_profiles" ||
+	// Later schema additions must not invalidate the historical v9 upgrade test.
+	if len(migrations) < 12 || migrations[9].version != 10 || migrations[9].name != "relay_profiles" ||
 		migrations[10].version != 11 || migrations[10].name != "relay_telemetry" ||
 		migrations[11].version != 12 || migrations[11].name != "participating_relay_telemetry" {
-		t.Fatalf("profile migration identity = %#v", migrations)
+		t.Fatalf("profile migration sequence does not contain the expected versions 10-12 (count: %d)", len(migrations))
 	}
 	if _, err := database.Exec(migrationTableSQL); err != nil {
 		t.Fatalf("create migration table: %v", err)
@@ -60,7 +61,7 @@ func TestMigrateVersionNineAddsProfilesWithoutChangingRetainedRelay(t *testing.T
 	if relay.lifecycleState != lifecycleRegistered || relay.administrativeState != administrativeActive ||
 		relay.updatedAtUnix != 105 || relay.lastSeenAtUnix != 105 ||
 		!relay.lastHeartbeat.Valid || relay.lastHeartbeat.Int64 != 105 {
-		t.Fatalf("schema-12 migration changed relay state: %#v", relay)
+		t.Fatalf("profile-to-current migration changed relay state: %#v", relay)
 	}
 	for _, table := range []string{"relay_profile_values", "relay_profile_events", "relay_telemetry"} {
 		assertTableExists(t, database, table)

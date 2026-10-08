@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -105,22 +106,27 @@ func TestSafeDialerPinsApprovedDNSAddress(t *testing.T) {
 
 func TestSafeDialerRejectsMixedOrInvalidAnswersBeforeDial(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		host      string
-		addresses []netip.Addr
-		lookupErr error
+		name           string
+		host           string
+		addresses      []netip.Addr
+		lookupErr      error
+		wantProhibited bool
+		wantDiagnostic ProbeDiagnostic
 	}{
 		{
-			name: "mixed public and private",
-			host: "relay.example",
+			wantProhibited: true,
+			wantDiagnostic: ProbeDiagnostic{Stage: "dns", Code: "policy"},
+			name:           "mixed public and private",
+			host:           "relay.example",
 			addresses: []netip.Addr{
 				netip.MustParseAddr("8.8.8.8"),
 				netip.MustParseAddr("127.0.0.1"),
 			},
 		},
-		{name: "empty answer", host: "relay.example"},
-		{name: "lookup error", host: "relay.example", lookupErr: errors.New("sensitive DNS detail")},
-		{name: "direct private address", host: "127.0.0.1"},
+		{name: "empty answer", host: "relay.example", wantDiagnostic: ProbeDiagnostic{Stage: "dns", Code: "no_address"}},
+		{name: "lookup error", host: "relay.example", lookupErr: errors.New("sensitive DNS detail"), wantDiagnostic: ProbeDiagnostic{Stage: "network", Code: "error"}},
+		{name: "NXDOMAIN", host: "relay.example", lookupErr: &net.DNSError{IsNotFound: true, Err: "sensitive DNS detail"}, wantDiagnostic: ProbeDiagnostic{Stage: "dns", Code: "nxdomain"}},
+		{name: "direct private address", host: "127.0.0.1", wantProhibited: true, wantDiagnostic: ProbeDiagnostic{Stage: "dns", Code: "policy"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dialed := false
@@ -138,13 +144,32 @@ func TestSafeDialerRejectsMixedOrInvalidAnswersBeforeDial(t *testing.T) {
 				"tcp",
 				net.JoinHostPort(test.host, "443"),
 			)
-			if connection != nil || !errors.Is(err, ErrNetworkTarget) || dialed {
-				t.Fatalf("DialContext() = %#v, %v; dialed=%t", connection, err, dialed)
+			if connection != nil || err == nil || errors.Is(err, ErrNetworkTarget) != test.wantProhibited || dialed ||
+				ClassifyNetworkFailure(err) != test.wantDiagnostic {
+				t.Fatalf("DialContext() = %#v, %v; dialed=%t, diagnosis=%#v", connection, err, dialed, ClassifyNetworkFailure(err))
 			}
 			if strings.Contains(err.Error(), "sensitive") {
 				t.Fatalf("error disclosed DNS detail: %v", err)
 			}
 		})
+	}
+}
+
+// An offline relay is not a prohibited network target. Discovery imports using
+// --add-dead-relays must be able to retain its unreachable candidate.
+func TestSafeDialerConnectionRefusedDoesNotBecomePolicyRejection(t *testing.T) {
+	safe := safeDialer{
+		lookup: func(context.Context, string, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("8.8.8.8")}, nil
+		},
+		dial: func(context.Context, string, string) (net.Conn, error) {
+			return nil, syscall.ECONNREFUSED
+		},
+	}
+	connection, err := safe.DialContext(context.Background(), "tcp", "relay.example:443")
+	if connection != nil || err == nil || errors.Is(err, ErrNetworkTarget) ||
+		ClassifyNetworkFailure(err) != (ProbeDiagnostic{Stage: "connect", Code: "refused"}) {
+		t.Fatalf("DialContext() = %#v, %v, diagnosis=%#v", connection, err, ClassifyNetworkFailure(err))
 	}
 }
 

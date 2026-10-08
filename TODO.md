@@ -8,6 +8,20 @@ reviewed path to the 1.0.0 stable release. Future work remains separately
 reviewed and does not silently alter the version 1 protocol or default-off
 operator controls.
 
+## 1.3.1 reachability diagnostics (in development)
+
+Keep existing tier and heartbeat semantics; add informational, safe and
+non-destructive diagnostic evidence from the existing background actor and
+inbox checks. Classify DNS, connect, TLS, policy, redirects, actor HTTP/content,
+and inbox OPTIONS status independently. A missing actor (404/410) or DNS name
+is only **possibly** removed, not proof. Retain historical successful checks,
+actor identity, profiles and registration even while unavailable.
+
+Schema 13 is diagnostic-only. `/v2/relays` schema 6 adds optional bounded
+`diagnostic` objects and `next_eligible_at` for the earliest eligible recheck
+(not a guaranteed run time). `/v1/relays` stays unchanged. Ban/block lists
+belong to the separate Activity-Relay follow-on, not ARD 1.3.1.
+
 ## 1.3 stable release
 
 `v1.3.0` promotes the accepted 1.3.0-rc4 line after cross-repository Protocol

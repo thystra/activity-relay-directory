@@ -124,103 +124,145 @@ func (resolver *Resolver) ResolveRFC9421Key(
 // primitive; it deliberately shares the exact production fetch boundary used by
 // RFC 9421 key resolution.
 func (resolver *Resolver) ProbeActor(ctx context.Context, actorURL string) (ActorProbeResult, error) {
+	result, _, err := resolver.ProbeActorDetailed(ctx, actorURL)
+	return result, err
+}
+
+// ProbeActorDetailed classifies only the bounded public evidence from the
+// current actor request. An HTTP 404/410 is not proof of permanent deletion.
+func (resolver *Resolver) ProbeActorDetailed(ctx context.Context, actorURL string) (ActorProbeResult, ProbeDiagnostic, error) {
 	if resolver == nil || resolver.client == nil || ctx == nil {
-		return ActorProbeResult{}, ErrConfiguration
+		return ActorProbeResult{}, ProbeDiagnostic{}, ErrConfiguration
 	}
 	canonical, err := v1.NormalizeRelayActorURL(actorURL)
 	if err != nil || canonical != actorURL {
-		return ActorProbeResult{}, ErrActorDocument
+		return ActorProbeResult{}, ProbeDiagnostic{Stage: "actor", Code: "invalid_document"}, ErrActorDocument
 	}
 	parsed, err := url.Parse(actorURL)
 	if err != nil || validateActorFetchURL(parsed) != nil {
-		return ActorProbeResult{}, ErrNetworkTarget
+		return ActorProbeResult{}, ProbeDiagnostic{Stage: "policy", Code: "prohibited_target"}, ErrNetworkTarget
 	}
-	body, err := resolver.fetchActorBody(ctx, actorURL)
+	body, diagnostic, err := resolver.fetchActorBodyDetailed(ctx, actorURL)
 	if err != nil {
-		return ActorProbeResult{}, err
+		return ActorProbeResult{}, diagnostic, err
 	}
-	return probeActorDocument(body, actorURL)
+	result, err := probeActorDocument(body, actorURL)
+	if err != nil {
+		return ActorProbeResult{}, ProbeDiagnostic{Stage: "actor", Code: "invalid_document"}, err
+	}
+	return result, ProbeDiagnostic{}, nil
 }
 
 // ProbeInbox performs one bounded OPTIONS request against a canonical inbox. A
 // successful actor declaration is the capability evidence; this result is only
 // an additional non-mutating diagnostic.
 func (resolver *Resolver) ProbeInbox(ctx context.Context, inboxURL string) (InboxProbeResult, error) {
+	result, _, err := resolver.ProbeInboxDetailed(ctx, inboxURL)
+	return result, err
+}
+
+// ProbeInboxDetailed sends only OPTIONS, never a synthetic ActivityPub POST.
+func (resolver *Resolver) ProbeInboxDetailed(ctx context.Context, inboxURL string) (InboxProbeResult, ProbeDiagnostic, error) {
 	if resolver == nil || resolver.client == nil || ctx == nil {
-		return "", ErrConfiguration
+		return "", ProbeDiagnostic{}, ErrConfiguration
 	}
 	canonical, err := v1.NormalizeRelayActorURL(inboxURL)
 	if err != nil || canonical != inboxURL {
-		return "", ErrActorDocument
+		return "", ProbeDiagnostic{Stage: "inbox", Code: "invalid_response"}, ErrActorDocument
 	}
 	parsed, err := url.Parse(inboxURL)
 	if err != nil || validateActorFetchURL(parsed) != nil {
-		return "", ErrNetworkTarget
+		return "", ProbeDiagnostic{Stage: "policy", Code: "prohibited_target"}, ErrNetworkTarget
 	}
 	if err := ctx.Err(); err != nil {
-		return "", errors.Join(ErrActorFetch, err)
+		return "", ProbeDiagnostic{}, errors.Join(ErrActorFetch, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodOptions, inboxURL, nil)
 	if err != nil {
-		return "", ErrActorFetch
+		return "", ProbeDiagnostic{}, ErrActorFetch
 	}
 	request.Header.Set("User-Agent", resolver.userAgent)
 	response, err := resolver.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
-			return "", errors.Join(ErrActorFetch, ctx.Err())
+			return "", ProbeDiagnostic{}, errors.Join(ErrActorFetch, ctx.Err())
 		}
-		return InboxProbeUnreachable, nil
+		return InboxProbeUnreachable, ClassifyNetworkFailure(err), nil
 	}
 	if response == nil || response.Body == nil {
-		return InboxProbeUnreachable, nil
+		return InboxProbeUnreachable, ProbeDiagnostic{Stage: "inbox", Code: "invalid_response"}, nil
 	}
 	defer response.Body.Close()
+	diag := HTTPProbeDiagnostic("inbox", response.StatusCode)
 	switch {
 	case response.StatusCode >= 200 && response.StatusCode < 400:
-		return InboxProbeResponsive, nil
+		return InboxProbeResponsive, diag, nil
 	case response.StatusCode == http.StatusMethodNotAllowed || response.StatusCode == http.StatusNotImplemented:
-		return InboxProbeMethodRejected, nil
+		return InboxProbeMethodRejected, diag, nil
 	default:
-		return InboxProbeUnreachable, nil
+		return InboxProbeUnreachable, diag, nil
 	}
 }
 
+// redactedActorFetchError preserves only known, safe sentinels. Transport
+// errors supplied by the network stack or a remote endpoint may include
+// URLs, addresses, or private TLS/DNS details; never expose their Error text
+// through the actor resolver's public error contract.
+func redactedActorFetchError(err error) error {
+	known := []error{ErrActorFetch}
+	for _, sentinel := range []error{
+		ErrNetworkTarget, ErrRedirectRejected, context.Canceled, context.DeadlineExceeded,
+	} {
+		if errors.Is(err, sentinel) {
+			known = append(known, sentinel)
+		}
+	}
+	if len(known) == 1 {
+		return ErrActorFetch
+	}
+	return errors.Join(known...)
+}
+
 func (resolver *Resolver) fetchActorBody(ctx context.Context, actorURL string) ([]byte, error) {
+	body, _, err := resolver.fetchActorBodyDetailed(ctx, actorURL)
+	return body, err
+}
+
+func (resolver *Resolver) fetchActorBodyDetailed(ctx context.Context, actorURL string) ([]byte, ProbeDiagnostic, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, errors.Join(ErrActorFetch, err)
+		return nil, ProbeDiagnostic{}, errors.Join(ErrActorFetch, err)
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, actorURL, nil)
 	if err != nil {
-		return nil, ErrActorFetch
+		return nil, ProbeDiagnostic{}, ErrActorFetch
 	}
 	request.Header.Set("Accept", activityStreamsAccept)
 	request.Header.Set("User-Agent", resolver.userAgent)
-
 	response, err := resolver.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, errors.Join(ErrActorFetch, ctx.Err())
+			return nil, ProbeDiagnostic{}, errors.Join(ErrActorFetch, ctx.Err())
 		}
-		return nil, ErrActorFetch
+		return nil, ClassifyNetworkFailure(err), redactedActorFetchError(err)
 	}
 	if response == nil || response.Body == nil {
-		return nil, ErrActorFetch
+		return nil, ProbeDiagnostic{Stage: "actor", Code: "invalid_response"}, ErrActorFetch
 	}
 	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK ||
-		!validActivityStreamsContentType(response.Header.Values("Content-Type")) {
-		return nil, ErrActorFetch
+	if response.StatusCode != http.StatusOK {
+		return nil, HTTPProbeDiagnostic("actor", response.StatusCode), ErrActorFetch
+	}
+	if !validActivityStreamsContentType(response.Header.Values("Content-Type")) {
+		return nil, ProbeDiagnostic{Stage: "actor", Code: "content_type"}, ErrActorFetch
 	}
 	if response.ContentLength > maximumActorBodyBytes {
-		return nil, ErrActorFetch
+		return nil, ProbeDiagnostic{Stage: "actor", Code: "invalid_document"}, ErrActorFetch
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, maximumActorBodyBytes+1))
 	if err != nil || len(body) == 0 || len(body) > maximumActorBodyBytes {
-		return nil, ErrActorFetch
+		return nil, ProbeDiagnostic{Stage: "actor", Code: "invalid_document"}, ErrActorFetch
 	}
-	return body, nil
+	return body, ProbeDiagnostic{}, nil
 }
 
 func actorURLFromKeyID(keyID string) (string, error) {

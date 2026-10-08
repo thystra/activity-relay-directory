@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -362,7 +363,7 @@ func TestDirectoryProjectionRejectsInvalidQueryWithFixedRedactedError(t *testing
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d", target, response.Code)
 		}
-		want := "{\"schema_version\":5,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
+		want := "{\"schema_version\":6,\"error\":{\"code\":\"invalid_request\",\"message\":\"invalid directory projection request\"}}\n"
 		if response.Body.String() != want {
 			t.Fatalf("%s body = %q", target, response.Body.String())
 		}
@@ -522,4 +523,50 @@ func directoryProjectionRelayForTest(
 		}
 	}
 	return relay
+}
+
+func TestReachabilityDiagnosticProjectionIsBoundedAndNonDestructive(t *testing.T) {
+	checked := int64(100_000)
+	success := int64(50_000)
+	eligible := int64(100_000 + 6*3600)
+	relay := storage.DirectoryProjectionRelay{
+		RelayActor: "https://gone.example/actor", PublicBaseURL: "https://gone.example",
+		ActorState: storage.ReachabilityUnreachable, ActorLastCheckedUnix: &checked,
+		ActorLastSuccessUnix: &success, NextReachabilityCheckUnix: &eligible,
+		ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 410},
+		InboxProbeState: storage.InboxNotChecked,
+	}
+	projected := presentDirectoryProjectionRelay(relay)
+	if projected.Reachability.Diagnostic == nil || projected.Reachability.Diagnostic.HTTPStatus != 410 ||
+		projected.Reachability.NextEligibleAt == nil || projected.Heartbeat.LastSeenAt != nil {
+		t.Fatalf("lost diagnostic or fabricated heartbeat: %#v", projected)
+	}
+	if projected.Reachability.Diagnostic.Assessment != "possibly_removed" {
+		t.Fatalf("actor 410 assessment = %q", projected.Reachability.Diagnostic.Assessment)
+	}
+	if summary := projected.Reachability.Diagnostic.Summary(); !strings.Contains(summary, "possibly removed") {
+		t.Fatalf("missing cautious actor-410 presentation: %q", summary)
+	}
+	raw, err := json.Marshal(projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "last_seen_at\":\"1970") ||
+		strings.Contains(string(raw), "private") ||
+		!strings.Contains(string(raw), "next_eligible_at") {
+		t.Fatalf("unsafe or incomplete public diagnostics: %s", raw)
+	}
+	for _, c := range []struct {
+		d    directoryProbeDiagnostic
+		want string
+	}{
+		{directoryProbeDiagnostic{Stage: "dns", Code: "nxdomain"}, "possibly removed"},
+		{directoryProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 503}, "degraded"},
+		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 405}, "capability unknown"},
+		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 404}, "missing"},
+	} {
+		if !strings.Contains(c.d.Summary(), c.want) {
+			t.Fatalf("summary %q missing %q", c.d.Summary(), c.want)
+		}
+	}
 }
