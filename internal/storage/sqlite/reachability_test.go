@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -271,5 +272,81 @@ func TestReachabilityCandidatesSlowLongOfflineRelaysToWeeklyAndRetainPrunedRecov
 	}, observed.Add(2*time.Second))
 	if err != nil || outcome != storage.ReachabilityWriteApplied {
 		t.Fatalf("pruned recovery write = (%q, %v)", outcome, err)
+	}
+}
+
+func TestReachabilityDiagnosticEvidenceSurvivesActorFailureWithoutHeartbeatMutation(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repo := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://diagnostic.example/actor"
+	insertPruningRelay(t, database, actor, lifecycleRegistered, administrativeActive, 100, nil)
+	first := time.Unix(100000, 0)
+	_, err := repo.RecordReachabilityObservation(ctx, storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityReachable,
+		InboxURL: "https://diagnostic.example/inbox", InboxState: storage.InboxMethodRejected,
+		InboxDiagnostic: actorresolver.ProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 405},
+	}, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := first.Add(7 * time.Hour)
+	_, err = repo.RecordReachabilityObservation(ctx, storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityUnreachable,
+		InboxState:      storage.InboxNotChecked,
+		ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 410},
+	}, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actorStage, actorCode, inboxStage, inboxCode string
+	var actorStatus, inboxStatus int
+	var next int64
+	if err := database.QueryRow(`SELECT actor_stage,actor_code,actor_http_status,
+        inbox_stage,inbox_code,inbox_http_status,next_check_at_unix
+        FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(
+		&actorStage, &actorCode, &actorStatus, &inboxStage, &inboxCode, &inboxStatus, &next,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if actorStage != "actor" || actorCode != "http_status" || actorStatus != 410 ||
+		inboxStage != "inbox" || inboxCode != "http_status" || inboxStatus != 405 ||
+		next != second.Add(storage.ReachabilityFreshness).Unix() {
+		t.Fatalf("diagnostic actor=%s/%s/%d inbox=%s/%s/%d next=%d", actorStage, actorCode, actorStatus, inboxStage, inboxCode, inboxStatus, next)
+	}
+	observation, ok, err := repo.GetObservation(ctx, storage.IdentityIntent{RelayActor: actor})
+	if err != nil || !ok || observation.ActorState != storage.ReachabilityUnreachable ||
+		observation.ActorLastSuccessUnix == nil || *observation.ActorLastSuccessUnix != first.Unix() ||
+		observation.InboxProbeState != storage.InboxMethodRejected {
+		t.Fatalf("previous observations lost: %#v ok=%v err=%v", observation, ok, err)
+	}
+}
+
+func TestReachabilityDiagnosticLongOfflineRetryAndInputValidation(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repo := newTestRelayRepository(t, database)
+	actor := "https://long-offline.example/actor"
+	insertPruningRelay(t, database, actor, lifecycleRegistered, administrativeActive, 100, nil)
+	at := time.Unix(100+int64(storage.ReachabilityUnreachableRetry/time.Second)+10, 0)
+	_, err := repo.RecordReachabilityObservation(context.Background(), storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityUnreachable, InboxState: storage.InboxNotChecked,
+		ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "dns", Code: "nxdomain"},
+	}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var next int64
+	if err := database.QueryRow(`SELECT next_check_at_unix FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(&next); err != nil {
+		t.Fatal(err)
+	}
+	if next != at.Add(storage.ReachabilityUnreachableRetry).Unix() {
+		t.Fatalf("retry=%d", next)
+	}
+	_, err = repo.RecordReachabilityObservation(context.Background(), storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityUnreachable, InboxState: storage.InboxNotChecked,
+		ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 999},
+	}, at.Add(time.Hour))
+	if err != storage.ErrReachabilityWriteInput {
+		t.Fatalf("unbounded status accepted: %v", err)
 	}
 }

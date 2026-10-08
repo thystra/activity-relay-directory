@@ -151,6 +151,22 @@
                       <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
                     </div>
                     <div>
+                      <dt>Last actor check</dt>
+                      <dd>{{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{humanTime .Reachability.LastCheckedAt}}</time>{{else}}Not checked{{end}}</dd>
+                    </div>
+{{if .Reachability.Diagnostic}}                    <div>
+                      <dt>Actor diagnostic</dt>
+                      <dd>{{.Reachability.Diagnostic.Summary}}</dd>
+                    </div>{{end}}
+{{if .Inbox.Diagnostic}}                    <div>
+                      <dt>Last inbox diagnostic</dt>
+                      <dd>{{.Inbox.Diagnostic.Summary}} (non-mutating OPTIONS check; may predate the latest actor result)</dd>
+                    </div>{{end}}
+{{if .Reachability.NextEligibleAt}}                    <div>
+                      <dt>Next eligible reachability check</dt>
+                      <dd><time datetime="{{.Reachability.NextEligibleAt}}">{{humanTime .Reachability.NextEligibleAt}}</time> (scheduled maintenance may run later)</dd>
+                    </div>{{end}}
+                    <div>
                       <dt>Participating sites reported</dt>
                       <dd>{{if .Telemetry.SitesCount}}{{.Telemetry.SitesCount}}{{else}}Not reported{{end}}{{if .Telemetry.SitesReportedAt}} · <time datetime="{{.Telemetry.SitesReportedAt}}">{{humanTime .Telemetry.SitesReportedAt}}</time>{{end}}</dd>
                     </div>

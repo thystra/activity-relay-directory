@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — 1.3.1 development
+
+- Add stage/code/HTTP-status reachability diagnostics for DNS, connection,
+  TLS, redirects, actor documents, and non-mutating inbox OPTIONS responses.
+- Persist bounded diagnostic evidence independently of lifecycle/heartbeat
+  and tiering in SQLite schema 13, including the earliest eligible recheck.
+- Expand `/v2/relays` schema 6 and the human relay details with classified
+  diagnostics and cautious "possibly removed" annotations for actor 404/410
+  and absent DNS names. No automatic removal or change to `/v1/relays`.
+- Redact raw network/TLS errors and distinguish prohibited targets from
+  ordinary outages so unreachable discovery candidates can be retained.
+
 ## 1.3.0 - 2026-10-06
 
 - Promote the accepted `1.3.0-rc4` behavior to stable `1.3.0` without runtime

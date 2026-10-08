@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
@@ -278,6 +279,49 @@ func (repository *RelayRepository) RecordReachabilityObservation(
 		return "", storage.ErrReachabilityWriteInput
 	}
 
+	// Diagnostic evidence does not participate in tier classification, or touch
+	// lifecycle/heartbeat columns. Actor failures retain prior inbox evidence.
+	nextCheckUnix := observedUnix + int64(storage.ReachabilityFreshness/time.Second)
+	if intent.ActorState == storage.ReachabilityUnreachable {
+		var lastKnownOnline int64
+		err := transaction.QueryRowContext(ctx, `SELECT MAX(
+            COALESCE((SELECT last_seen_at_unix FROM relays WHERE relay_actor = ?), -1),
+            COALESCE((SELECT first_discovered_at_unix FROM relay_discoveries WHERE relay_actor = ?), -1),
+            ?)`, intent.RelayActor, intent.RelayActor, func() int64 {
+			if current.actorLastSuccess.Valid {
+				return current.actorLastSuccess.Int64
+			}
+			return -1
+		}()).Scan(&lastKnownOnline)
+		if err != nil {
+			return "", storageFailure("classify reachability retry", err)
+		}
+		if lastKnownOnline <= observedUnix-int64(storage.ReachabilityUnreachableRetry/time.Second) {
+			nextCheckUnix = observedUnix + int64(storage.ReachabilityUnreachableRetry/time.Second)
+		}
+	}
+	if _, err := transaction.ExecContext(ctx, `INSERT INTO relay_probe_diagnostics (
+        relay_actor, actor_stage, actor_code, actor_http_status,
+        inbox_stage, inbox_code, inbox_http_status, next_check_at_unix, updated_at_unix
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(relay_actor) DO UPDATE SET
+        actor_stage = excluded.actor_stage,
+        actor_code = excluded.actor_code,
+        actor_http_status = excluded.actor_http_status,
+        inbox_stage = CASE WHEN ? = 'reachable' THEN excluded.inbox_stage ELSE relay_probe_diagnostics.inbox_stage END,
+        inbox_code = CASE WHEN ? = 'reachable' THEN excluded.inbox_code ELSE relay_probe_diagnostics.inbox_code END,
+        inbox_http_status = CASE WHEN ? = 'reachable' THEN excluded.inbox_http_status ELSE relay_probe_diagnostics.inbox_http_status END,
+        next_check_at_unix = excluded.next_check_at_unix,
+        updated_at_unix = excluded.updated_at_unix`,
+		intent.RelayActor,
+		intent.ActorDiagnostic.Stage, intent.ActorDiagnostic.Code, intent.ActorDiagnostic.HTTPStatus,
+		intent.InboxDiagnostic.Stage, intent.InboxDiagnostic.Code, intent.InboxDiagnostic.HTTPStatus,
+		nextCheckUnix, observedUnix,
+		string(intent.ActorState), string(intent.ActorState), string(intent.ActorState),
+	); err != nil {
+		return "", storageFailure("write reachability diagnostics", err)
+	}
+
 	if err := transaction.Commit(); err != nil {
 		return "", storageFailure("commit reachability observation", err)
 	}
@@ -312,6 +356,15 @@ func reachabilityEligible(ctx context.Context, transaction *sql.Tx, actor string
 }
 
 func validateReachabilityObservationIntent(intent storage.ReachabilityObservationIntent) error {
+	if !intent.ActorDiagnostic.Valid() || !intent.InboxDiagnostic.Valid() {
+		return storage.ErrReachabilityWriteInput
+	}
+	if intent.ActorState == storage.ReachabilityReachable && intent.ActorDiagnostic != (actorresolver.ProbeDiagnostic{}) {
+		return storage.ErrReachabilityWriteInput
+	}
+	if intent.ActorState == storage.ReachabilityUnreachable && intent.InboxDiagnostic != (actorresolver.ProbeDiagnostic{}) {
+		return storage.ErrReachabilityWriteInput
+	}
 	canonical, err := v1.NormalizeRelayActorURL(intent.RelayActor)
 	if err != nil || canonical != intent.RelayActor {
 		return storage.ErrReachabilityWriteInput

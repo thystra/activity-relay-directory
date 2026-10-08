@@ -6,6 +6,8 @@ import (
 	"slices"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
+
 	v1 "github.com/thystra/activity-relay-directory/internal/protocol/v1"
 )
 
@@ -138,9 +140,12 @@ type DirectoryProjectionRelay struct {
 	LastSeenUnix      *int64
 	LastHeartbeatUnix *int64
 
-	ActorState           ReachabilityState
-	ActorLastCheckedUnix *int64
-	ActorLastSuccessUnix *int64
+	ActorState                ReachabilityState
+	ActorLastCheckedUnix      *int64
+	ActorLastSuccessUnix      *int64
+	ActorDiagnostic           actorresolver.ProbeDiagnostic
+	InboxDiagnostic           actorresolver.ProbeDiagnostic
+	NextReachabilityCheckUnix *int64
 
 	InboxURL             string
 	InboxDeclaredUnix    *int64
@@ -249,7 +254,9 @@ func ValidateDirectoryProjectionEvidence(relay DirectoryProjectionRelay, observe
 		return ErrDirectoryProjectionData
 	}
 
-	if !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() {
+	if !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() ||
+		!relay.ActorDiagnostic.Valid() || !relay.InboxDiagnostic.Valid() ||
+		!validObservedFutureTime(relay.NextReachabilityCheckUnix, observedUnix) {
 		return ErrDirectoryProjectionData
 	}
 	if !validObservedTime(relay.ActorLastCheckedUnix, observedUnix) ||
@@ -372,4 +379,10 @@ type DirectorySummaryRepository interface {
 // paths before any row reaches HTTP presentation code.
 type DirectoryProjectionRepository interface {
 	ListDirectoryRelays(context.Context, DirectoryProjectionQuery) (DirectoryProjectionPage, error)
+}
+
+// A diagnostic's earliest eligible recheck is advisory: the bounded hourly
+// scheduler may perform it later. A zero/nil value is legacy/unobserved.
+func validObservedFutureTime(value *int64, observedUnix int64) bool {
+	return value == nil || (*value >= 0 && *value <= observedUnix+int64(ReachabilityUnreachableRetry/time.Second))
 }

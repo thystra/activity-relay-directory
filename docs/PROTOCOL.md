@@ -22,15 +22,18 @@ durable policy makes the status request fail closed without database detail.
 ## Public directory projection vocabulary
 
 The read-only `GET /v2/relays` representation is versioned independently from
-the signed lifecycle request protocol. On the 1.3 development line its
-`schema_version` is `4`. Each relay object includes the closed numeric `tier`
-vocabulary `1|2|3|4`, representing heartbeat+online, online without a current
-heartbeat, unavailable, and the 30-day graveyard respectively, plus one reviewed
-`profile` object containing only the effective descriptive relay fields. Public
-ordering is `(tier, relay_actor)` and the authenticated v2 cursor format version
-remains `2`, carrying both tier and actor position. Profile data does not affect
-tier ordering. See `docs/PUBLIC-LISTING.md` for the complete inclusion, timing,
-pagination, profile, and privacy contract.
+the signed lifecycle request protocol. As of 1.3.1 its `schema_version` is `6`.
+Each relay object includes the closed numeric `tier` vocabulary `1|2|3|4`,
+representing heartbeat+online, online without a current heartbeat, unavailable,
+and the 30-day graveyard respectively; one reviewed effective `profile` object;
+self-reported `telemetry`; and optional classified reachability/inbox
+`diagnostic` evidence with an advisory `next_eligible_at` retry timestamp.
+Diagnostics do not change lifecycle status, tiers, or eligibility. Public
+keyset ordering remains `(tier, relay_actor)` and the authenticated v2 cursor
+format version remains `2`, carrying both tier and actor position. Profile and
+telemetry data do not affect tier classification. See `docs/PUBLIC-LISTING.md`
+for the complete inclusion, timing, pagination, profile, and privacy contract,
+and `docs/REACHABILITY-DIAGNOSTICS.md` for diagnostic vocabulary.
 
 This public tier is presentation of retained evidence, not a lifecycle state and
 not an admission score. It never exposes discovery source, operator metadata,

@@ -51,17 +51,18 @@ observation time so stable data does not change health classification or the
 ## `/v2/relays` public projection
 
 `/v2/relays` is the richer public projection introduced in 1.1 and extended in
-1.2 and 1.3. The response schema is now version 5. Each relay object contains only
-reviewed public evidence:
+1.2, 1.3, and 1.3.1. The response schema is now version 6. Each relay object
+contains only reviewed public evidence:
 
 - canonical `relay_actor` and `public_base_url`;
 - numeric operational `tier` (`1` through `4`);
 - `heartbeat.state` plus the retained authenticated liveness/heartbeat time in
   `last_seen_at`, or `not_observed` and `null` when no such evidence exists;
 - independent actor `reachability.state`, `last_checked_at`, and
-  `last_success_at`;
+  `last_success_at`, with optional classified `diagnostic` evidence and
+  `next_eligible_at` timestamp;
 - the validated actor-declared inbox, declaration time, non-mutating inbox probe
-  state, and last diagnostic time; and
+  state, last check time, and optional classified `diagnostic` evidence; and
 - RFC 9421 `verified|not verified` plus the positive-evidence timestamp when
   verified.
 
@@ -354,3 +355,28 @@ The human page also permits `?registration=open`, `restricted`, or `closed`.
 Within each operational tier, rows are ordered open, restricted, closed, then
 unreported; this secondary ordering never permits a self-reported registration
 status to change a relay's operational tier.
+
+
+### Schema 6 reachability diagnostics (1.3.1)
+
+Schema 6 adds optional `reachability.diagnostic` and `inbox.diagnostic` objects
+with `stage`, `code`, `assessment`, and `http_status` (when an HTTP response
+was received). It also adds optional `reachability.next_eligible_at`, the
+earliest normal background recheck eligibility time, not a promised execution
+time. The regular worker may run later. Missing diagnostic objects mean no
+classified observation is retained; they do not imply a healthy endpoint.
+
+Diagnostics distinguish DNS, connection, TLS, redirect, actor-document, and
+non-mutating inbox `OPTIONS` outcomes. The `assessment` values are
+`possibly_removed`, `degraded`, `inbox_missing`, `method_rejected`,
+`restricted`, `responsive`, `invalid_actor`, and `unavailable`. Actor HTTP
+404/410 and absent DNS names are only evidence of *possible* removal.
+Method-rejected `OPTIONS` responses do not prove an inbox cannot receive
+ActivityPub delivery. A failed actor check preserves earlier successful
+observations and may leave older inbox diagnostic evidence visible.
+
+No diagnostic field alters public eligibility, the four tiers, authenticated
+heartbeat recency, soft pruning, moderation, or retention. Raw remote error
+messages, response bodies, addresses, and private sources are not published.
+See [`REACHABILITY-DIAGNOSTICS.md`](REACHABILITY-DIAGNOSTICS.md) for the closed
+classification vocabulary, retention, and retry rules.

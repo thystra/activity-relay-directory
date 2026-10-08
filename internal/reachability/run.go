@@ -151,37 +151,77 @@ func probePage(
 	return results
 }
 
+// Optional detailed interfaces preserve compatibility with independent test
+// probers, while the production resolver supplies structured evidence.
+type detailedActorProber interface {
+	ProbeActorDetailed(context.Context, string) (actorresolver.ActorProbeResult, actorresolver.ProbeDiagnostic, error)
+}
+type detailedInboxProber interface {
+	ProbeInboxDetailed(context.Context, string) (actorresolver.InboxProbeResult, actorresolver.ProbeDiagnostic, error)
+}
+
 func probeOne(ctx context.Context, prober Prober, actor string) probeResult {
-	actorResult, err := prober.ProbeActor(ctx, actor)
+	var (
+		actorResult     actorresolver.ActorProbeResult
+		actorDiagnostic actorresolver.ProbeDiagnostic
+		err             error
+	)
+	if detailed, ok := prober.(detailedActorProber); ok {
+		actorResult, actorDiagnostic, err = detailed.ProbeActorDetailed(ctx, actor)
+	} else {
+		actorResult, err = prober.ProbeActor(ctx, actor)
+		if err != nil {
+			actorDiagnostic = actorresolver.ClassifyNetworkFailure(err)
+		}
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return probeResult{err: ctx.Err()}
 		}
+		// Invalid local configuration or an unclassified local failure must
+		// not rewrite the last successful network observation.
+		if errors.Is(err, actorresolver.ErrConfiguration) || !actorDiagnostic.Valid() ||
+			actorDiagnostic == (actorresolver.ProbeDiagnostic{}) {
+			return probeResult{err: ErrConfiguration}
+		}
 		return probeResult{intent: storage.ReachabilityObservationIntent{
-			RelayActor: actor,
-			ActorState: storage.ReachabilityUnreachable,
-			InboxState: storage.InboxNotChecked,
+			RelayActor: actor, ActorState: storage.ReachabilityUnreachable,
+			InboxState: storage.InboxNotChecked, ActorDiagnostic: actorDiagnostic,
 		}}
 	}
-	if actorResult.ActorID != actor {
+	if actorResult.ActorID != actor || actorDiagnostic != (actorresolver.ProbeDiagnostic{}) {
 		return probeResult{err: ErrConfiguration}
 	}
 	intent := storage.ReachabilityObservationIntent{
-		RelayActor: actor,
-		ActorState: storage.ReachabilityReachable,
-		InboxURL:   actorResult.InboxURL,
-		InboxState: storage.InboxNotChecked,
+		RelayActor: actor, ActorState: storage.ReachabilityReachable,
+		InboxURL: actorResult.InboxURL, InboxState: storage.InboxNotChecked,
 	}
 	if actorResult.InboxURL == "" {
 		return probeResult{intent: intent}
 	}
-	inboxResult, err := prober.ProbeInbox(ctx, actorResult.InboxURL)
+	var inboxResult actorresolver.InboxProbeResult
+	var inboxDiagnostic actorresolver.ProbeDiagnostic
+	if detailed, ok := prober.(detailedInboxProber); ok {
+		inboxResult, inboxDiagnostic, err = detailed.ProbeInboxDetailed(ctx, actorResult.InboxURL)
+	} else {
+		inboxResult, err = prober.ProbeInbox(ctx, actorResult.InboxURL)
+		if err != nil {
+			inboxDiagnostic = actorresolver.ClassifyNetworkFailure(err)
+		}
+	}
 	if err != nil {
 		if ctx.Err() != nil {
 			return probeResult{err: ctx.Err()}
 		}
+		if errors.Is(err, actorresolver.ErrConfiguration) || !inboxDiagnostic.Valid() {
+			return probeResult{err: ErrConfiguration}
+		}
 		intent.InboxState = storage.InboxUnreachable
+		intent.InboxDiagnostic = inboxDiagnostic
 		return probeResult{intent: intent}
+	}
+	if !inboxDiagnostic.Valid() {
+		return probeResult{err: ErrConfiguration}
 	}
 	switch inboxResult {
 	case actorresolver.InboxProbeResponsive:
@@ -193,6 +233,7 @@ func probeOne(ctx context.Context, prober Prober, actor string) probeResult {
 	default:
 		return probeResult{err: ErrConfiguration}
 	}
+	intent.InboxDiagnostic = inboxDiagnostic
 	return probeResult{intent: intent}
 }
 

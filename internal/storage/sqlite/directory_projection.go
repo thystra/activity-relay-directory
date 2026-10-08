@@ -689,12 +689,20 @@ SELECT seed.relay_actor,
        telemetry.receiving_instance_count,
        telemetry.reported_at_unix,
        telemetry.participating_instance_count,
-       telemetry.participating_reported_at_unix
+       telemetry.participating_reported_at_unix,
+       diagnostics.actor_stage,
+       diagnostics.actor_code,
+       diagnostics.actor_http_status,
+       diagnostics.inbox_stage,
+       diagnostics.inbox_code,
+       diagnostics.inbox_http_status,
+       diagnostics.next_check_at_unix
 FROM seed
 LEFT JOIN relays AS relay ON relay.relay_actor = seed.relay_actor
 LEFT JOIN relay_discoveries AS discovery ON discovery.relay_actor = seed.relay_actor
 LEFT JOIN relay_observations AS observation ON observation.relay_actor = seed.relay_actor
 LEFT JOIN relay_telemetry AS telemetry ON telemetry.relay_actor = seed.relay_actor
+LEFT JOIN relay_probe_diagnostics AS diagnostics ON diagnostics.relay_actor = seed.relay_actor
 ORDER BY seed.relay_actor`
 
 	rows, err := repository.database.QueryContext(ctx, statement, arguments...)
@@ -728,6 +736,13 @@ ORDER BY seed.relay_actor`
 			telemetryReported     sql.NullInt64
 			participatingCount    sql.NullInt64
 			participatingReported sql.NullInt64
+			actorDiagStage        sql.NullString
+			actorDiagCode         sql.NullString
+			actorDiagHTTP         sql.NullInt64
+			inboxDiagStage        sql.NullString
+			inboxDiagCode         sql.NullString
+			inboxDiagHTTP         sql.NullInt64
+			nextCheck             sql.NullInt64
 		)
 		if err := rows.Scan(
 			&actor,
@@ -752,6 +767,9 @@ ORDER BY seed.relay_actor`
 			&telemetryReported,
 			&participatingCount,
 			&participatingReported,
+			&actorDiagStage, &actorDiagCode, &actorDiagHTTP,
+			&inboxDiagStage, &inboxDiagCode, &inboxDiagHTTP,
+			&nextCheck,
 		); err != nil {
 			return nil, storageFailure("decode public directory details", err)
 		}
@@ -836,6 +854,25 @@ ORDER BY seed.relay_actor`
 			InboxProbeState:           storage.InboxNotChecked,
 			InboxLastCheckedUnix:      nullableInt64Pointer(inboxLastChecked),
 			RFC9421VerifiedUnix:       nullableInt64Pointer(rfc9421Verified),
+			NextReachabilityCheckUnix: nullableInt64Pointer(nextCheck),
+		}
+		if actorDiagStage.Valid {
+			relay.ActorDiagnostic.Stage = actorDiagStage.String
+		}
+		if actorDiagCode.Valid {
+			relay.ActorDiagnostic.Code = actorDiagCode.String
+		}
+		if actorDiagHTTP.Valid {
+			relay.ActorDiagnostic.HTTPStatus = int(actorDiagHTTP.Int64)
+		}
+		if inboxDiagStage.Valid {
+			relay.InboxDiagnostic.Stage = inboxDiagStage.String
+		}
+		if inboxDiagCode.Valid {
+			relay.InboxDiagnostic.Code = inboxDiagCode.String
+		}
+		if inboxDiagHTTP.Valid {
+			relay.InboxDiagnostic.HTTPStatus = int(inboxDiagHTTP.Int64)
 		}
 		if receivingCount.Valid {
 			count := int(receivingCount.Int64)

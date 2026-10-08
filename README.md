@@ -79,7 +79,7 @@ When public listing is enabled, ARD can expose:
 ```text
 /                         human directory
 /v1/relays                frozen compatibility API
-/v2/relays                richer tier/profile/telemetry API
+/v2/relays                richer tier/profile/telemetry/diagnostics API
 /downloads/active.txt     Tier 1 + Tier 2 hosts
 /downloads/unavailable.txt Tier 3 + Tier 4 hosts
 /downloads/all.txt        all public relay hosts
@@ -121,6 +121,8 @@ For operators:
   projection;
 - [`docs/DISCOVERY-REACHABILITY.md`](docs/DISCOVERY-REACHABILITY.md) and
   [`docs/REACHABILITY.md`](docs/REACHABILITY.md) — discovery and health checks;
+- [`docs/REACHABILITY-DIAGNOSTICS.md`](docs/REACHABILITY-DIAGNOSTICS.md) —
+  1.3.1 DNS/TLS/actor/inbox diagnostic evidence and retry semantics;
 - [`docs/MODERATION.md`](docs/MODERATION.md),
   [`docs/RETENTION.md`](docs/RETENTION.md), and
   [`docs/STORAGE-GROWTH.md`](docs/STORAGE-GROWTH.md) — local maintenance and

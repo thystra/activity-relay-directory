@@ -63,11 +63,20 @@ func newSafeHTTPClient() *http.Client {
 	}
 }
 
+var (
+	ErrRedirectRejected = errors.New("ActivityPub redirect rejected")
+	ErrDNSNoAddress     = errors.New("ActivityPub host has no DNS address")
+	ErrDNSPolicy        = errors.New("ActivityPub DNS target is prohibited")
+)
+
 func checkActorRedirect(request *http.Request, via []*http.Request) error {
 	if request == nil || request.URL == nil || len(via) > maximumRedirects {
-		return ErrNetworkTarget
+		return errors.Join(ErrNetworkTarget, ErrRedirectRejected)
 	}
-	return validateActorFetchURL(request.URL)
+	if err := validateActorFetchURL(request.URL); err != nil {
+		return errors.Join(ErrNetworkTarget, ErrRedirectRejected)
+	}
+	return nil
 }
 
 func validateActorFetchURL(target *url.URL) error {
@@ -105,6 +114,7 @@ func (safe safeDialer) DialContext(
 	if err != nil {
 		return nil, err
 	}
+	var lastDialError error
 	for _, approved := range addresses {
 		if network == "tcp4" && !approved.Is4() {
 			continue
@@ -123,6 +133,10 @@ func (safe safeDialer) DialContext(
 		if ctx.Err() != nil {
 			return nil, errors.Join(ErrNetworkTarget, ctx.Err())
 		}
+		lastDialError = dialErr
+	}
+	if lastDialError != nil {
+		return nil, &safeNetworkFailure{diagnostic: ClassifyNetworkFailure(lastDialError)}
 	}
 	return nil, ErrNetworkTarget
 }
@@ -134,7 +148,7 @@ func (safe safeDialer) approvedAddresses(
 	if address, err := netip.ParseAddr(host); err == nil {
 		address = address.Unmap()
 		if !isPublicNetworkAddress(address) {
-			return nil, ErrNetworkTarget
+			return nil, &safeNetworkFailure{diagnostic: ProbeDiagnostic{Stage: "dns", Code: "policy"}}
 		}
 		return []netip.Addr{address}, nil
 	}
@@ -144,10 +158,13 @@ func (safe safeDialer) approvedAddresses(
 		if ctx.Err() != nil {
 			return nil, errors.Join(ErrNetworkTarget, ctx.Err())
 		}
-		return nil, ErrNetworkTarget
+		return nil, &safeNetworkFailure{diagnostic: ClassifyNetworkFailure(err)}
 	}
-	if len(addresses) == 0 || len(addresses) > maximumDNSAddresses {
-		return nil, ErrNetworkTarget
+	if len(addresses) == 0 {
+		return nil, &safeNetworkFailure{diagnostic: ProbeDiagnostic{Stage: "dns", Code: "no_address"}}
+	}
+	if len(addresses) > maximumDNSAddresses {
+		return nil, errors.Join(ErrNetworkTarget, ErrDNSPolicy)
 	}
 
 	approved := make([]netip.Addr, 0, len(addresses))
@@ -155,7 +172,7 @@ func (safe safeDialer) approvedAddresses(
 	for _, address := range addresses {
 		address = address.Unmap()
 		if !isPublicNetworkAddress(address) {
-			return nil, ErrNetworkTarget
+			return nil, &safeNetworkFailure{diagnostic: ProbeDiagnostic{Stage: "dns", Code: "policy"}}
 		}
 		if _, duplicate := seen[address]; duplicate {
 			continue

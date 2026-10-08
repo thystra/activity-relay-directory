@@ -301,7 +301,7 @@ operational evidence.
 
 ## Public projection and human page
 
-`/v2/relays` schema 5 retains the reviewed `profile` object and adds separate bounded relay telemetry. The object contains
+`/v2/relays` schema 6 retains the reviewed `profile` object, the schema-5 bounded relay telemetry, and optional reachability diagnostics. The `profile` object contains
 only the twelve effective public descriptive fields. Missing scalar fields are
 serialized as empty strings and missing multi-value fields as empty arrays so
 the profile shape remains deterministic. It does not reveal which source won a

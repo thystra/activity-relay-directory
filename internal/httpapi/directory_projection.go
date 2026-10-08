@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,7 +21,7 @@ import (
 
 const (
 	directoryProjectionPath          = "/v2/relays"
-	directoryProjectionSchemaVersion = 5
+	directoryProjectionSchemaVersion = 6
 	directoryProjectionCursorVersion = 2
 )
 
@@ -260,9 +261,11 @@ type directoryProjectionHeartbeat struct {
 }
 
 type directoryProjectionReachability struct {
-	State         storage.ReachabilityState `json:"state"`
-	LastCheckedAt *string                   `json:"last_checked_at"`
-	LastSuccessAt *string                   `json:"last_success_at"`
+	State          storage.ReachabilityState `json:"state"`
+	LastCheckedAt  *string                   `json:"last_checked_at"`
+	LastSuccessAt  *string                   `json:"last_success_at"`
+	Diagnostic     *directoryProbeDiagnostic `json:"diagnostic,omitempty"`
+	NextEligibleAt *string                   `json:"next_eligible_at,omitempty"`
 }
 
 func (heartbeat directoryProjectionHeartbeat) DisplayState() string {
@@ -276,15 +279,101 @@ func (heartbeat directoryProjectionHeartbeat) DisplayState() string {
 	}
 }
 
+func (diagnostic *directoryProbeDiagnostic) Summary() string {
+	if diagnostic == nil {
+		return "Not recorded"
+	}
+	switch {
+	case diagnostic.Stage == "dns" && diagnostic.Code == "nxdomain":
+		return "DNS name does not exist (possibly removed)"
+	case diagnostic.Stage == "dns" && diagnostic.Code == "no_address":
+		return "DNS has no usable address (possibly removed)"
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 404:
+		return "Actor returned HTTP 404 (possibly removed)"
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 410:
+		return "Actor returned HTTP 410 Gone (possibly removed)"
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 404:
+		return "Inbox returned HTTP 404 (missing)"
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 410:
+		return "Inbox returned HTTP 410 (gone)"
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 405:
+		return "OPTIONS not permitted; delivery capability unknown"
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 501:
+		return "OPTIONS not implemented; delivery capability unknown"
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 200 && diagnostic.HTTPStatus < 400:
+		return "OPTIONS returned a successful response"
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus >= 500:
+		return fmt.Sprintf("Actor returned HTTP %d (service degraded or temporarily unavailable)", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 500:
+		return fmt.Sprintf("Inbox returned HTTP %d (service degraded or temporarily unavailable)", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "tls" && diagnostic.Code == "certificate":
+		return "TLS certificate verification failed (degraded)"
+	case diagnostic.Stage == "tls" && diagnostic.Code == "handshake":
+		return "TLS handshake failed (degraded)"
+	case diagnostic.Stage == "dns" && diagnostic.Code == "temporary":
+		return "Temporary DNS lookup failure"
+	case diagnostic.Stage == "connect" && diagnostic.Code == "refused":
+		return "Connection refused (degraded or unavailable)"
+	case diagnostic.HTTPStatus != 0:
+		return fmt.Sprintf("%s returned HTTP %d", diagnostic.Stage, diagnostic.HTTPStatus)
+	default:
+		return strings.ReplaceAll(diagnostic.Stage, "_", " ") + ": " + strings.ReplaceAll(diagnostic.Code, "_", " ")
+	}
+}
+
 func (reachability directoryProjectionReachability) DisplayState() string {
 	return string(reachability.State)
 }
 
 type directoryProjectionInbox struct {
-	URL           *string                 `json:"url"`
-	DeclaredAt    *string                 `json:"declared_at"`
-	ProbeState    storage.InboxProbeState `json:"probe_state"`
-	LastCheckedAt *string                 `json:"last_checked_at"`
+	URL           *string                   `json:"url"`
+	DeclaredAt    *string                   `json:"declared_at"`
+	ProbeState    storage.InboxProbeState   `json:"probe_state"`
+	LastCheckedAt *string                   `json:"last_checked_at"`
+	Diagnostic    *directoryProbeDiagnostic `json:"diagnostic,omitempty"`
+}
+
+type directoryProbeDiagnostic struct {
+	Stage      string `json:"stage"`
+	Code       string `json:"code"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	Assessment string `json:"assessment"`
+}
+
+// A missing diagnostic means no classified observation is retained yet.
+func presentProbeDiagnostic(stage, code string, status int) *directoryProbeDiagnostic {
+	if stage == "" {
+		return nil
+	}
+	return &directoryProbeDiagnostic{Stage: stage, Code: code, HTTPStatus: status,
+		Assessment: diagnosticAssessment(stage, code, status)}
+}
+
+// Assessment is an interpretation of the evidence, not a lifecycle state or
+// an authorization for deletion, pruning, or changes to public tiering.
+func diagnosticAssessment(stage, code string, status int) string {
+	switch {
+	case stage == "dns" && (code == "nxdomain" || code == "no_address"):
+		return "possibly_removed"
+	case stage == "actor" && (status == 404 || status == 410):
+		return "possibly_removed"
+	case stage == "inbox" && (status == 404 || status == 410):
+		return "inbox_missing"
+	case stage == "inbox" && (status == 405 || status == 501):
+		return "method_rejected"
+	case stage == "inbox" && (status == 401 || status == 403):
+		return "restricted"
+	case stage == "inbox" && status >= 200 && status < 400:
+		return "responsive"
+	case stage == "actor" && (code == "invalid_document" || code == "content_type"):
+		return "invalid_actor"
+	case stage == "actor" && status >= 500, stage == "inbox" && status >= 500,
+		stage == "tls", stage == "connect", stage == "network",
+		stage == "dns" && (code == "timeout" || code == "temporary"):
+		return "degraded"
+	default:
+		return "unavailable"
+	}
 }
 
 type directoryProjectionRFC9421 struct {
@@ -343,14 +432,17 @@ func presentDirectoryProjectionRelay(relay storage.DirectoryProjectionRelay) dir
 			LastSeenAt: formatProjectionUnix(relay.LastHeartbeatUnix),
 		},
 		Reachability: directoryProjectionReachability{
-			State:         relay.ActorState,
-			LastCheckedAt: formatProjectionUnix(relay.ActorLastCheckedUnix),
-			LastSuccessAt: formatProjectionUnix(relay.ActorLastSuccessUnix),
+			State:          relay.ActorState,
+			LastCheckedAt:  formatProjectionUnix(relay.ActorLastCheckedUnix),
+			LastSuccessAt:  formatProjectionUnix(relay.ActorLastSuccessUnix),
+			Diagnostic:     presentProbeDiagnostic(relay.ActorDiagnostic.Stage, relay.ActorDiagnostic.Code, relay.ActorDiagnostic.HTTPStatus),
+			NextEligibleAt: formatProjectionUnix(relay.NextReachabilityCheckUnix),
 		},
 		Inbox: directoryProjectionInbox{
 			DeclaredAt:    formatProjectionUnix(relay.InboxDeclaredUnix),
 			ProbeState:    relay.InboxProbeState,
 			LastCheckedAt: formatProjectionUnix(relay.InboxLastCheckedUnix),
+			Diagnostic:    presentProbeDiagnostic(relay.InboxDiagnostic.Stage, relay.InboxDiagnostic.Code, relay.InboxDiagnostic.HTTPStatus),
 		},
 		RFC9421: directoryProjectionRFC9421{
 			State:      "not verified",

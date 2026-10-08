@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const CurrentSchemaVersion = 12
+const CurrentSchemaVersion = 13
 
 var (
 	ErrMigrationConfiguration = errors.New("SQLite migration configuration is invalid")
@@ -73,6 +73,7 @@ var migrationManifest = []struct {
 	{version: 10, name: "relay_profiles", path: "migrations/0010_relay_profiles.sql"},
 	{version: 11, name: "relay_telemetry", path: "migrations/0011_relay_telemetry.sql"},
 	{version: 12, name: "participating_relay_telemetry", path: "migrations/0012_participating_relay_telemetry.sql"},
+	{version: 13, name: "reachability_diagnostics", path: "migrations/0013_reachability_diagnostics.sql"},
 }
 
 const migrationTableSQL = `
