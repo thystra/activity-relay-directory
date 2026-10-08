@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 1.3.1 development
+## 1.3.1 - 2026-10-07
 
 - Add stage/code/HTTP-status reachability diagnostics for DNS, connection,
   TLS, redirects, actor documents, and non-mutating inbox OPTIONS responses.
