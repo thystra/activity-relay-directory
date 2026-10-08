@@ -71,7 +71,7 @@ func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
 	case storage.DirectoryTierHeartbeatOnline:
 		return "Tier 1 — Heartbeat + Online"
 	case storage.DirectoryTierOnline:
-		return "Tier 2 — Online, no current heartbeat"
+		return "Tier 2 — Online, one liveness signal"
 	case storage.DirectoryTierUnavailable:
 		return "Tier 3 — Offline / Unreachable"
 	case storage.DirectoryTierGraveyard:
@@ -84,11 +84,11 @@ func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
 func humanDirectoryTierDescription(tier storage.DirectoryTier) string {
 	switch tier {
 	case storage.DirectoryTierHeartbeatOnline:
-		return "These relays send a directory heartbeat and were reachable at the latest check."
+		return "These relays have a current authenticated heartbeat and a recent successful actor check."
 	case storage.DirectoryTierOnline:
-		return "These relays are known to the directory and were reachable at the latest check, but do not currently send a directory heartbeat."
+		return "These relays have either a healthy authenticated heartbeat or a recent successful actor check, but not both. Actor failures remain visible in relay details."
 	case storage.DirectoryTierUnavailable:
-		return "These relays could not be reached at the latest check but have been seen online within the last 30 days."
+		return "These relays have neither a current authenticated heartbeat nor a recent successful actor check, but have been seen online within the last 30 days."
 	case storage.DirectoryTierGraveyard:
 		return "These relays have not been seen online for at least 30 days. They remain listed for historical reference and are checked periodically in case they return."
 	default:
@@ -217,7 +217,7 @@ func humanReachabilityLabel(state storage.ReachabilityState) string {
 	case storage.ReachabilityReachable:
 		return "Reachable"
 	case storage.ReachabilityUnreachable:
-		return "Unreachable"
+		return "Actor unreachable"
 	default:
 		return "Not checked"
 	}

@@ -157,9 +157,10 @@ type DirectoryProjectionRelay struct {
 
 // ClassifyDirectoryTier maps current public evidence into the directory's four
 // non-prestige operational tiers. Tier ordering is explicit; alphabetical actor
-// order is used inside each tier. A fresh reachable actor is online. A healthy
-// authenticated heartbeat plus fresh reachability is Tier 1. Relays not seen
-// online for 30 days enter the graveyard.
+// order is used inside each tier. Tier 1 requires both a recent authenticated
+// heartbeat and a fresh successful actor probe. Tier 2 requires either signal
+// independently. A failed actor probe never negates a valid heartbeat; relays
+// with neither signal fall into the unavailable/graveyard tiers.
 func ClassifyDirectoryTier(relay DirectoryProjectionRelay, observedUnix int64) (DirectoryTier, error) {
 	if observedUnix < 0 || relay.FirstKnownUnix < 0 || relay.FirstKnownUnix > observedUnix ||
 		!relay.HeartbeatState.Valid() || !relay.ActorState.Valid() || !relay.InboxProbeState.Valid() {
@@ -180,7 +181,7 @@ func ClassifyDirectoryTier(relay DirectoryProjectionRelay, observedUnix int64) (
 	if freshReachability && currentHeartbeat {
 		return DirectoryTierHeartbeatOnline, nil
 	}
-	if freshReachability {
+	if freshReachability || currentHeartbeat {
 		return DirectoryTierOnline, nil
 	}
 

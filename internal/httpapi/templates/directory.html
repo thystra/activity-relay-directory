@@ -46,15 +46,15 @@
       <dl class="tier-guide">
         <div class="tier-guide-item tier-guide-1">
           <dt>Tier 1 — Heartbeat + Online</dt>
-          <dd>These relays send a directory heartbeat and were reachable at the latest check.</dd>
+          <dd>These relays have a current authenticated heartbeat and a recent successful actor check.</dd>
         </div>
         <div class="tier-guide-item tier-guide-2">
-          <dt>Tier 2 — Online, no current heartbeat</dt>
-          <dd>These relays are known to the directory and were reachable at the latest check, but do not currently send a directory heartbeat.</dd>
+          <dt>Tier 2 — Online, one liveness signal</dt>
+          <dd>These relays have a healthy authenticated heartbeat or a recent successful actor check, but not both. An actor check can fail while the relay is still alive.</dd>
         </div>
         <div class="tier-guide-item tier-guide-3">
           <dt>Tier 3 — Offline / Unreachable</dt>
-          <dd>These relays could not be reached at the latest check but have been seen online within the last 30 days.</dd>
+          <dd>These relays have neither a current heartbeat nor a recent successful actor check, but were seen online within the last 30 days.</dd>
         </div>
         <div class="tier-guide-item tier-guide-4">
           <dt>Tier 4 — Graveyard</dt>
@@ -105,7 +105,7 @@
             <span>Registration</span>
             <span>Sites</span>
             <span><span aria-hidden="true">♥</span> Heartbeat</span>
-            <span>Reachability</span>
+            <span>Actor reachability</span>
           </div>
           <ul class="relay-rows">
 {{range .Relays}}
@@ -128,7 +128,7 @@
                     <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
                   </span>
                   <span class="relay-cell relay-reachability">
-                    <span class="cell-label">Reachability</span>
+                    <span class="cell-label">Actor reachability</span>
                     <span class="signal-badge reachability-{{.Reachability.State}}">{{reachabilityLabel .Reachability.State}}</span>
                   </span>
                 </summary>

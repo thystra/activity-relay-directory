@@ -122,7 +122,7 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 		`{{heartbeatLabel .Heartbeat.State}}`,
 		`{{reachabilityLabel .Reachability.State}}`,
 		`Tier 1 — Heartbeat + Online`,
-		`Tier 2 — Online, no current heartbeat`,
+		`Tier 2 — Online, one liveness signal`,
 		`Tier 3 — Offline / Unreachable`,
 		`Tier 4 — Graveyard`,
 		`Inside each tier, open relays are shown first, then restricted, closed, and unreported relays.`,

@@ -25,6 +25,14 @@ func TestDirectorySummaryCountsPublicAndPendingRelays(t *testing.T) {
 	insertReachabilityDiscovery(t, database, "https://c-both.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://c-both.example/actor", storage.ReachabilityReachable, fresh, &fresh, true)
 
+	// Authenticated liveness counts as online even if the latest actor GET failed.
+	heartbeatOnly := "https://heartbeat-only.example/actor"
+	insertPublicListingRelay(t, database, heartbeatOnly, lifecycleRegistered, administrativeActive, observed.Unix()-100)
+	if _, err := database.Exec(`UPDATE relays SET last_heartbeat_at_unix=? WHERE relay_actor=?`, observed.Unix()-100, heartbeatOnly); err != nil {
+		t.Fatal(err)
+	}
+	insertDirectoryObservation(t, database, heartbeatOnly, storage.ReachabilityUnreachable, fresh, nil, false)
+
 	insertPublicListingRelay(t, database, "https://d-suspended.example/actor", lifecycleUnregistered, administrativeSuspended, observed.Unix()-100)
 	insertReachabilityDiscovery(t, database, "https://d-suspended.example/actor", discoveryActive, observed.Unix()-100)
 	insertDirectoryObservation(t, database, "https://d-suspended.example/actor", storage.ReachabilityReachable, fresh, &fresh, false)
@@ -81,8 +89,8 @@ func TestDirectorySummaryCountsPublicAndPendingRelays(t *testing.T) {
 		t.Fatalf("directory summary mutated database: before=%d after=%d", before, after)
 	}
 	want := storage.DirectorySummary{
-		KnownRelays:         3,
-		OnlineRelays:        2,
+		KnownRelays:         4,
+		OnlineRelays:        3,
 		OfflineRelays:       1,
 		PendingVerification: 2,
 	}

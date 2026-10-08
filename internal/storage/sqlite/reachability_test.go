@@ -311,7 +311,7 @@ func TestReachabilityDiagnosticEvidenceSurvivesActorFailureWithoutHeartbeatMutat
 	}
 	if actorStage != "actor" || actorCode != "http_status" || actorStatus != 410 ||
 		inboxStage != "inbox" || inboxCode != "http_status" || inboxStatus != 405 ||
-		next != second.Add(storage.ReachabilityFreshness).Unix() {
+		next != second.Add(storage.ReachabilityFailureRetryMinimum).Unix() {
 		t.Fatalf("diagnostic actor=%s/%s/%d inbox=%s/%s/%d next=%d", actorStage, actorCode, actorStatus, inboxStage, inboxCode, inboxStatus, next)
 	}
 	observation, ok, err := repo.GetObservation(ctx, storage.IdentityIntent{RelayActor: actor})
@@ -348,5 +348,128 @@ func TestReachabilityDiagnosticLongOfflineRetryAndInputValidation(t *testing.T) 
 	}, at.Add(time.Hour))
 	if err != storage.ErrReachabilityWriteInput {
 		t.Fatalf("unbounded status accepted: %v", err)
+	}
+}
+
+func TestActorFailureRetryEscalationAndRecoveryResetsStreak(t *testing.T) {
+	database := openMigratedTestDatabase(t)
+	repository := newTestRelayRepository(t, database)
+	ctx := context.Background()
+	actor := "https://retry-sequence.example/actor"
+	base := time.Unix(8_000_000, 0).UTC()
+	insertPruningRelay(t, database, actor, lifecycleRegistered, administrativeActive, base.Unix()-100, nil)
+
+	attempt := base
+	for index, interval := range []time.Duration{time.Hour, 2 * time.Hour, 4 * time.Hour, 6 * time.Hour, 6 * time.Hour} {
+		outcome, err := repository.RecordReachabilityObservation(ctx, storage.ReachabilityObservationIntent{
+			RelayActor: actor, ActorState: storage.ReachabilityUnreachable,
+			InboxState:      storage.InboxNotChecked,
+			ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "network", Code: "timeout"},
+		}, attempt)
+		if err != nil || outcome != storage.ReachabilityWriteApplied {
+			t.Fatalf("failure %d write = (%q, %v)", index+1, outcome, err)
+		}
+		var streak int
+		var due int64
+		if err := database.QueryRow(`SELECT actor_failure_streak, next_check_at_unix
+			FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(&streak, &due); err != nil {
+			t.Fatal(err)
+		}
+		wantStreak := min(index+1, storage.MaximumReachabilityFailureStreak)
+		if streak != wantStreak || due != attempt.Add(interval).Unix() {
+			t.Fatalf("failure %d streak=%d due=%d want streak=%d due=%d", index+1, streak, due, wantStreak, attempt.Add(interval).Unix())
+		}
+		for _, check := range []struct {
+			at   time.Time
+			want bool
+		}{{attempt.Add(interval - time.Second), false}, {attempt.Add(interval), true}} {
+			page, err := repository.ReachabilityCandidates(ctx, storage.ReachabilityCandidateQuery{ObservedAt: check.at, Limit: 10})
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, candidate := range page.Candidates {
+				if candidate.RelayActor == actor {
+					found = true
+				}
+			}
+			if found != check.want {
+				t.Fatalf("failure %d due check at %s found=%v want %v", index+1, check.at, found, check.want)
+			}
+		}
+		attempt = attempt.Add(interval)
+	}
+
+	if _, err := repository.RecordReachabilityObservation(ctx, storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityReachable, InboxState: storage.InboxNotChecked,
+	}, attempt); err != nil {
+		t.Fatal(err)
+	}
+	var streak int
+	var due int64
+	if err := database.QueryRow(`SELECT actor_failure_streak, next_check_at_unix
+		FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(&streak, &due); err != nil {
+		t.Fatal(err)
+	}
+	if streak != 0 || due != attempt.Add(storage.ReachabilityFreshness).Unix() {
+		t.Fatalf("recovered actor streak=%d due=%d", streak, due)
+	}
+	attempt = attempt.Add(storage.ReachabilityFreshness)
+	if _, err := repository.RecordReachabilityObservation(ctx, storage.ReachabilityObservationIntent{
+		RelayActor: actor, ActorState: storage.ReachabilityUnreachable,
+		InboxState:      storage.InboxNotChecked,
+		ActorDiagnostic: actorresolver.ProbeDiagnostic{Stage: "tls", Code: "certificate"},
+	}, attempt); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.QueryRow(`SELECT actor_failure_streak, next_check_at_unix
+		FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(&streak, &due); err != nil {
+		t.Fatal(err)
+	}
+	if streak != 1 || due != attempt.Add(time.Hour).Unix() {
+		t.Fatalf("post-recovery first failure streak=%d due=%d", streak, due)
+	}
+}
+
+func TestSchema14PromotesRecentExistingFailureToHourlyRetry(t *testing.T) {
+	database := openTestDatabase(t)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) != 14 || migrations[13].version != 14 {
+		t.Fatalf("wrong migration sequence (%d)", len(migrations))
+	}
+	if _, err := database.Exec(migrationTableSQL); err != nil {
+		t.Fatal(err)
+	}
+	for _, migration := range migrations[:13] {
+		if _, err := database.Exec(migration.sql); err != nil {
+			t.Fatalf("migration %d: %v", migration.version, err)
+		}
+		if _, err := database.Exec(`INSERT INTO schema_migrations(version,name,sha256,applied_at_unix)
+			VALUES (?,?,?,0)`, migration.version, migration.name, migration.sha256); err != nil {
+			t.Fatal(err)
+		}
+	}
+	actor := "https://existing-offline.example/actor"
+	insertPruningRelay(t, database, actor, lifecycleRegistered, administrativeActive, 990_000, nil)
+	insertDirectoryObservation(t, database, actor, storage.ReachabilityUnreachable, 1_000_000, nil, false)
+	if _, err := database.Exec(`INSERT INTO relay_probe_diagnostics(
+		relay_actor, actor_stage, actor_code, next_check_at_unix, updated_at_unix
+	) VALUES (?, 'network', 'timeout', ?, ?)`, actor, 1_000_000+6*3600, 1_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(context.Background(), database); err != nil {
+		t.Fatal(err)
+	}
+	var streak int
+	var due int64
+	if err := database.QueryRow(`SELECT actor_failure_streak, next_check_at_unix
+		FROM relay_probe_diagnostics WHERE relay_actor=?`, actor).Scan(&streak, &due); err != nil {
+		t.Fatal(err)
+	}
+	if streak != 1 || due != 1_000_000+3600 {
+		t.Fatalf("schema14 existing failure streak=%d due=%d", streak, due)
 	}
 }
