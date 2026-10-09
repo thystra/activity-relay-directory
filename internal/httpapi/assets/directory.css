@@ -581,24 +581,19 @@ code {
 .heartbeat-healthy::before,
 .reachability-reachable::before { content: "✓"; }
 
-.heartbeat-stale {
+.heartbeat-stale,
+.heartbeat-dead,
+.heartbeat-prune {
   color: var(--warning);
   border-style: dashed;
 }
 
-.heartbeat-stale::before { content: "!"; }
-
-.heartbeat-dead,
-.heartbeat-prune,
-.reachability-unreachable { color: var(--danger); }
-
-.heartbeat-dead,
-.heartbeat-prune { border-style: double; border-width: 3px; }
-
+.heartbeat-stale::before,
 .heartbeat-dead::before,
-.reachability-unreachable::before { content: "×"; }
+.heartbeat-prune::before { content: "!"; }
 
-.heartbeat-prune::before { content: "!!"; min-width: 1.4em; }
+.reachability-unreachable { color: var(--danger); }
+.reachability-unreachable::before { content: "×"; }
 
 .heartbeat-not_observed,
 .reachability-unknown {

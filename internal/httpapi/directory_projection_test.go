@@ -544,8 +544,8 @@ func TestReachabilityDiagnosticProjectionIsBoundedAndNonDestructive(t *testing.T
 	if projected.Reachability.Diagnostic.Assessment != "possibly_removed" {
 		t.Fatalf("actor 410 assessment = %q", projected.Reachability.Diagnostic.Assessment)
 	}
-	if summary := projected.Reachability.Diagnostic.Summary(); !strings.Contains(summary, "possibly removed") {
-		t.Fatalf("missing cautious actor-410 presentation: %q", summary)
+	if summary := projected.Reachability.Diagnostic.Summary(); !strings.Contains(summary, "HTTP 410") {
+		t.Fatalf("missing clear actor-410 presentation: %q", summary)
 	}
 	raw, err := json.Marshal(projected)
 	if err != nil {
@@ -560,13 +560,66 @@ func TestReachabilityDiagnosticProjectionIsBoundedAndNonDestructive(t *testing.T
 		d    directoryProbeDiagnostic
 		want string
 	}{
-		{directoryProbeDiagnostic{Stage: "dns", Code: "nxdomain"}, "possibly removed"},
-		{directoryProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 503}, "degraded"},
-		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 405}, "capability unknown"},
-		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 404}, "missing"},
+		{directoryProbeDiagnostic{Stage: "dns", Code: "nxdomain"}, "DNS address"},
+		{directoryProbeDiagnostic{Stage: "actor", Code: "http_status", HTTPStatus: 503}, "HTTP 503"},
+		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 405}, "does not support this check"},
+		{directoryProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 404}, "not found"},
 	} {
 		if !strings.Contains(c.d.Summary(), c.want) {
 			t.Fatalf("summary %q missing %q", c.d.Summary(), c.want)
 		}
+	}
+}
+
+// These are deliberately human-facing presentation strings. Structured API
+// stage/code/status and assessment values must remain unchanged.
+func TestHumanDiagnosticMessagesUsePlainActivityPubLanguage(t *testing.T) {
+	tests := []struct {
+		stage, code string
+		status      int
+		want        string
+	}{
+		{"dns", "nxdomain", 0, "Could not find a DNS address for this relay."},
+		{"dns", "no_address", 0, "No usable DNS address was found for this relay."},
+		{"dns", "temporary", 0, "DNS lookup temporarily unavailable."},
+		{"dns", "timeout", 0, "DNS lookup timed out."},
+		{"dns", "policy", 0, "The DNS address did not pass security checks."},
+		{"dns", "error", 0, "DNS lookup failed."},
+		{"connect", "refused", 0, "The server refused the connection."},
+		{"connect", "timeout", 0, "The connection timed out."},
+		{"connect", "failed", 0, "Could not connect to the server."},
+		{"tls", "certificate", 0, "Connected to the server, but its HTTPS certificate could not be verified (TLS error)."},
+		{"tls", "handshake", 0, "Connected to the server, but a secure HTTPS connection could not be established (TLS error)."},
+		{"redirect", "rejected", 0, "Could not safely follow the ActivityPub Actor address redirect."},
+		{"policy", "prohibited_target", 0, "The ActivityPub address could not be checked safely."},
+		{"actor", "http_status", 404, "ActivityPub Actor address was not found (HTTP 404)."},
+		{"actor", "http_status", 410, "ActivityPub Actor address is no longer available (HTTP 410)."},
+		{"actor", "http_status", 503, "ActivityPub Actor server reported an error (HTTP 503)."},
+		{"actor", "http_status", 403, "ActivityPub Actor check returned HTTP 403."},
+		{"actor", "content_type", 0, "ActivityPub Actor information was returned in an unsupported format."},
+		{"actor", "invalid_document", 0, "ActivityPub Actor information could not be validated."},
+		{"actor", "invalid_response", 0, "ActivityPub Actor server returned an invalid response."},
+		{"inbox", "http_status", 404, "ActivityPub Inbox address was not found (HTTP 404)."},
+		{"inbox", "http_status", 410, "ActivityPub Inbox address is no longer available (HTTP 410)."},
+		{"inbox", "http_status", 405, "ActivityPub Inbox does not support this check (HTTP 405)."},
+		{"inbox", "http_status", 501, "ActivityPub Inbox does not implement this check (HTTP 501)."},
+		{"inbox", "http_status", 401, "ActivityPub Inbox declined the check (HTTP 401)."},
+		{"inbox", "http_status", 403, "ActivityPub Inbox declined the check (HTTP 403)."},
+		{"inbox", "http_status", 204, "ActivityPub Inbox responded to the check (HTTP 204)."},
+		{"inbox", "http_status", 302, "ActivityPub Inbox responded to the check (HTTP 302)."},
+		{"inbox", "http_status", 503, "ActivityPub Inbox server reported an error (HTTP 503)."},
+		{"inbox", "http_status", 429, "ActivityPub Inbox check returned HTTP 429."},
+		{"inbox", "invalid_response", 0, "ActivityPub Inbox server returned an invalid response."},
+		{"network", "timeout", 0, "Network request timed out."},
+		{"network", "error", 0, "Network connection failed."},
+	}
+	for _, test := range tests {
+		diagnostic := &directoryProbeDiagnostic{Stage: test.stage, Code: test.code, HTTPStatus: test.status}
+		if got := diagnostic.Summary(); got != test.want {
+			t.Errorf("%s/%s/%d: got %q, want %q", test.stage, test.code, test.status, got, test.want)
+		}
+	}
+	if got := (*directoryProbeDiagnostic)(nil).Summary(); got != "No check recorded." {
+		t.Fatalf("nil diagnostic: %q", got)
 	}
 }

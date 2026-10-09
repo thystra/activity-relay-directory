@@ -44,8 +44,8 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		}
 	}
 	body := response.Body.String()
-	statusIndex := strings.Index(body, "How the relay tiers work")
-	directoryIndex := strings.Index(body, "Participating relays")
+	statusIndex := strings.Index(body, "How relay listings are grouped")
+	directoryIndex := strings.Index(body, "Known relays")
 	if statusIndex < 0 || directoryIndex < 0 || statusIndex > directoryIndex {
 		t.Fatalf("status help must appear before relay table: status=%d directory=%d", statusIndex, directoryIndex)
 	}
@@ -63,9 +63,9 @@ func TestHumanDirectoryBrowserPresentationContract(t *testing.T) {
 		`rel="stylesheet" href="/assets/directory.css"`,
 		"ActivityPub infrastructure",
 		"Public relay directory",
-		"Participating relays",
+		"Known relays",
 		"No relays are listed yet",
-		"How the relay tiers work",
+		"How relay listings are grouped",
 		"Click on a relay's line for details.",
 		"Download host lists:",
 		`href="/downloads/active.txt"`,
@@ -121,11 +121,11 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 	for _, required := range []string{
 		`{{heartbeatLabel .Heartbeat.State}}`,
 		`{{reachabilityLabel .Reachability.State}}`,
-		`Tier 1 — Heartbeat + Online`,
-		`Tier 2 — Online, one liveness signal`,
-		`Tier 3 — Offline / Unreachable`,
-		`Tier 4 — Graveyard`,
-		`Inside each tier, open relays are shown first, then restricted, closed, and unreported relays.`,
+		`ARD White Pages Protocol Relays`,
+		`Other Known Relays`,
+		`Offline or Unreachable Relays`,
+		`Graveyard`,
+		`Within each group, open relays are shown first, then restricted, closed, and unreported relays.`,
 	} {
 		if !strings.Contains(humanDirectoryTemplateSource, required) {
 			t.Fatalf("directory template missing visible evidence label %q", required)
@@ -133,6 +133,7 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 	}
 
 	for _, forbidden := range []string{
+		"Tier 1", "Tier 2", "Tier 3", "Tier 4",
 		"Inbox diagnostic",
 		"RFC 9421",
 		"evidence recorded",
@@ -156,10 +157,10 @@ func TestHumanDirectoryEvidenceStateDoesNotDependOnColor(t *testing.T) {
 	for _, required := range []string{
 		`.heartbeat-healthy::before,`,
 		`.reachability-reachable::before { content: "✓"; }`,
-		`.heartbeat-stale::before { content: "!"; }`,
+		`.heartbeat-stale::before,`,
 		`.heartbeat-dead::before,`,
 		`.reachability-unreachable::before { content: "×"; }`,
-		`.heartbeat-prune::before { content: "!!";`,
+		`.heartbeat-prune::before { content: "!"; }`,
 		`.heartbeat-not_observed::before,`,
 		`.reachability-unknown::before { content: "?"; }`,
 	} {

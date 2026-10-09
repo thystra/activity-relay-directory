@@ -10,8 +10,8 @@ communities connected to a relay.
 
 ## Highlights
 
-- four operational directory tiers based on authenticated liveness and current
-  reachability;
+- four public directory groups based on authenticated heartbeats and current
+  ActivityPub Actor reachability;
 - optional signed register, heartbeat, and unregister lifecycle protocols;
 - local discovery/import for relays that do not participate in lifecycle
   heartbeats;
@@ -25,20 +25,20 @@ State-changing network features are disabled by default. Public listing,
 lifecycle participation, reachability maintenance, and automatic pruning are
 independent opt-in features.
 
-## Directory tiers
+## Directory groups and the White Pages Protocol
 
-The public directory is ordered by operational state, not popularity.
-Registration status such as Open, Restricted, or Closed is descriptive and does
-not affect tier placement.
+The **ARD White Pages Protocol** is the public name for ARD's existing, opt-in, authenticated lifecycle Protocols v1/v2/v3. Relays can register and report their heartbeat and profile directly. No wire format or API names change.
 
-| Tier | Meaning |
+The website groups relays by recent evidence, not popularity. Registration status (Open, Restricted, or Closed) does not change group placement.
+
+| Public group | Meaning |
 | --- | --- |
-| **Tier 1 — Heartbeat + Online** | Current authenticated relay liveness plus a recent successful reachability check. |
-| **Tier 2 — Online, one liveness signal** | A current authenticated heartbeat OR a recent successful actor check, but not both. |
-| **Tier 3 — Offline / Unreachable** | Neither current authenticated liveness nor a recent successful actor check; seen online within the last 30 days. |
-| **Tier 4 — Graveyard** | The relay has not been seen online for at least 30 days and remains retained for recovery/history. |
+| **ARD White Pages Protocol Relays** | Self-report through White Pages, with a healthy authenticated heartbeat and a recent successful ActivityPub Actor check. |
+| **Other Known Relays** | One current signal: a healthy White Pages heartbeat **or** a recent successful Actor check. This can include White Pages participants when an Actor check has failed. |
+| **Offline or Unreachable Relays** | Neither current signal is available; last positive evidence is less than 30 days old. |
+| **Graveyard** | No confirmed activity for at least 30 days. Listed for reference and periodic recovery checks. |
 
-Recovered relays move back to Tier 1 or Tier 2 automatically.
+Relays move between groups automatically when fresh evidence arrives. The website displays heartbeat status as **Healthy**, **Stale**, or **No heartbeat received**, independently of the relay group. API heartbeat codes and numeric `tier` values remain unchanged. See [public listing states](docs/PUBLIC-LISTING.md).
 
 ## Install
 
@@ -80,8 +80,8 @@ When public listing is enabled, ARD can expose:
 /                         human directory
 /v1/relays                frozen compatibility API
 /v2/relays                richer tier/profile/telemetry/diagnostics API
-/downloads/active.txt     Tier 1 + Tier 2 hosts
-/downloads/unavailable.txt Tier 3 + Tier 4 hosts
+/downloads/active.txt     active relay groups
+/downloads/unavailable.txt unavailable relay groups
 /downloads/all.txt        all public relay hosts
 /healthz                  process health
 /readyz                   readiness/storage availability

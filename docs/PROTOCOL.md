@@ -1,5 +1,7 @@
 # Directory Protocol
 
+**ARD White Pages Protocol** is the public-facing name for the existing opt-in authenticated Directory lifecycle protocols (versions 1, 2 and 3). The name does not introduce a new wire format, lifecycle version, or API route. See [Public listing](PUBLIC-LISTING.md) for the four public group names and their numeric `tier` mappings.
+
 ## Status and scope
 
 Lifecycle Protocol v1 remains the compatibility baseline defined here and in
@@ -24,8 +26,9 @@ durable policy makes the status request fail closed without database detail.
 The read-only `GET /v2/relays` representation is versioned independently from
 the signed lifecycle request protocol. As of 1.3.1 its `schema_version` is `6`.
 Each relay object includes the closed numeric `tier` vocabulary `1|2|3|4`,
-representing heartbeat+online, online without a current heartbeat, unavailable,
-and the 30-day graveyard respectively; one reviewed effective `profile` object;
+representing current heartbeat plus successful Actor check, exactly one of
+those signals (including heartbeat-only relays), neither current signal with
+activity inside 30 days, and no confirmed activity for at least 30 days; one reviewed effective `profile` object;
 self-reported `telemetry`; and optional classified reachability/inbox
 `diagnostic` evidence with an advisory `next_eligible_at` retry timestamp.
 Diagnostics do not change lifecycle status, tiers, or eligibility. Public

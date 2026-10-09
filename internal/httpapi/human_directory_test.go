@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thystra/activity-relay-directory/internal/actorresolver"
 	"github.com/thystra/activity-relay-directory/internal/storage"
 )
 
@@ -43,6 +44,7 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 				InboxDeclaredUnix:    &declared,
 				InboxProbeState:      storage.InboxMethodRejected,
 				InboxLastCheckedUnix: &checked,
+				InboxDiagnostic:      actorresolver.ProbeDiagnostic{Stage: "inbox", Code: "http_status", HTTPStatus: 405},
 				RFC9421VerifiedUnix:  &verified,
 			}},
 		},
@@ -82,16 +84,19 @@ func TestHumanDirectoryFixtureEscapingCachingAndAccessibility(t *testing.T) {
 		`>Registration</span>`,
 		`>Sites</span>`,
 		`aria-hidden="true">♥</span> Heartbeat`,
-		`Last successful check`,
+		`Last successful ActivityPub Actor check`,
+		`ActivityPub Inbox does not support this check (HTTP 405).`,
+		`Message delivery was not tested.`,
+		`Checked <time datetime="1970-01-02T03:47:30Z">1970-01-02 03:47 UTC</time>.`,
 		`>relay.example</a>`,
 		`https://relay.example/a&amp;b`,
 		`https://relay.example/inbox/a&amp;b`,
 		`href="/downloads/active.txt"`,
 		`href="/downloads/all.txt"`,
 		`href="/downloads/unavailable.txt"`,
-		`This Directory knows about 1 relay. 1 is currently online and 0 are offline.`,
+		`This Directory knows about 1 relay. 1 has a healthy heartbeat or a recent ActivityPub Actor check. 0 have neither.`,
 		`An additional 2 relay candidates are pending verification.`,
-		`Candidates are not listed publicly until their relay actor can be verified.`,
+		`Candidates are not listed publicly until their ActivityPub Actor can be verified.`,
 		`href="https://github.com/thystra/activity-relay-directory"`,
 		`href="https://github.com/thystra/Activity-Relay"`,
 	} {
@@ -223,9 +228,9 @@ func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
 	for state, want := range map[storage.PublicHeartbeatState]string{
 		storage.HeartbeatHealthy:     "Healthy",
 		storage.HeartbeatStale:       "Stale",
-		storage.HeartbeatDead:        "Dead",
-		storage.HeartbeatPrune:       "Inactive",
-		storage.HeartbeatNotObserved: "No heartbeat",
+		storage.HeartbeatDead:        "Stale",
+		storage.HeartbeatPrune:       "Stale",
+		storage.HeartbeatNotObserved: "No heartbeat received",
 	} {
 		if got := humanHeartbeatLabel(state); got != want {
 			t.Fatalf("humanHeartbeatLabel(%q) = %q, want %q", state, got, want)
@@ -233,8 +238,8 @@ func TestHumanDirectoryPlainLanguageHelpers(t *testing.T) {
 	}
 	for state, want := range map[storage.ReachabilityState]string{
 		storage.ReachabilityReachable:   "Reachable",
-		storage.ReachabilityUnreachable: "Actor unreachable",
-		storage.ReachabilityUnknown:     "Not checked",
+		storage.ReachabilityUnreachable: "Check failed",
+		storage.ReachabilityUnknown:     "Not checked yet",
 	} {
 		if got := humanReachabilityLabel(state); got != want {
 			t.Fatalf("humanReachabilityLabel(%q) = %q, want %q", state, got, want)
@@ -628,7 +633,7 @@ func TestHumanDirectoryHeartbeatAliveWithFailedActorProbe(t *testing.T) {
 		t.Fatalf("unexpected status=%d body=%q", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	for _, want := range []string{"Tier 2 — Online, one liveness signal", "Actor unreachable", "1 is currently online", "0 are offline"} {
+	for _, want := range []string{"Other Known Relays", "Check failed", "1 has a healthy heartbeat or a recent ActivityPub Actor check", "0 have neither"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("missing %q in output", want)
 		}

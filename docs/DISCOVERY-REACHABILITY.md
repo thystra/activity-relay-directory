@@ -149,7 +149,7 @@ the normal discovery, records the successful actor/inbox observation, and marks
 the retained candidate resolved. Original operator/source provenance remains
 private and is carried into the promoted discovery audit.
 
-A never-verified candidate remains private indefinitely. The public Tier 4
+A never-verified candidate remains private indefinitely. The public Graveyard group (API tier 4)
 graveyard contains only identities that have previously crossed a reviewed
 verified lifecycle or discovery path.
 
@@ -208,7 +208,11 @@ with a functioning POST-only inbox and does not negate the positive capability
 evidence supplied by the validated actor document.
 
 Inbox diagnostics do not determine relay public eligibility or soft pruning.
-Canonical actor reachability is the independent liveness signal.
+Canonical actor reachability is the independent liveness signal. The human
+directory calls these endpoints **ActivityPub Actor** and **ActivityPub
+Inbox**. An Inbox method rejection is informational, not a failed delivery.
+For current human status labels see [`PUBLIC-LISTING.md`](PUBLIC-LISTING.md);
+machine-readable outcome codes are unchanged.
 
 ## Private persistence contract
 
