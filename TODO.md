@@ -8,11 +8,11 @@ reviewed path to the 1.0.0 stable release. Future work remains separately
 reviewed and does not silently alter the version 1 protocol or default-off
 operator controls.
 
-## 1.3.1 reachability diagnostics (in development)
+## 1.3.1 reachability diagnostics and RC2 presentation
 
 Preserve independent heartbeat and actor-reachability evidence; add safe,
 non-destructive diagnostics from the existing background actor and inbox
-checks. RC1 revises Tier 2 to include a heartbeat-active relay even when its
+checks. RC1 revises API tier 2 (publicly **Other Known Relays**) to include a heartbeat-active relay even when its
 actor probe fails, without treating the actor endpoint as reachable. Classify DNS, connect, TLS, policy, redirects, actor HTTP/content,
 and inbox OPTIONS status independently. A missing actor (404/410) or DNS name
 is only **possibly** removed, not proof. Retain historical successful checks,
@@ -22,7 +22,13 @@ Schema 13 is diagnostic-only. Schema 14 adds a persisted actor-failure streak
 with escalating hourly retries and authoritative next-check eligibility.
 `/v2/relays` schema 6 adds optional bounded `diagnostic` objects and
 `next_eligible_at` for the earliest eligible recheck (not a guaranteed run
-time). `/v1/relays` stays unchanged. Ban/block lists
+time). `/v1/relays` stays unchanged. RC2 adjusts the website labels and Actor/Inbox
+check descriptions without changing API state codes or SQLite migrations.
+The page uses three heartbeat labels (Healthy, Stale, No heartbeat received),
+clarifies TLS errors and shows the Inbox check timestamp. RC2 also names
+the existing lifecycle protocol **ARD White Pages Protocol** on the public page,
+replaces numeric tier headings with descriptive groups, and retains numeric
+API `tier` values and the four existing classification rules. Ban/block lists
 belong to the separate Activity-Relay follow-on, not ARD 1.3.1.
 
 ## 1.3 stable release

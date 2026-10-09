@@ -83,21 +83,21 @@ actor probe never fabricates a heartbeat or RFC 9421 verification.
 
 Administrative suspension and explicit lifecycle/discovery removal still hide
 an identity. Otherwise the richer projection retains known verified identities
-through temporary and long-term outages and assigns one of four operational,
-non-prestige tiers:
+through temporary and long-term outages and assigns one of four operational
+groups (represented by unchanged numeric API `tier` values):
 
-1. **Tier 1 — Heartbeat + Online.** The relay has current authenticated
-   liveness evidence within the fixed 36-hour healthy window **and** a
-   successful actor check within the fixed six-hour freshness window.
-2. **Tier 2 — Online, one liveness signal.** The relay has either a healthy
-   authenticated heartbeat **or** a recent successful actor check, but not
-   both. A heartbeat-active relay whose actor endpoint fails remains online
-   here, with the failed actor probe clearly identified in its details.
-3. **Tier 3 — Offline / Unreachable.** Neither of those two independent
-   signals is current, but the relay has been seen online within 30 days.
-4. **Tier 4 — Graveyard.** The relay has not been seen online for at least 30
-   days. It remains retained and is still checked periodically so recovery can
-   move it back to Tier 1 or Tier 2.
+1. **ARD White Pages Protocol Relays** (API tier `1`). The relay reports
+   through the existing authenticated lifecycle protocol within the 36-hour
+   heartbeat window **and** its ActivityPub Actor was validated within six hours.
+2. **Other Known Relays** (API tier `2`). The relay has either a recent
+   authenticated heartbeat **or** a successful ActivityPub Actor check, but not
+   both. This group can include White Pages participants whose Actor check
+   failed; the label does not claim that they never joined the protocol.
+3. **Offline or Unreachable Relays** (API tier `3`). Neither of those two
+   signals is current, but the relay was last confirmed online within 30 days.
+   These checks cannot prove the relay is permanently offline.
+4. **Graveyard** (API tier `4`). The relay has not been confirmed online for
+   at least 30 days. It remains listed and is checked periodically for recovery.
 
 For graveyard age, the Directory uses the newest trustworthy online evidence:
 authenticated lifecycle `last_seen_at`, successful actor reachability, or the
@@ -378,3 +378,37 @@ heartbeat recency, soft pruning, moderation, or retention. Raw remote error
 messages, response bodies, addresses, and private sources are not published.
 See [`REACHABILITY-DIAGNOSTICS.md`](REACHABILITY-DIAGNOSTICS.md) for the closed
 classification vocabulary, retention, and retry rules.
+
+
+## Human-facing status and diagnostic labels (1.3.1-rc2)
+
+The public page names the identity endpoint **ActivityPub Actor** (which
+identifies the relay and describes its capabilities) and the message endpoint
+**ActivityPub Inbox** (which receives ActivityPub messages). The Actor check
+fetches and validates the actor; the Inbox check sends an HTTP `OPTIONS` request
+without delivering an activity. An Inbox response of HTTP 405 or 501 does not
+mean ActivityPub message delivery has failed.
+
+The HTML heartbeat badges are **Healthy**, **Stale**, and **No heartbeat
+received**. Five API states remain unchanged: `healthy` (within 36 hours),
+`stale` (over 36 hours and under 7 days), `dead` (7 to under 30 days),
+`prune` (30 days or older), and `not_observed` (never received). All three
+overdue API states appear as **Stale** on the website. `prune` is a
+heartbeat-age code, **not** an instruction to remove a relay; grouping and
+maintenance are determined separately. A reachable Actor can keep an
+old-heartbeat relay in **Other Known Relays** (API tier `2`); after 30 days
+without positive evidence, it can appear in the **Graveyard** (API tier `4`)
+with the heartbeat label **Stale**.
+
+The HTML Actor status badges are **Reachable**, **Check failed**, and
+**Not checked yet**. A failed Actor check reports the specific safe diagnostic
+(DNS, connection, HTTPS/TLS, redirect, HTTP or document validation). The
+Inbox details show the last check time when recorded and note that message
+delivery was not tested. There is no generic warning that every Inbox result
+may be outdated; timestamps show actual observation recency.
+
+These are **presentation changes only**. The `/v2/relays` schema stays at 6:
+`tier`, `heartbeat.state`, `reachability.state`, `inbox.probe_state`, and
+optional structured `diagnostic` fields retain their existing values.
+`/v1/relays` is unchanged. See [Reachability diagnostics](REACHABILITY-DIAGNOSTICS.md)
+for the machine-readable outcome matrix.

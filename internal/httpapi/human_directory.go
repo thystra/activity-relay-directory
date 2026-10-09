@@ -69,13 +69,13 @@ type humanDirectoryPage struct {
 func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
 	switch tier {
 	case storage.DirectoryTierHeartbeatOnline:
-		return "Tier 1 — Heartbeat + Online"
+		return "ARD White Pages Protocol Relays"
 	case storage.DirectoryTierOnline:
-		return "Tier 2 — Online, one liveness signal"
+		return "Other Known Relays"
 	case storage.DirectoryTierUnavailable:
-		return "Tier 3 — Offline / Unreachable"
+		return "Offline or Unreachable Relays"
 	case storage.DirectoryTierGraveyard:
-		return "Tier 4 — Graveyard"
+		return "Graveyard"
 	default:
 		return "Unknown tier"
 	}
@@ -84,13 +84,13 @@ func humanDirectoryTierTitle(tier storage.DirectoryTier) string {
 func humanDirectoryTierDescription(tier storage.DirectoryTier) string {
 	switch tier {
 	case storage.DirectoryTierHeartbeatOnline:
-		return "These relays have a current authenticated heartbeat and a recent successful actor check."
+		return "These relays self-report through the ARD White Pages Protocol and have recently passed an ActivityPub Actor check."
 	case storage.DirectoryTierOnline:
-		return "These relays have either a healthy authenticated heartbeat or a recent successful actor check, but not both. Actor failures remain visible in relay details."
+		return "These relays have one recent sign of activity: a heartbeat through the ARD White Pages Protocol or a successful ActivityPub Actor check. Some report through White Pages but have not passed both checks."
 	case storage.DirectoryTierUnavailable:
-		return "These relays have neither a current authenticated heartbeat nor a recent successful actor check, but have been seen online within the last 30 days."
+		return "These relays have no recent healthy heartbeat or successful ActivityPub Actor check. They may be offline or temporarily unreachable, but were last confirmed online within the past 30 days."
 	case storage.DirectoryTierGraveyard:
-		return "These relays have not been seen online for at least 30 days. They remain listed for historical reference and are checked periodically in case they return."
+		return "These relays have not been confirmed online for at least 30 days. They remain listed for reference and are checked periodically in case they return."
 	default:
 		return ""
 	}
@@ -199,14 +199,10 @@ func humanHeartbeatLabel(state storage.PublicHeartbeatState) string {
 	switch state {
 	case storage.HeartbeatHealthy:
 		return "Healthy"
-	case storage.HeartbeatStale:
+	case storage.HeartbeatStale, storage.HeartbeatDead, storage.HeartbeatPrune:
 		return "Stale"
-	case storage.HeartbeatDead:
-		return "Dead"
-	case storage.HeartbeatPrune:
-		return "Inactive"
 	case storage.HeartbeatNotObserved:
-		return "No heartbeat"
+		return "No heartbeat received"
 	default:
 		return "Unknown"
 	}
@@ -217,9 +213,9 @@ func humanReachabilityLabel(state storage.ReachabilityState) string {
 	case storage.ReachabilityReachable:
 		return "Reachable"
 	case storage.ReachabilityUnreachable:
-		return "Actor unreachable"
+		return "Check failed"
 	default:
-		return "Not checked"
+		return "Not checked yet"
 	}
 }
 

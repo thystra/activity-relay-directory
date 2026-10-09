@@ -279,45 +279,77 @@ func (heartbeat directoryProjectionHeartbeat) DisplayState() string {
 	}
 }
 
+// Summary returns public-facing wording for a classified check. The structured
+// stage/code/status evidence remains unchanged for API consumers.
 func (diagnostic *directoryProbeDiagnostic) Summary() string {
 	if diagnostic == nil {
-		return "Not recorded"
+		return "No check recorded."
 	}
 	switch {
 	case diagnostic.Stage == "dns" && diagnostic.Code == "nxdomain":
-		return "DNS name does not exist (possibly removed)"
+		return "Could not find a DNS address for this relay."
 	case diagnostic.Stage == "dns" && diagnostic.Code == "no_address":
-		return "DNS has no usable address (possibly removed)"
-	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 404:
-		return "Actor returned HTTP 404 (possibly removed)"
-	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 410:
-		return "Actor returned HTTP 410 Gone (possibly removed)"
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 404:
-		return "Inbox returned HTTP 404 (missing)"
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 410:
-		return "Inbox returned HTTP 410 (gone)"
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 405:
-		return "OPTIONS not permitted; delivery capability unknown"
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 501:
-		return "OPTIONS not implemented; delivery capability unknown"
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 200 && diagnostic.HTTPStatus < 400:
-		return "OPTIONS returned a successful response"
-	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus >= 500:
-		return fmt.Sprintf("Actor returned HTTP %d (service degraded or temporarily unavailable)", diagnostic.HTTPStatus)
-	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 500:
-		return fmt.Sprintf("Inbox returned HTTP %d (service degraded or temporarily unavailable)", diagnostic.HTTPStatus)
-	case diagnostic.Stage == "tls" && diagnostic.Code == "certificate":
-		return "TLS certificate verification failed (degraded)"
-	case diagnostic.Stage == "tls" && diagnostic.Code == "handshake":
-		return "TLS handshake failed (degraded)"
+		return "No usable DNS address was found for this relay."
 	case diagnostic.Stage == "dns" && diagnostic.Code == "temporary":
-		return "Temporary DNS lookup failure"
+		return "DNS lookup temporarily unavailable."
+	case diagnostic.Stage == "dns" && diagnostic.Code == "timeout":
+		return "DNS lookup timed out."
+	case diagnostic.Stage == "dns" && diagnostic.Code == "policy":
+		return "The DNS address did not pass security checks."
+	case diagnostic.Stage == "dns" && diagnostic.Code == "error":
+		return "DNS lookup failed."
 	case diagnostic.Stage == "connect" && diagnostic.Code == "refused":
-		return "Connection refused (degraded or unavailable)"
-	case diagnostic.HTTPStatus != 0:
-		return fmt.Sprintf("%s returned HTTP %d", diagnostic.Stage, diagnostic.HTTPStatus)
+		return "The server refused the connection."
+	case diagnostic.Stage == "connect" && diagnostic.Code == "timeout":
+		return "The connection timed out."
+	case diagnostic.Stage == "connect" && diagnostic.Code == "failed":
+		return "Could not connect to the server."
+	case diagnostic.Stage == "tls" && diagnostic.Code == "certificate":
+		return "Connected to the server, but its HTTPS certificate could not be verified (TLS error)."
+	case diagnostic.Stage == "tls" && diagnostic.Code == "handshake":
+		return "Connected to the server, but a secure HTTPS connection could not be established (TLS error)."
+	case diagnostic.Stage == "redirect" && diagnostic.Code == "rejected":
+		return "Could not safely follow the ActivityPub Actor address redirect."
+	case diagnostic.Stage == "policy" && diagnostic.Code == "prohibited_target":
+		return "The ActivityPub address could not be checked safely."
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 404:
+		return "ActivityPub Actor address was not found (HTTP 404)."
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus == 410:
+		return "ActivityPub Actor address is no longer available (HTTP 410)."
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus >= 500:
+		return fmt.Sprintf("ActivityPub Actor server reported an error (HTTP %d).", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "actor" && diagnostic.HTTPStatus != 0:
+		return fmt.Sprintf("ActivityPub Actor check returned HTTP %d.", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "actor" && diagnostic.Code == "content_type":
+		return "ActivityPub Actor information was returned in an unsupported format."
+	case diagnostic.Stage == "actor" && diagnostic.Code == "invalid_document":
+		return "ActivityPub Actor information could not be validated."
+	case diagnostic.Stage == "actor" && diagnostic.Code == "invalid_response":
+		return "ActivityPub Actor server returned an invalid response."
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 404:
+		return "ActivityPub Inbox address was not found (HTTP 404)."
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 410:
+		return "ActivityPub Inbox address is no longer available (HTTP 410)."
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 405:
+		return "ActivityPub Inbox does not support this check (HTTP 405)."
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus == 501:
+		return "ActivityPub Inbox does not implement this check (HTTP 501)."
+	case diagnostic.Stage == "inbox" && (diagnostic.HTTPStatus == 401 || diagnostic.HTTPStatus == 403):
+		return fmt.Sprintf("ActivityPub Inbox declined the check (HTTP %d).", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 200 && diagnostic.HTTPStatus < 400:
+		return fmt.Sprintf("ActivityPub Inbox responded to the check (HTTP %d).", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus >= 500:
+		return fmt.Sprintf("ActivityPub Inbox server reported an error (HTTP %d).", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "inbox" && diagnostic.HTTPStatus != 0:
+		return fmt.Sprintf("ActivityPub Inbox check returned HTTP %d.", diagnostic.HTTPStatus)
+	case diagnostic.Stage == "inbox" && diagnostic.Code == "invalid_response":
+		return "ActivityPub Inbox server returned an invalid response."
+	case diagnostic.Stage == "network" && diagnostic.Code == "timeout":
+		return "Network request timed out."
+	case diagnostic.Stage == "network" && diagnostic.Code == "error":
+		return "Network connection failed."
 	default:
-		return strings.ReplaceAll(diagnostic.Stage, "_", " ") + ": " + strings.ReplaceAll(diagnostic.Code, "_", " ")
+		return "The check could not be completed."
 	}
 }
 

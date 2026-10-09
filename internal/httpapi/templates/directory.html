@@ -22,7 +22,7 @@
     <section class="hero" aria-labelledby="page-title">
       <p class="eyebrow">ActivityPub infrastructure</p>
       <h1 id="page-title">Public relay directory</h1>
-      <p class="lede">Find participating relays and see whether they are still sending heartbeats and reachable on the network.</p>
+      <p class="lede">Find ActivityPub relays, including those reporting directly through the ARD White Pages Protocol. See their recent heartbeat and ActivityPub Actor checks.</p>
     </section>
 
 {{if .SupportEntries}}    <details class="support-panel panel">
@@ -39,26 +39,27 @@
 {{end}}    <section class="status-help panel" aria-labelledby="status-heading">
       <div class="section-heading">
         <div>
-          <h2 id="status-heading">How the relay tiers work</h2>
-          <p class="muted">Tiers describe operational confidence, not popularity. Inside each tier, open relays are shown first, then restricted, closed, and unreported relays.</p>
+          <h2 id="status-heading">How relay listings are grouped</h2>
+          <p class="muted">Groups reflect recent activity and verification, not popularity. Within each group, open relays are shown first, then restricted, closed, and unreported relays.</p>
+          <p class="muted">The ActivityPub Actor identifies a relay and describes its capabilities. The ActivityPub Inbox is where it receives ActivityPub messages. <a href="https://github.com/thystra/activity-relay-directory/blob/master/docs/PROTOCOL.md" rel="noreferrer">Learn about the ARD White Pages Protocol.</a></p>
         </div>
       </div>
       <dl class="tier-guide">
         <div class="tier-guide-item tier-guide-1">
-          <dt>Tier 1 — Heartbeat + Online</dt>
-          <dd>These relays have a current authenticated heartbeat and a recent successful actor check.</dd>
+          <dt>ARD White Pages Protocol Relays</dt>
+          <dd>These relays self-report through the ARD White Pages Protocol and have recently passed an ActivityPub Actor check.</dd>
         </div>
         <div class="tier-guide-item tier-guide-2">
-          <dt>Tier 2 — Online, one liveness signal</dt>
-          <dd>These relays have a healthy authenticated heartbeat or a recent successful actor check, but not both. An actor check can fail while the relay is still alive.</dd>
+          <dt>Other Known Relays</dt>
+          <dd>These relays have one recent sign of activity: a heartbeat through the ARD White Pages Protocol or a successful ActivityPub Actor check. Some report through White Pages but have not passed both checks.</dd>
         </div>
         <div class="tier-guide-item tier-guide-3">
-          <dt>Tier 3 — Offline / Unreachable</dt>
-          <dd>These relays have neither a current heartbeat nor a recent successful actor check, but were seen online within the last 30 days.</dd>
+          <dt>Offline or Unreachable Relays</dt>
+          <dd>These relays have no recent healthy heartbeat or successful ActivityPub Actor check. They may be offline or temporarily unreachable, but were last confirmed online within the past 30 days.</dd>
         </div>
         <div class="tier-guide-item tier-guide-4">
-          <dt>Tier 4 — Graveyard</dt>
-          <dd>These relays have not been seen online for at least 30 days. They remain listed for historical reference and are checked periodically in case they return.</dd>
+          <dt>Graveyard</dt>
+          <dd>These relays have not been confirmed online for at least 30 days. They remain listed for reference and are checked periodically in case they return.</dd>
         </div>
       </dl>
     </section>
@@ -67,8 +68,8 @@
       <div class="section-heading">
         <div>
           <p class="eyebrow">Directory</p>
-          <h2 id="relay-list-heading">Participating relays</h2>
-          <p class="muted">This Directory knows about {{.Summary.KnownRelays}} {{if eq .Summary.KnownRelays 1}}relay{{else}}relays{{end}}. {{.Summary.OnlineRelays}} {{if eq .Summary.OnlineRelays 1}}is{{else}}are{{end}} currently online and {{.Summary.OfflineRelays}} {{if eq .Summary.OfflineRelays 1}}is{{else}}are{{end}} offline. An additional {{.Summary.PendingVerification}} {{if eq .Summary.PendingVerification 1}}relay candidate is{{else}}relay candidates are{{end}} pending verification. Candidates are not listed publicly until their relay actor can be verified.</p>
+          <h2 id="relay-list-heading">Known relays</h2>
+          <p class="muted">This Directory knows about {{.Summary.KnownRelays}} {{if eq .Summary.KnownRelays 1}}relay{{else}}relays{{end}}. {{.Summary.OnlineRelays}} {{if eq .Summary.OnlineRelays 1}}has{{else}}have{{end}} a healthy heartbeat or a recent ActivityPub Actor check. {{.Summary.OfflineRelays}} {{if eq .Summary.OfflineRelays 1}}has{{else}}have{{end}} neither. An additional {{.Summary.PendingVerification}} {{if eq .Summary.PendingVerification 1}}relay candidate is{{else}}relay candidates are{{end}} pending verification. Candidates are not listed publicly until their ActivityPub Actor can be verified.</p>
           <p class="muted">Showing {{len .Listing.Relays}} public {{if eq (len .Listing.Relays) 1}}relay{{else}}relays{{end}} on this page. Click on a relay's line for details.</p>
         </div>
       </div>
@@ -93,7 +94,6 @@
       <section class="tier-block tier-block-{{.Tier}}" aria-labelledby="tier-heading-{{.Tier}}">
         <div class="tier-heading">
           <div>
-            <p class="eyebrow">Tier {{.Tier}}</p>
             <h3 id="tier-heading-{{.Tier}}">{{.Title}}</h3>
             <p class="muted">{{.Description}}</p>
           </div>
@@ -105,7 +105,7 @@
             <span>Registration</span>
             <span>Sites</span>
             <span><span aria-hidden="true">♥</span> Heartbeat</span>
-            <span>Actor reachability</span>
+            <span>ActivityPub Actor</span>
           </div>
           <ul class="relay-rows">
 {{range .Relays}}
@@ -128,18 +128,18 @@
                     <span class="signal-badge heartbeat-{{.Heartbeat.State}}">{{heartbeatLabel .Heartbeat.State}}</span>
                   </span>
                   <span class="relay-cell relay-reachability">
-                    <span class="cell-label">Actor reachability</span>
+                    <span class="cell-label">ActivityPub Actor</span>
                     <span class="signal-badge reachability-{{.Reachability.State}}">{{reachabilityLabel .Reachability.State}}</span>
                   </span>
                 </summary>
                 <div class="relay-details">
                   <dl>
                     <div>
-                      <dt>Actor</dt>
+                      <dt>ActivityPub Actor</dt>
                       <dd><code>{{.RelayActor}}</code></dd>
                     </div>
                     <div>
-                      <dt>Inbox</dt>
+                      <dt>ActivityPub Inbox</dt>
                       <dd>{{if .Inbox.URL}}<code>{{.Inbox.URL}}</code>{{else}}Not listed{{end}}</dd>
                     </div>
                     <div>
@@ -147,24 +147,24 @@
                       <dd>{{if .Heartbeat.LastSeenAt}}<time datetime="{{.Heartbeat.LastSeenAt}}">{{humanTime .Heartbeat.LastSeenAt}}</time>{{else}}None yet{{end}}</dd>
                     </div>
                     <div>
-                      <dt>Last successful check</dt>
+                      <dt>Last successful ActivityPub Actor check</dt>
                       <dd>{{if .Reachability.LastSuccessAt}}<time datetime="{{.Reachability.LastSuccessAt}}">{{humanTime .Reachability.LastSuccessAt}}</time>{{else}}None yet{{end}}</dd>
                     </div>
                     <div>
-                      <dt>Last actor check</dt>
+                      <dt>Last ActivityPub Actor check</dt>
                       <dd>{{if .Reachability.LastCheckedAt}}<time datetime="{{.Reachability.LastCheckedAt}}">{{humanTime .Reachability.LastCheckedAt}}</time>{{else}}Not checked{{end}}</dd>
                     </div>
 {{if .Reachability.Diagnostic}}                    <div>
-                      <dt>Actor diagnostic</dt>
+                      <dt>ActivityPub Actor check</dt>
                       <dd>{{.Reachability.Diagnostic.Summary}}</dd>
                     </div>{{end}}
 {{if .Inbox.Diagnostic}}                    <div>
-                      <dt>Last inbox diagnostic</dt>
-                      <dd>{{.Inbox.Diagnostic.Summary}} (non-mutating OPTIONS check; may predate the latest actor result)</dd>
+                      <dt>Last ActivityPub Inbox check</dt>
+                      <dd>{{.Inbox.Diagnostic.Summary}} {{if .Inbox.LastCheckedAt}}<span class="muted">Checked <time datetime="{{.Inbox.LastCheckedAt}}">{{humanTime .Inbox.LastCheckedAt}}</time>.</span>{{end}} <span class="muted">Message delivery was not tested.</span></dd>
                     </div>{{end}}
 {{if .Reachability.NextEligibleAt}}                    <div>
-                      <dt>Next eligible reachability check</dt>
-                      <dd><time datetime="{{.Reachability.NextEligibleAt}}">{{humanTime .Reachability.NextEligibleAt}}</time> (scheduled maintenance may run later)</dd>
+                      <dt>Next ActivityPub Actor check</dt>
+                      <dd><time datetime="{{.Reachability.NextEligibleAt}}">{{humanTime .Reachability.NextEligibleAt}}</time> (checks may occur after this time)</dd>
                     </div>{{end}}
                     <div>
                       <dt>Participating sites reported</dt>

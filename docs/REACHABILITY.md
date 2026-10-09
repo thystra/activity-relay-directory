@@ -70,7 +70,11 @@ inbox evidence.
 When a validated actor declares an inbox, the worker performs one bounded
 non-mutating `OPTIONS` diagnostic. `responsive`, `method_rejected`, and
 `unreachable` are diagnostics only; method rejection is not treated as absence
-of ActivityPub inbox support. No synthetic ActivityPub `POST` is sent.
+of ActivityPub inbox support. No synthetic ActivityPub `POST` is sent. On the public page the check is
+called **ActivityPub Inbox**. HTTP 405/501 means the Inbox does not support
+the `OPTIONS` check; it does not imply ActivityPub delivery is broken. The
+HTML page shows the last Inbox check time when available. See
+[`REACHABILITY-DIAGNOSTICS.md`](REACHABILITY-DIAGNOSTICS.md) for human labels.
 
 Network probes may run concurrently, but durable writes are serialized. The
 write transaction rechecks that the actor is still eligible and rejects a

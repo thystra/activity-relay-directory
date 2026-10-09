@@ -112,7 +112,7 @@ activity-relay-directory admin export --scope all --format actors
 activity-relay-directory admin export --scope all --format csv > relays.csv
 ```
 
-Scopes are:
+Scopes use the unchanged internal API tier codes (the website uses descriptive group names):
 
 - `active` — Tier 1 and Tier 2;
 - `unavailable` — Tier 3 and Tier 4;

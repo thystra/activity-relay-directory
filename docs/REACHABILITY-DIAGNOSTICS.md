@@ -5,7 +5,10 @@ participation/liveness** and **non-authenticated background observation**.
 Diagnostic failure evidence is **informational** and cannot change authenticated
 heartbeat timestamps, enrollment, moderation or retention. Public tiers use
 authenticated liveness and actor reachability as separate positive signals:
-Tier 1 requires both, Tier 2 requires either, and Tier 3/4 have neither.
+The **ARD White Pages Protocol Relays** group (API tier 1) requires both;
+**Other Known Relays** (tier 2) requires either; the offline and Graveyard groups
+(tiers 3/4) have neither. A healthy heartbeat with an Actor check failure is
+still evidence of White Pages participation and belongs in group 2.
 
 ## Observation stages
 
@@ -55,9 +58,44 @@ interpret a DNS code as authoritative proof of relay decommissioning.
   `reachability.next_eligible_at`. They contain no raw exception messages,
   DNS addresses, resolved IPs, local file names, or response bodies.
 - `/v1/relays` and lifecycle Protocols 1/2/3 remain unchanged. The four
-  numbered tiers remain, but Tier 2 now includes healthy-heartbeat/failed-actor
-  relays. These are listed as online with a degraded actor probe, not offline.
+  numeric API `tier` values remain, while the website uses descriptive group
+  headings. API tier 2 includes healthy-heartbeat/failed-Actor relays; they
+  are not classified as offline solely because an Actor check failed.
 
 Do not perform root (`/`) probes, synthetic ActivityPub POST requests, or
 automatic permanent removal based on diagnostic codes. Activity-Relay ban/block
 lists are explicitly deferred outside the ARD 1.3.1 scope.
+
+## Human-readable presentation in 1.3.1-rc2
+
+The website labels these endpoints **ActivityPub Actor** and **ActivityPub
+Inbox**. The Actor check validates the identity document; the Inbox check
+uses HTTP `OPTIONS`, not ActivityPub delivery. Inbox `405`/`501` means the
+server does not support that check; it does **not** prove the Inbox cannot
+accept ActivityPub messages. When an Inbox diagnostic exists, the page shows
+the recorded check time (if available) and says **Message delivery was not
+tested.** Results are not automatically called outdated.
+
+The page uses these plain-language messages for classified outcomes. The
+`stage`, `code`, `http_status`, and `assessment` API fields remain unchanged.
+
+| Check category | Evidence | Public explanation |
+| --- | --- | --- |
+| DNS | `nxdomain` / `no_address` | No DNS address found for this relay |
+| DNS | `temporary` / `timeout` / `error` | DNS lookup unavailable, timed out, or failed |
+| DNS | `policy` | DNS address did not pass security checks |
+| Connection | `refused` / `timeout` / `failed` | Server refused the connection, timed out, or could not be reached |
+| HTTPS | `tls/certificate` | Connected, but the HTTPS certificate could not be verified (TLS error) |
+| HTTPS | `tls/handshake` | Connected, but a secure HTTPS connection could not be established (TLS error) |
+| Redirect / address policy | `redirect/rejected` / `policy/prohibited_target` | Could not safely follow the Actor address or check that address |
+| ActivityPub Actor | HTTP 404 / 410 | Actor address not found / no longer available |
+| ActivityPub Actor | other HTTP, unsupported format, invalid document / response | Actor check HTTP status or validation failure |
+| ActivityPub Inbox | HTTP 405 / 501 | Inbox does not support this check (not a delivery failure) |
+| ActivityPub Inbox | other HTTP / invalid response | Inbox check HTTP status or invalid response |
+| Network | `timeout` / `error` | Network request timed out / connection failed |
+
+HTML heartbeat labels are **Healthy**, **Stale**, or **No heartbeat received**.
+The internal/API codes `healthy`, `stale`, `dead`, `prune`, and
+`not_observed` remain distinct and compatible with RC1; the website maps
+`stale`, `dead`, and `prune` to the one visible label **Stale**. This has no
+effect on tier classification, retry scheduling, or actual soft pruning.
