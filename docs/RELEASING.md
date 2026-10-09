@@ -1,3 +1,16 @@
+### ARD 1.3.1-rc2 source acceptance
+
+After the public-language feature branch is merged, run
+`./scripts/acceptance-1.3.1-rc2.sh` on the release-preparation branch from
+master. RC2 keeps the signed `v1.3.1-rc1` source migrations and core
+reachability/lifecycle implementation unchanged. It updates the website,
+presentation tests, current docs, release metadata and operator release notes.
+The acceptance script first executes the full RC1 source suite, then checks
+RC2 wording (including White Pages group headings), CSS, API
+compatibility and the immutable migration files.
+Build fresh versioned `1.3.1-rc2` canonical artifacts only after it passes;
+never modify the already published RC1 tag or binaries.
+
 ### ARD 1.3.1-rc1 source acceptance
 
 For the retry/liveness release candidate, run

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.1-rc2 - 2026-10-09 (release candidate)
+
+- Clarify ActivityPub Actor and ActivityPub Inbox labels and display explanations
+  for DNS, connection, HTTPS/TLS, redirect, Actor and Inbox checks.
+- Use three human-facing heartbeat labels (Healthy, Stale, No heartbeat
+  received) and consistent warning styling while retaining all five existing
+  API heartbeat values, tier classification, and pruning behavior.
+- Display the recorded Inbox check time instead of a blanket technical warning;
+  identify HTTP 405/501 as an unsupported check, not delivery failure.
+- Name existing opt-in lifecycle participation **ARD White Pages Protocol**
+  and replace numbered public tier headings with descriptive relay groups.
+- Update current operator and public documentation. No new migrations, API
+  schema changes, lifecycle protocol changes, or worker scheduling changes.
+
 ## 1.3.1-rc1 - 2026-10-08 (release candidate)
 
 - Add schema 14 durable actor-failure retry streak with escalating hourly
