@@ -138,6 +138,8 @@ For implementation and contributors:
   [`docs/HANDLERS.md`](docs/HANDLERS.md) — lifecycle wire contract and HTTP
   behavior;
 - [`docs/PERSISTENCE.md`](docs/PERSISTENCE.md) — SQLite schema/state semantics;
+- [`docs/releases/v1.3.1.md`](docs/releases/v1.3.1.md) — current stable
+  release notes and upgrade guidance;
 - [`docs/RELEASING.md`](docs/RELEASING.md) and
   [`docs/RC-ACCEPTANCE.md`](docs/RC-ACCEPTANCE.md) — release engineering and
   operator acceptance; and

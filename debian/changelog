@@ -1,3 +1,22 @@
+activity-relay-directory (1.3.1-2) stable; urgency=medium
+
+  * Promote the accepted 1.3.1-rc2 behavior to stable without runtime changes.
+  * Use Debian revision 2 so stable sorts above the abandoned, unreleased
+    1.3.1-1 candidate; that earlier entry is retained only as history.
+  * Add bounded DNS, connect, TLS, redirect, Actor and Inbox diagnostics in
+    SQLite schema 13 and /v2/relays schema 6; diagnostics alone do not
+    change tier placement, pruning, or retention.
+  * Add schema 14 actor-failure retry streak with 1h/2h/4h/6h eligibility,
+    a reset on recovery, and retained weekly long-offline checks.
+  * Treat a current authenticated heartbeat as independent liveness; API
+    tier 2 includes heartbeat-active relays whose Actor check failed.
+  * Name the lifecycle protocol ARD White Pages Protocol on the public page
+    and use descriptive relay groups and plain-language diagnostics.
+  * Preserve Protocols 1/2/3, /v1/relays, and operator-controlled service
+    restarts; require a pre-migration backup for rollback.
+
+ -- Alan Johnson <alan@argentwolf.org>  Mon, 26 Oct 2026 13:30:00 -0400
+
 activity-relay-directory (1.3.1~rc2-1) unstable; urgency=medium
 
   * Clarify ActivityPub Actor and Inbox labels and explain independent checks.

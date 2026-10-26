@@ -1,3 +1,25 @@
+### ARD 1.3.1 stable promotion
+
+Stable `1.3.1` promotes the accepted `v1.3.1-rc2` source
+(`b6bb1a7828f3a0b01742482bb74651fd53b9a808`) without runtime changes. The top
+Debian changelog entry is `1.3.1-2`: the abandoned `1.3.1-1` candidate from
+the original 1.3.1 preparation (PR #44) was installed on Hermod but never
+published, so its version is retained only as history and must not be reused.
+
+On the stable-promotion branch, run `./scripts/acceptance-1.3.1.sh` before
+dispatching canonical build with version `1.3.1`. The gate checks the stable
+Debian/application identity and release notes, requires migrations 0001–0012
+to be byte-identical to `v1.3.0` with schemas 13 and 14 as the only additions,
+requires schemas 13/14 to match `v1.3.1-rc2` (and schema 13 to match the
+deployed PR #44 merge), rejects any runtime source drift from `v1.3.1-rc2`,
+and then runs the RC1 retry/liveness and RC2 wording regressions plus full
+`gofmt`, `go vet`, unit and race validation. Fetch the `v1.3.0` and
+`v1.3.1-rc2` tags first if they are not present locally.
+
+After the promotion PR is merged, the maintainer creates the signed annotated
+`v1.3.1` tag on the merge commit; canonical build, install testing and
+publication follow the normal gates below.
+
 ### ARD 1.3.1-rc2 source acceptance
 
 After the public-language feature branch is merged, run
@@ -24,16 +46,6 @@ canonical artifact build.
 
 # Releasing
 
-
-### ARD 1.3.1 source acceptance
-
-For 1.3.1, run `./scripts/acceptance-1.3.1.sh` before dispatching a
-canonical build. This release-specific gate compares migration files 0001–0012
-byte-for-byte with the released `v1.3.0` tag, requires schema 13 as the sole
-new migration, and exercises structured diagnostic, retry, redaction,
-persistence, and public-API compatibility regressions. Fetch the authoritative
-`v1.3.0` tag first if it is not present locally. The historical 1.2 and 1.3.0
-acceptance scripts retain their original baseline and expected migration count.
 
 ### Source acceptance prerequisite
 
