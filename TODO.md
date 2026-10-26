@@ -8,6 +8,15 @@ reviewed path to the 1.0.0 stable release. Future work remains separately
 reviewed and does not silently alter the version 1 protocol or default-off
 operator controls.
 
+## 1.3.1 stable release
+
+`v1.3.1` promotes the accepted 1.3.1-rc2 line (source `b6bb1a7`) with Debian
+package version `1.3.1-2`; revision `-2` keeps normal upgrade order above the
+unreleased `1.3.1-1` candidate. Stable promotion changes release identity,
+packaging metadata, release notes and the stable source-acceptance gate only;
+it does not alter the accepted RC2 runtime. SQLite schema 14, `/v2/relays`
+schema 6, lifecycle Protocols 1/2/3 and `/v1/relays` are retained unchanged.
+
 ## 1.3.1 reachability diagnostics and RC2 presentation
 
 Preserve independent heartbeat and actor-reachability evidence; add safe,

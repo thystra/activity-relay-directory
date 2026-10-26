@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.1 - 2026-10-26
+
+- Promote the accepted `1.3.1-rc2` behavior to stable `1.3.1` without runtime
+  behavior changes. The Debian package is `1.3.1-2`, so it sorts above the
+  unreleased `1.3.1-1` candidate listed below.
+- Add DNS, connection, TLS, redirect, ActivityPub Actor, and ActivityPub Inbox
+  reachability diagnostics in SQLite schema 13 and `/v2/relays` schema 6, with
+  cautious "possibly removed" annotations and no automatic removal.
+- Add schema 14 actor-failure retry streak with 1h/2h/4h/6h eligibility, a
+  reset on recovery, and the existing weekly long-offline cadence.
+- Treat a healthy authenticated heartbeat as independent liveness: relays with
+  a current heartbeat but a failed Actor check are listed with Other Known
+  Relays (API tier 2), not as offline.
+- Name the existing lifecycle protocol **ARD White Pages Protocol** on the
+  public page, use descriptive relay group headings, three heartbeat labels,
+  and plain-language diagnostic messages. `/v1/relays`, lifecycle Protocols
+  1/2/3, and numeric API `tier` values are unchanged.
+
 ## 1.3.1-rc2 - 2026-10-09 (release candidate)
 
 - Clarify ActivityPub Actor and ActivityPub Inbox labels and display explanations
@@ -23,7 +41,7 @@
 - Preserve actor failure diagnostics and the existing seven-day long-offline
   recovery cadence; no changes to lifecycle protocol signatures.
 
-## 1.3.1 - 2026-10-07
+## 1.3.1-1 candidate - 2026-10-07 (unreleased, superseded by 1.3.1-rc1)
 
 - Add stage/code/HTTP-status reachability diagnostics for DNS, connection,
   TLS, redirects, actor documents, and non-mutating inbox OPTIONS responses.

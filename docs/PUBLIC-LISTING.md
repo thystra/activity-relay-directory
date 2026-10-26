@@ -380,7 +380,7 @@ See [`REACHABILITY-DIAGNOSTICS.md`](REACHABILITY-DIAGNOSTICS.md) for the closed
 classification vocabulary, retention, and retry rules.
 
 
-## Human-facing status and diagnostic labels (1.3.1-rc2)
+## Human-facing status and diagnostic labels (1.3.1)
 
 The public page names the identity endpoint **ActivityPub Actor** (which
 identifies the relay and describes its capabilities) and the message endpoint

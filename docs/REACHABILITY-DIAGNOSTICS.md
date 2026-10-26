@@ -66,7 +66,7 @@ Do not perform root (`/`) probes, synthetic ActivityPub POST requests, or
 automatic permanent removal based on diagnostic codes. Activity-Relay ban/block
 lists are explicitly deferred outside the ARD 1.3.1 scope.
 
-## Human-readable presentation in 1.3.1-rc2
+## Human-readable presentation in 1.3.1
 
 The website labels these endpoints **ActivityPub Actor** and **ActivityPub
 Inbox**. The Actor check validates the identity document; the Inbox check
